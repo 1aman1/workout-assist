@@ -1,18 +1,35 @@
-# Build and Release Folders
-bin-debug/
-bin-release/
-[Oo]bj/
-[Bb]in/
+# Android Studio / IntelliJ
+.idea/
+*.iml
 
-# Other files and folders
-.settings/
+# Gradle
+.gradle/
+build/
+**/build/
+gradle/gradle-daemon-jvm.properties
 
-# Executables
-*.swf
-*.air
-*.ipa
+# Kotlin/Java compile output
+out/
+
+# Local SDK and machine-specific config
+local.properties
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Signing keys and sensitive files
+*.jks
+*.keystore
+key.properties
+
+# Android packaging outputs
 *.apk
+*.aab
 
-# Project files, i.e. `.project`, `.actionScriptProperties` and `.flexProperties`
-# should NOT be excluded as they contain compiler settings and other important
-# information for Eclipse / Flash Builder.
+# Native build intermediates
+.externalNativeBuild/
+.cxx/
+
+# Profiling / captures
+captures/
