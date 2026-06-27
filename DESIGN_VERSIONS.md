@@ -484,6 +484,78 @@ How to use:
 
 ---
 
+## Version 1.20 (2026-06-27)
+- Change summary:
+  - Start Workout is now disabled when edit mode is enabled.
+  - Added bottom tab bar with Workout (default) and Settings tabs.
+  - Added full local backup export/import in Settings.
+- Why changed:
+  - Prevent accidental session starts while user is editing template details.
+  - Provide explicit place for app-level actions without cluttering workout screens.
+  - Enable state portability and recovery for local-only usage.
+- UX impact:
+  - Users must turn off edit mode before starting workout.
+  - App now opens on Workout tab and can switch to Settings via bottom nav.
+  - Settings offers Export to file and Import from file with status feedback.
+  - Back from Settings returns to Workout tab.
+- Data/model impact:
+  - Added repository/DAO backup primitives for all persisted tables.
+  - Backup JSON stores schedule title and all Room-backed entities.
+  - Import replaces local tables transactionally to restore snapshot state.
+- Migration notes (if any):
+  - No schema change required.
+
+---
+
+## Version 1.21 (2026-06-27)
+- Change summary:
+  - Added a visible right-side scrollbar indicator on the Workout schedule list.
+- Why changed:
+  - Improve discoverability that more workout cards are available below the fold.
+- UX impact:
+  - Users now get a clear scroll affordance on the schedule page.
+  - Scroll thumb position reflects list position while moving.
+- Data/model impact:
+  - None.
+- Migration notes (if any):
+  - None.
+
+---
+
+## Version 1.22 (2026-06-27)
+- Change summary:
+  - Increased right-swipe completion hint contrast on exercise cards.
+  - Centered number wheel picker in quick-edit dialog.
+- Why changed:
+  - Improve readability of swipe action feedback.
+  - Fix visual alignment issue where picker appeared left-shifted while editing chip values.
+- UX impact:
+  - Swipe-to-complete feedback is now more visible.
+  - Quick-edit wheel appears centered in dialog for clearer interaction focus.
+- Data/model impact:
+  - None.
+- Migration notes (if any):
+  - None.
+
+---
+
+## Version 1.23 (2026-06-27)
+- Change summary:
+  - Updated launcher icon to a black dumbbell symbol on a turquoise background.
+  - Slightly increased swipe-to-complete hint darkness for better contrast.
+- Why changed:
+  - Align app branding with workout context using a clear dumbbell mark.
+  - Improve visibility of swipe action affordance in bright conditions.
+- UX impact:
+  - Home screen/app drawer icon is more distinctive and gym-specific.
+  - Right-swipe completion feedback appears darker and easier to read.
+- Data/model impact:
+  - None.
+- Migration notes (if any):
+  - None.
+
+---
+
 ## Versioning Rule
 - Every product/UI naming decision must be appended as a new version section.
 - Do not rewrite past version content; add only incremental deltas.

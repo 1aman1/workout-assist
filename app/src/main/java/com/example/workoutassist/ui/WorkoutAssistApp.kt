@@ -2,8 +2,11 @@ package com.example.workoutassist.ui
 
 import android.app.DatePickerDialog
 import android.content.Context
+import android.net.Uri
 import android.widget.NumberPicker
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -12,10 +15,12 @@ import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -37,10 +42,12 @@ import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material.icons.rounded.FitnessCenter
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.RadioButtonUnchecked
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -54,6 +61,8 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -79,30 +88,48 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.zIndex
+import com.example.workoutassist.data.BackupSnapshot
 import com.example.workoutassist.data.ExerciseDraft
+import com.example.workoutassist.data.ExerciseEntity
 import com.example.workoutassist.data.ExerciseModel
+import com.example.workoutassist.data.SetLogEntity
+import com.example.workoutassist.data.TemplateDayEntity
 import com.example.workoutassist.data.WorkoutDatabase
 import com.example.workoutassist.data.WorkoutDayModel
 import com.example.workoutassist.data.WorkoutRepository
+import com.example.workoutassist.data.WorkoutSessionEntity
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
 import kotlin.math.roundToInt
 
 private enum class AppScreen {
     SCHEDULE,
     DAY_DETAIL
+}
+
+private enum class RootTab(
+    val label: String,
+    val icon: ImageVector
+) {
+    WORKOUT(label = "Workout", icon = Icons.Rounded.FitnessCenter),
+    SETTINGS(label = "Settings", icon = Icons.Rounded.Settings)
 }
 
 @Composable
@@ -242,27 +269,33 @@ private fun NumberWheelDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
-            AndroidView(
-                factory = { context ->
-                    NumberPicker(context).apply {
-                        minValue = range.first
-                        maxValue = range.last
-                        wrapSelectorWheel = true
-                        descendantFocusability = NumberPicker.FOCUS_BLOCK_DESCENDANTS
-                        setOnValueChangedListener { _, _, newValue ->
-                            selected = newValue
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.Center
+            ) {
+                AndroidView(
+                    modifier = Modifier.width(188.dp),
+                    factory = { context ->
+                        NumberPicker(context).apply {
+                            minValue = range.first
+                            maxValue = range.last
+                            wrapSelectorWheel = true
+                            descendantFocusability = NumberPicker.FOCUS_BLOCK_DESCENDANTS
+                            setOnValueChangedListener { _, _, newValue ->
+                                selected = newValue
+                            }
+                        }
+                    },
+                    update = { picker ->
+                        picker.minValue = range.first
+                        picker.maxValue = range.last
+                        picker.setFormatter { valueText(it) }
+                        if (picker.value != selected) {
+                            picker.value = selected
                         }
                     }
-                },
-                update = { picker ->
-                    picker.minValue = range.first
-                    picker.maxValue = range.last
-                    picker.setFormatter { valueText(it) }
-                    if (picker.value != selected) {
-                        picker.value = selected
-                    }
-                }
-            )
+                )
+            }
         },
         confirmButton = {
             TextButton(onClick = { onConfirm(selected) }) {
@@ -291,6 +324,7 @@ private const val KEY_SCHEDULE_TITLE = "schedule_title"
 @Composable
 fun WorkoutAssistApp() {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val repository = remember {
         WorkoutRepository(WorkoutDatabase.getInstance(context).workoutDao())
     }
@@ -313,8 +347,69 @@ fun WorkoutAssistApp() {
     var showScheduleRenameDialog by remember { mutableStateOf(false) }
     var selectedDayNumber by remember { mutableIntStateOf(0) }
     var currentScreen by remember { mutableStateOf(AppScreen.SCHEDULE) }
+    var selectedTab by remember { mutableStateOf(RootTab.WORKOUT) }
+    var settingsStatusMessage by remember { mutableStateOf<String?>(null) }
 
-    BackHandler(enabled = currentScreen == AppScreen.DAY_DETAIL) {
+    val exportBackupLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri == null) {
+            return@rememberLauncherForActivityResult
+        }
+
+        scope.launch {
+            runCatching {
+                exportBackupToUri(
+                    context = context,
+                    repository = repository,
+                    scheduleTitle = scheduleTitle,
+                    outputUri = uri
+                )
+            }
+                .onSuccess {
+                    settingsStatusMessage = "Backup exported successfully."
+                }
+                .onFailure { error ->
+                    settingsStatusMessage = "Export failed: ${error.message ?: "Unknown error"}"
+                }
+        }
+    }
+
+    val importBackupLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri == null) {
+            return@rememberLauncherForActivityResult
+        }
+
+        scope.launch {
+            runCatching {
+                importBackupFromUri(
+                    context = context,
+                    repository = repository,
+                    inputUri = uri
+                )
+            }
+                .onSuccess { imported ->
+                    scheduleTitle = imported.scheduleTitle
+                    prefs.edit().putString(KEY_SCHEDULE_TITLE, imported.scheduleTitle).apply()
+                    selectedTab = RootTab.WORKOUT
+                    currentScreen = AppScreen.SCHEDULE
+                    selectedDayNumber = 0
+                    showScheduleRenameDialog = false
+                    settingsStatusMessage = "Backup imported successfully."
+                }
+                .onFailure { error ->
+                    settingsStatusMessage = "Import failed: ${error.message ?: "Invalid file"}"
+                }
+        }
+    }
+
+    BackHandler(enabled = selectedTab == RootTab.SETTINGS) {
+        selectedTab = RootTab.WORKOUT
+    }
+
+    BackHandler(enabled = selectedTab == RootTab.WORKOUT && currentScreen == AppScreen.DAY_DETAIL) {
         currentScreen = AppScreen.SCHEDULE
     }
 
@@ -330,33 +425,76 @@ fun WorkoutAssistApp() {
             ?: days.first().dayNumber
     }
 
-    if (days.isEmpty()) {
-        LoadingScreen()
-        return
-    }
-
-    val selectedDay = days.firstOrNull { it.dayNumber == selectedDayNumber } ?: days.first()
-
-    when (currentScreen) {
-        AppScreen.SCHEDULE -> {
-            ScheduleScreen(
-                days = days,
-                scheduleTitle = scheduleTitle,
-                highlightedTodayDayNumber = highlightedTodayDayNumber,
-                onRenameTitle = { showScheduleRenameDialog = true },
-                onDaySelected = { dayNumber ->
-                    selectedDayNumber = dayNumber
-                    currentScreen = AppScreen.DAY_DETAIL
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        bottomBar = {
+            NavigationBar {
+                RootTab.entries.forEach { tab ->
+                    NavigationBarItem(
+                        selected = selectedTab == tab,
+                        onClick = { selectedTab = tab },
+                        icon = {
+                            Icon(
+                                imageVector = tab.icon,
+                                contentDescription = tab.label
+                            )
+                        },
+                        label = { Text(tab.label) }
+                    )
                 }
-            )
+            }
         }
+    ) { innerPadding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+        ) {
+            when (selectedTab) {
+                RootTab.WORKOUT -> {
+                    if (days.isEmpty()) {
+                        LoadingScreen()
+                    } else {
+                        when (currentScreen) {
+                            AppScreen.SCHEDULE -> {
+                                ScheduleScreen(
+                                    days = days,
+                                    scheduleTitle = scheduleTitle,
+                                    highlightedTodayDayNumber = highlightedTodayDayNumber,
+                                    onRenameTitle = { showScheduleRenameDialog = true },
+                                    onDaySelected = { dayNumber ->
+                                        selectedDayNumber = dayNumber
+                                        currentScreen = AppScreen.DAY_DETAIL
+                                    }
+                                )
+                            }
 
-        AppScreen.DAY_DETAIL -> {
-            WorkoutDayScreen(
-                day = selectedDay,
-                repository = repository,
-                onBack = { currentScreen = AppScreen.SCHEDULE }
-            )
+                            AppScreen.DAY_DETAIL -> {
+                                val selectedDay = days.firstOrNull { it.dayNumber == selectedDayNumber }
+                                    ?: days.first()
+
+                                WorkoutDayScreen(
+                                    day = selectedDay,
+                                    repository = repository,
+                                    onBack = { currentScreen = AppScreen.SCHEDULE }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                RootTab.SETTINGS -> {
+                    SettingsScreen(
+                        statusMessage = settingsStatusMessage,
+                        onExportBackup = {
+                            exportBackupLauncher.launch(generateBackupFileName())
+                        },
+                        onImportBackup = {
+                            importBackupLauncher.launch(arrayOf("application/json", "text/plain"))
+                        }
+                    )
+                }
+            }
         }
     }
 
@@ -394,6 +532,161 @@ private fun LoadingScreen() {
             text = "Preparing workout template...",
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.86f)
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SettingsScreen(
+    statusMessage: String?,
+    onExportBackup: () -> Unit,
+    onImportBackup: () -> Unit
+) {
+    val settingsGradient = Brush.verticalGradient(
+        colors = listOf(
+            MaterialTheme.colorScheme.background,
+            MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.22f)
+        )
+    )
+
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        topBar = {
+            TopAppBar(
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background,
+                    scrolledContainerColor = MaterialTheme.colorScheme.background
+                ),
+                title = {
+                    Text(
+                        text = "Settings",
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            )
+        }
+    ) { innerPadding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .background(settingsGradient)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Card(
+                    shape = RoundedCornerShape(18.dp),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "Backup & Restore",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = "Export saves your full local state to a JSON file. Import restores that state.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Button(
+                            onClick = onExportBackup,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("Export to file")
+                        }
+                        OutlinedButton(
+                            onClick = onImportBackup,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("Import from file")
+                        }
+                    }
+                }
+
+                if (!statusMessage.isNullOrBlank()) {
+                    Card(
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                    ) {
+                        Text(
+                            text = statusMessage,
+                            modifier = Modifier.padding(14.dp),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ScheduleScrollIndicator(
+    listState: LazyListState,
+    modifier: Modifier = Modifier
+) {
+    val layoutInfo = listState.layoutInfo
+    val visibleItems = layoutInfo.visibleItemsInfo
+    val totalItems = layoutInfo.totalItemsCount
+    val canScroll = listState.canScrollBackward || listState.canScrollForward
+    if (!canScroll || totalItems == 0 || visibleItems.isEmpty()) {
+        return
+    }
+
+    val visibleCount = visibleItems.size.coerceAtLeast(1)
+    val visibleFraction = (visibleCount.toFloat() / totalItems.toFloat()).coerceIn(0.14f, 1f)
+
+    val averageItemSizePx = visibleItems
+        .map { it.size }
+        .average()
+        .toFloat()
+        .coerceAtLeast(1f)
+    val firstVisibleProgress = listState.firstVisibleItemIndex +
+        (listState.firstVisibleItemScrollOffset / averageItemSizePx)
+    val maxStartIndex = (totalItems - visibleCount).coerceAtLeast(1)
+    val scrollFraction = (firstVisibleProgress / maxStartIndex.toFloat()).coerceIn(0f, 1f)
+
+    BoxWithConstraints(
+        modifier = modifier
+            .width(5.dp)
+            .fillMaxHeight()
+            .background(
+                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f),
+                shape = RoundedCornerShape(999.dp)
+            )
+    ) {
+        val minThumbHeight = if (maxHeight > 28.dp) 28.dp else maxHeight
+        val thumbHeight = (maxHeight * visibleFraction)
+            .coerceAtLeast(minThumbHeight)
+            .coerceAtMost(maxHeight)
+        val maxOffset = (maxHeight - thumbHeight).coerceAtLeast(0.dp)
+        val thumbOffset = maxOffset * scrollFraction
+
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .offset(y = thumbOffset)
+                .fillMaxWidth()
+                .height(thumbHeight)
+                .background(
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.55f),
+                    shape = RoundedCornerShape(999.dp)
+                )
         )
     }
 }
@@ -529,6 +822,13 @@ private fun ScheduleScreen(
                     }
                 }
             }
+
+            ScheduleScrollIndicator(
+                listState = scheduleListState,
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 4.dp, top = 18.dp, bottom = 18.dp)
+            )
         }
     }
 }
@@ -571,7 +871,7 @@ private fun WorkoutDayScreen(
     val listState = rememberLazyListState()
     var draggingExerciseId by remember(day.dayNumber) { mutableLongStateOf(-1L) }
     var dragOffsetY by remember(day.dayNumber) { mutableFloatStateOf(0f) }
-    var collapseCardsSignal by remember(day.dayNumber) { mutableIntStateOf(0) }
+    var editCollapseSignal by remember(day.dayNumber) { mutableIntStateOf(0) }
 
     val canEditTemplate = editMode && (!workoutActive || !freezeMode)
     val dayDetailGradient = Brush.verticalGradient(
@@ -754,19 +1054,29 @@ private fun WorkoutDayScreen(
         showFinishConfirm = true
     }
 
-    fun finishWorkout() {
+    fun finishActiveSessionIfAny() {
         if (activeSessionId != 0L) {
             val sessionId = activeSessionId
             scope.launch {
                 repository.finishSession(sessionId)
             }
         }
+    }
 
+    fun resetWorkoutModeState(showSummaryDialog: Boolean) {
         workoutActive = false
         freezeMode = true
         editMode = false
         activeSessionId = 0L
-        showSummary = true
+        showFinishConfirm = false
+        showSummary = false
+        showExitWorkoutModeConfirm = false
+        showSummary = showSummaryDialog
+    }
+
+    fun finishWorkout() {
+        finishActiveSessionIfAny()
+        resetWorkoutModeState(showSummaryDialog = true)
     }
 
     fun requestBackNavigation() {
@@ -778,21 +1088,8 @@ private fun WorkoutDayScreen(
     }
 
     fun exitWorkoutModeAndLeave() {
-        if (activeSessionId != 0L) {
-            val sessionId = activeSessionId
-            scope.launch {
-                repository.finishSession(sessionId)
-            }
-        }
-
-        workoutActive = false
-        freezeMode = true
-        editMode = false
-        activeSessionId = 0L
-        showFinishConfirm = false
-        showSummary = false
-        showExitWorkoutModeConfirm = false
-
+        finishActiveSessionIfAny()
+        resetWorkoutModeState(showSummaryDialog = false)
         onBack()
     }
 
@@ -837,7 +1134,7 @@ private fun WorkoutDayScreen(
                             onCheckedChange = { enabled ->
                                 editMode = enabled
                                 if (enabled) {
-                                    collapseCardsSignal += 1
+                                    editCollapseSignal += 1
                                 }
                             }
                         )
@@ -932,7 +1229,7 @@ private fun WorkoutDayScreen(
                         if (!workoutActive) {
                             Button(
                                 onClick = { startWorkout() },
-                                enabled = day.exercises.isNotEmpty(),
+                                enabled = day.exercises.isNotEmpty() && !editMode,
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(52.dp),
@@ -1047,8 +1344,7 @@ private fun WorkoutDayScreen(
                                 isCurrent = workoutActive && index == currentExerciseIndex,
                                 currentSetNumber = currentSetNumber,
                                 canQuickEdit = canEditTemplate,
-                                collapseSignal = collapseCardsSignal,
-                                listState = listState,
+                                collapseSignal = editCollapseSignal,
                                 isDragging = draggingExerciseId == exercise.id,
                                 dragOffsetY = if (draggingExerciseId == exercise.id) dragOffsetY else 0f,
                                 onDragStart = { onDragStart(exercise.id) },
@@ -1354,7 +1650,6 @@ private fun ExerciseRow(
     currentSetNumber: Int,
     canQuickEdit: Boolean,
     collapseSignal: Int,
-    listState: LazyListState,
     isDragging: Boolean,
     dragOffsetY: Float,
     onDragStart: () -> Unit,
@@ -1546,9 +1841,14 @@ private fun SwipeHintBackground(
     exerciseDone: Boolean
 ) {
     val backgroundColor = when (targetValue) {
-        SwipeToDismissBoxValue.StartToEnd -> MaterialTheme.colorScheme.tertiaryContainer
+        SwipeToDismissBoxValue.StartToEnd -> MaterialTheme.colorScheme.primary.copy(alpha = 0.9f)
         SwipeToDismissBoxValue.EndToStart -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
         SwipeToDismissBoxValue.Settled -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+    }
+    val labelColor = when (targetValue) {
+        SwipeToDismissBoxValue.StartToEnd -> MaterialTheme.colorScheme.onPrimary
+        SwipeToDismissBoxValue.EndToStart -> MaterialTheme.colorScheme.onSurfaceVariant
+        SwipeToDismissBoxValue.Settled -> MaterialTheme.colorScheme.onSurfaceVariant
     }
     val label = when (targetValue) {
         SwipeToDismissBoxValue.StartToEnd -> if (exerciseDone) "Mark not done" else "Mark done"
@@ -1568,7 +1868,11 @@ private fun SwipeHintBackground(
             .padding(horizontal = 16.dp),
         contentAlignment = alignment
     ) {
-        Text(label, fontWeight = FontWeight.Medium)
+        Text(
+            text = label,
+            fontWeight = FontWeight.Medium,
+            color = labelColor
+        )
     }
 }
 
@@ -1739,4 +2043,257 @@ private fun parseWeightValue(text: String): Int? {
         .find(text)
         ?.value
         ?.toIntOrNull()
+}
+
+private const val BACKUP_FORMAT_VERSION = 1
+
+private data class ImportedAppState(
+    val scheduleTitle: String
+)
+
+private fun generateBackupFileName(): String {
+    val timestamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.ENGLISH).format(Date())
+    return "workout-assist-backup-$timestamp.json"
+}
+
+private suspend fun exportBackupToUri(
+    context: Context,
+    repository: WorkoutRepository,
+    scheduleTitle: String,
+    outputUri: Uri
+) {
+    val snapshot = repository.exportBackupSnapshot()
+    val payload = buildBackupJson(scheduleTitle = scheduleTitle, snapshot = snapshot)
+
+    withContext(Dispatchers.IO) {
+        val stream = context.contentResolver.openOutputStream(outputUri, "wt")
+            ?: error("Unable to open destination file")
+        stream.bufferedWriter().use { writer ->
+            writer.write(payload)
+        }
+    }
+}
+
+private suspend fun importBackupFromUri(
+    context: Context,
+    repository: WorkoutRepository,
+    inputUri: Uri
+): ImportedAppState {
+    val text = withContext(Dispatchers.IO) {
+        val stream = context.contentResolver.openInputStream(inputUri)
+            ?: error("Unable to open selected file")
+        stream.bufferedReader().use { reader ->
+            reader.readText()
+        }
+    }
+
+    val parsed = parseBackupJson(text)
+    if (parsed.snapshot.days.isEmpty()) {
+        error("Backup does not include workout days")
+    }
+
+    repository.importBackupSnapshot(parsed.snapshot)
+    return ImportedAppState(scheduleTitle = parsed.scheduleTitle)
+}
+
+private data class BackupPayload(
+    val scheduleTitle: String,
+    val snapshot: BackupSnapshot
+)
+
+private fun buildBackupJson(scheduleTitle: String, snapshot: BackupSnapshot): String {
+    return JSONObject()
+        .put("formatVersion", BACKUP_FORMAT_VERSION)
+        .put("scheduleTitle", scheduleTitle)
+        .put("exportedAt", System.currentTimeMillis())
+        .put(
+            "templateDays",
+            JSONArray().apply {
+                snapshot.days.forEach { day ->
+                    put(
+                        JSONObject()
+                            .put("dayNumber", day.dayNumber)
+                            .put("workoutName", day.workoutName)
+                            .put("plannedDateEpochDay", day.plannedDateEpochDay)
+                            .put("completedForDateEpochDay", day.completedForDateEpochDay)
+                    )
+                }
+            }
+        )
+        .put(
+            "exercises",
+            JSONArray().apply {
+                snapshot.exercises.forEach { exercise ->
+                    put(
+                        JSONObject()
+                            .put("id", exercise.id)
+                            .put("dayNumber", exercise.dayNumber)
+                            .put("name", exercise.name)
+                            .put("sets", exercise.sets)
+                            .put("reps", exercise.reps)
+                            .put("intervalSeconds", exercise.intervalSeconds)
+                            .put("plannedWeight", exercise.plannedWeight)
+                            .put("position", exercise.position)
+                            .put("isDone", exercise.isDone)
+                    )
+                }
+            }
+        )
+        .put(
+            "workoutSessions",
+            JSONArray().apply {
+                snapshot.sessions.forEach { session ->
+                    put(
+                        JSONObject()
+                            .put("id", session.id)
+                            .put("dayNumber", session.dayNumber)
+                            .put("workoutName", session.workoutName)
+                            .put("startedAt", session.startedAt)
+                            .put("finishedAt", session.finishedAt)
+                    )
+                }
+            }
+        )
+        .put(
+            "setLogs",
+            JSONArray().apply {
+                snapshot.logs.forEach { log ->
+                    put(
+                        JSONObject()
+                            .put("id", log.id)
+                            .put("sessionId", log.sessionId)
+                            .put("exerciseId", log.exerciseId)
+                            .put("exerciseName", log.exerciseName)
+                            .put("setNumber", log.setNumber)
+                            .put("plannedReps", log.plannedReps)
+                            .put("actualReps", log.actualReps)
+                            .put("plannedWeight", log.plannedWeight)
+                            .put("actualWeight", log.actualWeight)
+                            .put("loggedAt", log.loggedAt)
+                    )
+                }
+            }
+        )
+        .toString(2)
+}
+
+private fun parseBackupJson(text: String): BackupPayload {
+    val root = JSONObject(text)
+    val formatVersion = root.optInt("formatVersion", 0)
+    if (formatVersion <= 0) {
+        error("Unsupported backup format")
+    }
+
+    val scheduleTitle = root.optString("scheduleTitle", DEFAULT_SCHEDULE_TITLE)
+
+    val days = root.optJSONArray("templateDays").toTemplateDays()
+    val exercises = root.optJSONArray("exercises").toExercises()
+    val sessions = root.optJSONArray("workoutSessions").toSessions()
+    val logs = root.optJSONArray("setLogs").toSetLogs()
+
+    return BackupPayload(
+        scheduleTitle = scheduleTitle,
+        snapshot = BackupSnapshot(
+            days = days,
+            exercises = exercises,
+            sessions = sessions,
+            logs = logs
+        )
+    )
+}
+
+private fun JSONArray?.toTemplateDays(): List<TemplateDayEntity> {
+    if (this == null) {
+        return emptyList()
+    }
+    return buildList {
+        for (index in 0 until length()) {
+            val day = getJSONObject(index)
+            add(
+                TemplateDayEntity(
+                    dayNumber = day.getInt("dayNumber"),
+                    workoutName = day.optString("workoutName", "Day ${day.optInt("dayNumber", index + 1)} Workout"),
+                    plannedDateEpochDay = day.getLong("plannedDateEpochDay"),
+                    completedForDateEpochDay = if (day.isNull("completedForDateEpochDay")) {
+                        null
+                    } else {
+                        day.getLong("completedForDateEpochDay")
+                    }
+                )
+            )
+        }
+    }
+}
+
+private fun JSONArray?.toExercises(): List<ExerciseEntity> {
+    if (this == null) {
+        return emptyList()
+    }
+    return buildList {
+        for (index in 0 until length()) {
+            val exercise = getJSONObject(index)
+            add(
+                ExerciseEntity(
+                    id = exercise.optLong("id", 0L),
+                    dayNumber = exercise.getInt("dayNumber"),
+                    name = exercise.optString("name", "Exercise"),
+                    sets = exercise.optInt("sets", 3),
+                    reps = exercise.optInt("reps", 12),
+                    intervalSeconds = exercise.optInt("intervalSeconds", 90),
+                    plannedWeight = exercise.optString("plannedWeight", ""),
+                    position = exercise.optInt("position", index + 1),
+                    isDone = exercise.optBoolean("isDone", false)
+                )
+            )
+        }
+    }
+}
+
+private fun JSONArray?.toSessions(): List<WorkoutSessionEntity> {
+    if (this == null) {
+        return emptyList()
+    }
+    return buildList {
+        for (index in 0 until length()) {
+            val session = getJSONObject(index)
+            add(
+                WorkoutSessionEntity(
+                    id = session.optLong("id", 0L),
+                    dayNumber = session.getInt("dayNumber"),
+                    workoutName = session.optString("workoutName", "Workout"),
+                    startedAt = session.optLong("startedAt", System.currentTimeMillis()),
+                    finishedAt = if (session.isNull("finishedAt")) {
+                        null
+                    } else {
+                        session.getLong("finishedAt")
+                    }
+                )
+            )
+        }
+    }
+}
+
+private fun JSONArray?.toSetLogs(): List<SetLogEntity> {
+    if (this == null) {
+        return emptyList()
+    }
+    return buildList {
+        for (index in 0 until length()) {
+            val log = getJSONObject(index)
+            add(
+                SetLogEntity(
+                    id = log.optLong("id", 0L),
+                    sessionId = log.getLong("sessionId"),
+                    exerciseId = log.optLong("exerciseId", 0L),
+                    exerciseName = log.optString("exerciseName", "Exercise"),
+                    setNumber = log.optInt("setNumber", 1),
+                    plannedReps = log.optInt("plannedReps", 0),
+                    actualReps = log.optInt("actualReps", 0),
+                    plannedWeight = log.optString("plannedWeight", ""),
+                    actualWeight = log.optString("actualWeight", ""),
+                    loggedAt = log.optLong("loggedAt", System.currentTimeMillis())
+                )
+            )
+        }
+    }
 }

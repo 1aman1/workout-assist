@@ -39,6 +39,13 @@ data class WorkoutDayModel(
     val exercises: List<ExerciseModel>
 )
 
+data class BackupSnapshot(
+    val days: List<TemplateDayEntity>,
+    val exercises: List<ExerciseEntity>,
+    val sessions: List<WorkoutSessionEntity>,
+    val logs: List<SetLogEntity>
+)
+
 class WorkoutRepository(private val dao: WorkoutDao) {
     fun observeDays(): Flow<List<WorkoutDayModel>> {
         return dao.observeDaysWithExercises().map { rows ->
@@ -256,6 +263,24 @@ class WorkoutRepository(private val dao: WorkoutDao) {
 
     suspend fun finishSession(sessionId: Long) {
         dao.finishSession(sessionId, System.currentTimeMillis())
+    }
+
+    suspend fun exportBackupSnapshot(): BackupSnapshot {
+        return BackupSnapshot(
+            days = dao.getAllDays().sortedBy { it.dayNumber },
+            exercises = dao.getAllExercises(),
+            sessions = dao.getAllSessions(),
+            logs = dao.getAllSetLogs()
+        )
+    }
+
+    suspend fun importBackupSnapshot(snapshot: BackupSnapshot) {
+        dao.replaceAllData(
+            days = snapshot.days.sortedBy { it.dayNumber },
+            exercises = snapshot.exercises.sortedWith(compareBy(ExerciseEntity::dayNumber, ExerciseEntity::position)),
+            sessions = snapshot.sessions.sortedBy { it.id },
+            logs = snapshot.logs.sortedBy { it.id }
+        )
     }
 
     private suspend fun normalizePositions(dayNumber: Int) {

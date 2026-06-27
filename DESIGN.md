@@ -4,13 +4,16 @@ Lean Android utility app for fast workout logging during training.
 
 Primary design source: see DESIGN_VERSIONS.md and append all future design updates as version increments.
 
-## Current Product Snapshot (v1.19)
+## Current Product Snapshot (v1.23)
 
 - Local-only Android app (no auth, no cloud sync).
 - 7-day repeating workout template, seeded on first launch.
-- Schedule-first navigation with day detail and in-session logging.
+- Bottom-tab navigation with Workout (default) and Settings.
+- Workout tab has schedule-first navigation with day detail and in-session logging.
 - Planned vs actual capture at set level (actual reps and optional actual weight).
 - Modernized visual system (refreshed cards, gradients, typography, theme tokens) with no behavioral regressions.
+- Settings tab includes full export/import backup for local state.
+- Launcher icon uses black dumbbell foreground with turquoise background for stronger brand contrast.
 
 ## Screen Map
 
@@ -21,6 +24,7 @@ Primary design source: see DESIGN_VERSIONS.md and append all future design updat
 - Completed workout days show a done indicator.
 - Schedule title is renameable from top app bar.
 - Tap any day card to open workout day detail.
+- Right-edge scrollbar indicator appears when list has more content to scroll.
 
 ### 2) Workout Day Screen
 
@@ -30,9 +34,17 @@ Primary design source: see DESIGN_VERSIONS.md and append all future design updat
 - Date change is available only when edit mode is ON and workout is not active.
 - Manual workout done toggle is visible only in edit mode.
 - Pre-workout primary CTA is full-width Start Workout.
+- Start Workout is disabled while edit mode is ON.
 - Active workout state shows Finish action and freeze status text.
 - Entering edit mode collapses expanded exercise cards for cleaner editing context.
 - While workout mode is active, back action asks confirmation before exiting session.
+
+### 6) Settings Screen
+
+- Accessed from bottom tab bar.
+- Provides Export to file and Import from file actions.
+- Export writes a JSON backup containing schedule title and all workout tables.
+- Import restores that JSON backup into local storage and returns user to Workout tab.
 
 ### 3) Active Session Panel (inside Workout Day)
 
@@ -53,7 +65,12 @@ Primary design source: see DESIGN_VERSIONS.md and append all future design updat
   - Delete/edit actions are available through row menu.
 - Outside edit mode:
   - Right swipe toggles done/undo for exercises.
+  - Swipe-complete hint background uses stronger contrast for clearer action visibility.
   - Toggle is allowed only for past/today workouts (not future dates).
+
+### 7) Quick Edit Wheel Dialog
+
+- Number wheel picker is centered in the dialog when editing chips/metrics.
 
 ### 5) Completion Behavior
 
@@ -69,6 +86,8 @@ Primary design source: see DESIGN_VERSIONS.md and append all future design updat
 - While freeze is ON during active workout, destructive/template structure edits remain blocked.
 - Reorder is only available in edit-capable context.
 - Workout mode exits only after explicit user confirmation when back is pressed.
+- Start Workout cannot begin while edit mode is active.
+- Pressing back in Settings switches back to Workout tab.
 
 ## Data Model (Current)
 
@@ -85,6 +104,12 @@ Primary design source: see DESIGN_VERSIONS.md and append all future design updat
   - workout session start/finish
   - per-set planned vs actual reps
   - per-set planned vs actual weight
+- Backup file includes:
+  - schedule title preference
+  - template days
+  - exercises
+  - workout sessions
+  - set logs
 
 ## First-Run Seed
 
@@ -95,7 +120,7 @@ Primary design source: see DESIGN_VERSIONS.md and append all future design updat
 
 - Graph/analytics views.
 - Automated rest timer behavior.
-- Cloud sync and authentication.
+- Cloud sync and authentication (manual local backup/import available).
 
 ## Documentation Rule
 

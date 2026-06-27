@@ -2,7 +2,7 @@
 
 These guidelines are mandatory for this project unless a documented exception is approved in code review.
 
-## 0. Always keep design.md in sync with latest changes and append latest changes as versioning in design_version.md
+## 0. Always keep DESIGN.md in sync with latest changes and append latest changes as versioning in DESIGN_VERSIONS.md
 
 ## 1. Architecture and boundaries
 
