@@ -13,6 +13,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -691,6 +692,7 @@ private fun SettingsScreen(
     val appVersion = remember(context) { currentAppVersionName(context) }
     var showVersionDetails by remember { mutableStateOf(false) }
     var settingsView by remember { mutableStateOf(SettingsView.ROOT) }
+    val settingsScrollState = rememberScrollState()
 
     BackHandler(enabled = settingsView == SettingsView.THEME_OPTIONS) {
         settingsView = SettingsView.ROOT
@@ -739,7 +741,8 @@ private fun SettingsScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(16.dp),
+                    .verticalScroll(settingsScrollState)
+                    .padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 44.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 if (settingsView == SettingsView.ROOT) {
