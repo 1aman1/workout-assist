@@ -4,7 +4,7 @@ Lean Android utility app for fast workout logging during training.
 
 Primary design source: see DESIGN_VERSIONS.md and append all future design updates as version increments.
 
-## Current Product Snapshot (v1.23)
+## Current Product Snapshot (v1.27)
 
 - Local-only Android app (no auth, no cloud sync).
 - 7-day repeating workout template, seeded on first launch.
@@ -14,6 +14,9 @@ Primary design source: see DESIGN_VERSIONS.md and append all future design updat
 - Modernized visual system (refreshed cards, gradients, typography, theme tokens) with no behavioral regressions.
 - Settings tab includes full export/import backup for local state.
 - Launcher icon uses black dumbbell foreground with turquoise background for stronger brand contrast.
+- Theme direction is role-based: white background, turquoise status surfaces, green done/action surfaces.
+- Settings now shows a small bottom-corner app version label that opens version details on tap.
+- Settings includes role-based theme color selectors for background, status surfaces, and done/action surfaces.
 
 ## Screen Map
 
@@ -28,7 +31,7 @@ Primary design source: see DESIGN_VERSIONS.md and append all future design updat
 
 ### 2) Workout Day Screen
 
-- Top app bar includes back navigation, rename workout action (edit-capable context), and edit mode switch.
+- Top app bar includes back arrow navigation icon, rename workout action (edit-capable context), and edit mode switch.
 - During active workout, freeze lock toggle appears in top app bar.
 - Header shows workout name with date on the right.
 - Date change is available only when edit mode is ON and workout is not active.
@@ -38,6 +41,7 @@ Primary design source: see DESIGN_VERSIONS.md and append all future design updat
 - Active workout state shows Finish action and freeze status text.
 - Entering edit mode collapses expanded exercise cards for cleaner editing context.
 - While workout mode is active, back action asks confirmation before exiting session.
+- Turning edit mode OFF after making template changes prompts for backup export.
 
 ### 6) Settings Screen
 
@@ -45,6 +49,9 @@ Primary design source: see DESIGN_VERSIONS.md and append all future design updat
 - Provides Export to file and Import from file actions.
 - Export writes a JSON backup containing schedule title and all workout tables.
 - Import restores that JSON backup into local storage and returns user to Workout tab.
+- Provides selectable color options for Background, Status (exercise cards), and Done/Actions roles.
+- Small version label is shown at bottom-right.
+- Tapping version opens a dialog with latest version details.
 
 ### 3) Active Session Panel (inside Workout Day)
 
@@ -57,6 +64,7 @@ Primary design source: see DESIGN_VERSIONS.md and append all future design updat
 ### 4) Exercise List
 
 - Exercise rows are collapsed by default.
+- Exercise status cards (current or done) use a shared turquoise status surface.
 - Each row always shows a compact metric strip (set, reps, weight, interval) for quick scanning.
 - Expand reveals detailed metric rows and deeper context.
 - In edit-capable context:
@@ -71,6 +79,8 @@ Primary design source: see DESIGN_VERSIONS.md and append all future design updat
 ### 7) Quick Edit Wheel Dialog
 
 - Number wheel picker is centered in the dialog when editing chips/metrics.
+- Interval wheel uses 15-second increments.
+- Weight wheel uses 0.5 kg increments.
 
 ### 5) Completion Behavior
 
@@ -88,6 +98,7 @@ Primary design source: see DESIGN_VERSIONS.md and append all future design updat
 - Workout mode exits only after explicit user confirmation when back is pressed.
 - Start Workout cannot begin while edit mode is active.
 - Pressing back in Settings switches back to Workout tab.
+- After template changes in edit mode, disabling edit offers Export/Later backup prompt.
 
 ## Data Model (Current)
 

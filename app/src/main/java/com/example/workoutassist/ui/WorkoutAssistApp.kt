@@ -26,14 +26,17 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.DragHandle
 import androidx.compose.material.icons.outlined.MoreVert
@@ -56,6 +59,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -89,6 +93,8 @@ import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -117,6 +123,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 private enum class AppScreen {
@@ -130,6 +137,17 @@ private enum class RootTab(
 ) {
     WORKOUT(label = "Workout", icon = Icons.Rounded.FitnessCenter),
     SETTINGS(label = "Settings", icon = Icons.Rounded.Settings)
+}
+
+private data class ThemeColorOption(
+    val id: String,
+    val label: String,
+    val color: Color
+)
+
+private enum class SettingsView {
+    ROOT,
+    THEME_OPTIONS
 }
 
 @Composable
@@ -257,12 +275,24 @@ private fun NumberWheelDialog(
     title: String,
     value: Int,
     range: IntRange,
+    step: Int = 1,
     valueText: (Int) -> String,
     onDismiss: () -> Unit,
     onConfirm: (Int) -> Unit
 ) {
-    var selected by remember(value, range.first, range.last) {
-        mutableIntStateOf(value.coerceIn(range.first, range.last))
+    val stepSize = step.coerceAtLeast(1)
+    val wheelValues = remember(range.first, range.last, stepSize) {
+        generateSequence(range.first) { previous -> previous + stepSize }
+            .takeWhile { it <= range.last }
+            .toList()
+            .ifEmpty { listOf(range.first) }
+    }
+    val initialIndex = remember(value, wheelValues) {
+        wheelValues.indices.minByOrNull { index -> abs(wheelValues[index] - value) } ?: 0
+    }
+
+    var selectedIndex by remember(value, range.first, range.last, stepSize) {
+        mutableIntStateOf(initialIndex)
     }
 
     AlertDialog(
@@ -277,28 +307,32 @@ private fun NumberWheelDialog(
                     modifier = Modifier.width(188.dp),
                     factory = { context ->
                         NumberPicker(context).apply {
-                            minValue = range.first
-                            maxValue = range.last
-                            wrapSelectorWheel = true
+                            minValue = 0
+                            maxValue = wheelValues.lastIndex
+                            wrapSelectorWheel = wheelValues.size > 1
                             descendantFocusability = NumberPicker.FOCUS_BLOCK_DESCENDANTS
                             setOnValueChangedListener { _, _, newValue ->
-                                selected = newValue
+                                selectedIndex = newValue
                             }
                         }
                     },
                     update = { picker ->
-                        picker.minValue = range.first
-                        picker.maxValue = range.last
-                        picker.setFormatter { valueText(it) }
-                        if (picker.value != selected) {
-                            picker.value = selected
+                        picker.displayedValues = null
+                        picker.minValue = 0
+                        picker.maxValue = wheelValues.lastIndex
+                        picker.displayedValues = wheelValues.map(valueText).toTypedArray()
+                        picker.wrapSelectorWheel = wheelValues.size > 1
+
+                        val safeSelected = selectedIndex.coerceIn(0, wheelValues.lastIndex)
+                        if (picker.value != safeSelected) {
+                            picker.value = safeSelected
                         }
                     }
                 )
             }
         },
         confirmButton = {
-            TextButton(onClick = { onConfirm(selected) }) {
+            TextButton(onClick = { onConfirm(wheelValues[selectedIndex.coerceIn(0, wheelValues.lastIndex)]) }) {
                 Text("Save")
             }
         },
@@ -320,6 +354,38 @@ private enum class QuickEditField {
 private const val DEFAULT_SCHEDULE_TITLE = "Workout Schedule"
 private const val PREFS_NAME = "gudhealth_prefs"
 private const val KEY_SCHEDULE_TITLE = "schedule_title"
+private const val KEY_THEME_BACKGROUND = "theme_background"
+private const val KEY_THEME_STATUS = "theme_status"
+private const val KEY_THEME_DONE = "theme_done"
+private const val DEFAULT_THEME_BACKGROUND_ID = "white"
+private const val DEFAULT_THEME_STATUS_ID = "turquoise"
+private const val DEFAULT_THEME_DONE_ID = "green"
+private const val LATEST_DESIGN_VERSION = "1.27"
+
+private val BACKGROUND_THEME_OPTIONS = listOf(
+    ThemeColorOption(id = "white", label = "White", color = Color(0xFFFFFFFF)),
+    ThemeColorOption(id = "mist", label = "Mist", color = Color(0xFFF3F7F9)),
+    ThemeColorOption(id = "paper", label = "Paper", color = Color(0xFFFAF8F3))
+)
+
+private val STATUS_THEME_OPTIONS = listOf(
+    ThemeColorOption(id = "turquoise", label = "Turquoise", color = Color(0xFF1CCBCB)),
+    ThemeColorOption(id = "ocean", label = "Ocean", color = Color(0xFF2FA6D9)),
+    ThemeColorOption(id = "teal", label = "Teal", color = Color(0xFF2CB8A0))
+)
+
+private val DONE_THEME_OPTIONS = listOf(
+    ThemeColorOption(id = "green", label = "Green", color = Color(0xFF1E9E58)),
+    ThemeColorOption(id = "forest", label = "Forest", color = Color(0xFF228B52)),
+    ThemeColorOption(id = "blue", label = "Blue", color = Color(0xFF1F7AE0))
+)
+
+private val LATEST_VERSION_HIGHLIGHTS = listOf(
+    "Added Settings color-role customization options.",
+    "Added prompt to export backup when exiting edit mode after making changes.",
+    "Settings keeps small version badge with tap-to-open details dialog.",
+    "Displayed version is sourced from app package version metadata."
+)
 
 @Composable
 fun WorkoutAssistApp() {
@@ -349,6 +415,21 @@ fun WorkoutAssistApp() {
     var currentScreen by remember { mutableStateOf(AppScreen.SCHEDULE) }
     var selectedTab by remember { mutableStateOf(RootTab.WORKOUT) }
     var settingsStatusMessage by remember { mutableStateOf<String?>(null) }
+    var backgroundThemeOptionId by remember {
+        mutableStateOf(
+            prefs.getString(KEY_THEME_BACKGROUND, DEFAULT_THEME_BACKGROUND_ID) ?: DEFAULT_THEME_BACKGROUND_ID
+        )
+    }
+    var statusThemeOptionId by remember {
+        mutableStateOf(
+            prefs.getString(KEY_THEME_STATUS, DEFAULT_THEME_STATUS_ID) ?: DEFAULT_THEME_STATUS_ID
+        )
+    }
+    var doneThemeOptionId by remember {
+        mutableStateOf(
+            prefs.getString(KEY_THEME_DONE, DEFAULT_THEME_DONE_ID) ?: DEFAULT_THEME_DONE_ID
+        )
+    }
 
     val exportBackupLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json")
@@ -405,111 +486,168 @@ fun WorkoutAssistApp() {
         }
     }
 
-    BackHandler(enabled = selectedTab == RootTab.SETTINGS) {
-        selectedTab = RootTab.WORKOUT
+    fun requestBackupExport() {
+        exportBackupLauncher.launch(generateBackupFileName())
     }
 
-    BackHandler(enabled = selectedTab == RootTab.WORKOUT && currentScreen == AppScreen.DAY_DETAIL) {
-        currentScreen = AppScreen.SCHEDULE
-    }
+    val baseScheme = MaterialTheme.colorScheme
+    val backgroundThemeColor = resolveThemeColorOption(
+        options = BACKGROUND_THEME_OPTIONS,
+        selectedId = backgroundThemeOptionId,
+        fallbackId = DEFAULT_THEME_BACKGROUND_ID
+    ).color
+    val statusThemeColor = resolveThemeColorOption(
+        options = STATUS_THEME_OPTIONS,
+        selectedId = statusThemeOptionId,
+        fallbackId = DEFAULT_THEME_STATUS_ID
+    ).color
+    val doneThemeColor = resolveThemeColorOption(
+        options = DONE_THEME_OPTIONS,
+        selectedId = doneThemeOptionId,
+        fallbackId = DEFAULT_THEME_DONE_ID
+    ).color
 
-    LaunchedEffect(days, todayDateEpochDay) {
-        if (days.isEmpty()) {
-            return@LaunchedEffect
+    val secondaryContainerColor = mixWithWhite(statusThemeColor, 0.72f)
+    val primaryContainerColor = mixWithWhite(doneThemeColor, 0.72f)
+    val themedColorScheme = baseScheme.copy(
+        background = backgroundThemeColor,
+        primary = doneThemeColor,
+        onPrimary = contrastColor(doneThemeColor),
+        primaryContainer = primaryContainerColor,
+        onPrimaryContainer = contrastColor(primaryContainerColor),
+        secondary = statusThemeColor,
+        onSecondary = contrastColor(statusThemeColor),
+        secondaryContainer = secondaryContainerColor,
+        onSecondaryContainer = contrastColor(secondaryContainerColor),
+        tertiary = statusThemeColor,
+        onTertiary = contrastColor(statusThemeColor),
+        tertiaryContainer = mixWithWhite(statusThemeColor, 0.82f),
+        onTertiaryContainer = contrastColor(mixWithWhite(statusThemeColor, 0.82f))
+    )
+
+    MaterialTheme(colorScheme = themedColorScheme) {
+        BackHandler(enabled = selectedTab == RootTab.SETTINGS) {
+            selectedTab = RootTab.WORKOUT
         }
-        if (days.any { it.dayNumber == selectedDayNumber }) {
-            return@LaunchedEffect
+
+        BackHandler(enabled = selectedTab == RootTab.WORKOUT && currentScreen == AppScreen.DAY_DETAIL) {
+            currentScreen = AppScreen.SCHEDULE
         }
 
-        selectedDayNumber = highlightedTodayDayNumber
-            ?: days.first().dayNumber
-    }
+        LaunchedEffect(days, todayDateEpochDay) {
+            if (days.isEmpty()) {
+                return@LaunchedEffect
+            }
+            if (days.any { it.dayNumber == selectedDayNumber }) {
+                return@LaunchedEffect
+            }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        bottomBar = {
-            NavigationBar {
-                RootTab.entries.forEach { tab ->
-                    NavigationBarItem(
-                        selected = selectedTab == tab,
-                        onClick = { selectedTab = tab },
-                        icon = {
-                            Icon(
-                                imageVector = tab.icon,
-                                contentDescription = tab.label
-                            )
-                        },
-                        label = { Text(tab.label) }
-                    )
+            selectedDayNumber = highlightedTodayDayNumber
+                ?: days.first().dayNumber
+        }
+
+        Scaffold(
+            containerColor = MaterialTheme.colorScheme.background,
+            bottomBar = {
+                NavigationBar {
+                    RootTab.entries.forEach { tab ->
+                        NavigationBarItem(
+                            selected = selectedTab == tab,
+                            onClick = { selectedTab = tab },
+                            icon = {
+                                Icon(
+                                    imageVector = tab.icon,
+                                    contentDescription = tab.label
+                                )
+                            },
+                            label = { Text(tab.label) }
+                        )
+                    }
                 }
             }
-        }
-    ) { innerPadding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-        ) {
-            when (selectedTab) {
-                RootTab.WORKOUT -> {
-                    if (days.isEmpty()) {
-                        LoadingScreen()
-                    } else {
-                        when (currentScreen) {
-                            AppScreen.SCHEDULE -> {
-                                ScheduleScreen(
-                                    days = days,
-                                    scheduleTitle = scheduleTitle,
-                                    highlightedTodayDayNumber = highlightedTodayDayNumber,
-                                    onRenameTitle = { showScheduleRenameDialog = true },
-                                    onDaySelected = { dayNumber ->
-                                        selectedDayNumber = dayNumber
-                                        currentScreen = AppScreen.DAY_DETAIL
-                                    }
-                                )
-                            }
+        ) { innerPadding ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+            ) {
+                when (selectedTab) {
+                    RootTab.WORKOUT -> {
+                        if (days.isEmpty()) {
+                            LoadingScreen()
+                        } else {
+                            when (currentScreen) {
+                                AppScreen.SCHEDULE -> {
+                                    ScheduleScreen(
+                                        days = days,
+                                        scheduleTitle = scheduleTitle,
+                                        highlightedTodayDayNumber = highlightedTodayDayNumber,
+                                        onRenameTitle = { showScheduleRenameDialog = true },
+                                        onDaySelected = { dayNumber ->
+                                            selectedDayNumber = dayNumber
+                                            currentScreen = AppScreen.DAY_DETAIL
+                                        }
+                                    )
+                                }
 
-                            AppScreen.DAY_DETAIL -> {
-                                val selectedDay = days.firstOrNull { it.dayNumber == selectedDayNumber }
-                                    ?: days.first()
+                                AppScreen.DAY_DETAIL -> {
+                                    val selectedDay = days.firstOrNull { it.dayNumber == selectedDayNumber }
+                                        ?: days.first()
 
-                                WorkoutDayScreen(
-                                    day = selectedDay,
-                                    repository = repository,
-                                    onBack = { currentScreen = AppScreen.SCHEDULE }
-                                )
+                                    WorkoutDayScreen(
+                                        day = selectedDay,
+                                        repository = repository,
+                                        onRequestExport = { requestBackupExport() },
+                                        onBack = { currentScreen = AppScreen.SCHEDULE }
+                                    )
+                                }
                             }
                         }
                     }
-                }
 
-                RootTab.SETTINGS -> {
-                    SettingsScreen(
-                        statusMessage = settingsStatusMessage,
-                        onExportBackup = {
-                            exportBackupLauncher.launch(generateBackupFileName())
-                        },
-                        onImportBackup = {
-                            importBackupLauncher.launch(arrayOf("application/json", "text/plain"))
-                        }
-                    )
+                    RootTab.SETTINGS -> {
+                        SettingsScreen(
+                            statusMessage = settingsStatusMessage,
+                            backgroundThemeOptionId = backgroundThemeOptionId,
+                            statusThemeOptionId = statusThemeOptionId,
+                            doneThemeOptionId = doneThemeOptionId,
+                            onBackgroundThemeOptionChanged = { selectedId ->
+                                backgroundThemeOptionId = selectedId
+                                prefs.edit().putString(KEY_THEME_BACKGROUND, selectedId).apply()
+                            },
+                            onStatusThemeOptionChanged = { selectedId ->
+                                statusThemeOptionId = selectedId
+                                prefs.edit().putString(KEY_THEME_STATUS, selectedId).apply()
+                            },
+                            onDoneThemeOptionChanged = { selectedId ->
+                                doneThemeOptionId = selectedId
+                                prefs.edit().putString(KEY_THEME_DONE, selectedId).apply()
+                            },
+                            onExportBackup = {
+                                requestBackupExport()
+                            },
+                            onImportBackup = {
+                                importBackupLauncher.launch(arrayOf("application/json", "text/plain"))
+                            }
+                        )
+                    }
                 }
             }
         }
-    }
 
-    if (showScheduleRenameDialog) {
-        RenameWorkoutDialog(
-            dialogTitle = "Rename Schedule",
-            fieldLabel = "Schedule title",
-            initialName = scheduleTitle,
-            onDismiss = { showScheduleRenameDialog = false },
-            onConfirm = { newName ->
-                scheduleTitle = newName
-                prefs.edit().putString(KEY_SCHEDULE_TITLE, newName).apply()
-                showScheduleRenameDialog = false
-            }
-        )
+        if (showScheduleRenameDialog) {
+            RenameWorkoutDialog(
+                dialogTitle = "Rename Schedule",
+                fieldLabel = "Schedule title",
+                initialName = scheduleTitle,
+                onDismiss = { showScheduleRenameDialog = false },
+                onConfirm = { newName ->
+                    scheduleTitle = newName
+                    prefs.edit().putString(KEY_SCHEDULE_TITLE, newName).apply()
+                    showScheduleRenameDialog = false
+                }
+            )
+        }
     }
 }
 
@@ -540,9 +678,24 @@ private fun LoadingScreen() {
 @Composable
 private fun SettingsScreen(
     statusMessage: String?,
+    backgroundThemeOptionId: String,
+    statusThemeOptionId: String,
+    doneThemeOptionId: String,
+    onBackgroundThemeOptionChanged: (String) -> Unit,
+    onStatusThemeOptionChanged: (String) -> Unit,
+    onDoneThemeOptionChanged: (String) -> Unit,
     onExportBackup: () -> Unit,
     onImportBackup: () -> Unit
 ) {
+    val context = LocalContext.current
+    val appVersion = remember(context) { currentAppVersionName(context) }
+    var showVersionDetails by remember { mutableStateOf(false) }
+    var settingsView by remember { mutableStateOf(SettingsView.ROOT) }
+
+    BackHandler(enabled = settingsView == SettingsView.THEME_OPTIONS) {
+        settingsView = SettingsView.ROOT
+    }
+
     val settingsGradient = Brush.verticalGradient(
         colors = listOf(
             MaterialTheme.colorScheme.background,
@@ -560,9 +713,19 @@ private fun SettingsScreen(
                 ),
                 title = {
                     Text(
-                        text = "Settings",
+                        text = if (settingsView == SettingsView.ROOT) "Settings" else "Theme",
                         fontWeight = FontWeight.SemiBold
                     )
+                },
+                navigationIcon = {
+                    if (settingsView == SettingsView.THEME_OPTIONS) {
+                        IconButton(onClick = { settingsView = SettingsView.ROOT }) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                                contentDescription = "Back"
+                            )
+                        }
+                    }
                 }
             )
         }
@@ -579,57 +742,226 @@ private fun SettingsScreen(
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Card(
-                    shape = RoundedCornerShape(18.dp),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            text = "Backup & Restore",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Text(
-                            text = "Export saves your full local state to a JSON file. Import restores that state.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Button(
-                            onClick = onExportBackup,
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Text("Export to file")
-                        }
-                        OutlinedButton(
-                            onClick = onImportBackup,
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Text("Import from file")
-                        }
-                    }
-                }
-
-                if (!statusMessage.isNullOrBlank()) {
+                if (settingsView == SettingsView.ROOT) {
                     Card(
-                        shape = RoundedCornerShape(16.dp),
+                        shape = RoundedCornerShape(18.dp),
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
                     ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "Theme",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = "Configure app colors by role.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            OutlinedButton(
+                                onClick = { settingsView = SettingsView.THEME_OPTIONS },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Text("Options")
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                                    contentDescription = null
+                                )
+                            }
+                        }
+                    }
+
+                    Card(
+                        shape = RoundedCornerShape(18.dp),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "Backup & Restore",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = "Export saves your full local state to a JSON file. Import restores that state.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Button(
+                                onClick = onExportBackup,
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Text("Export to file")
+                            }
+                            OutlinedButton(
+                                onClick = onImportBackup,
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Text("Import from file")
+                            }
+                        }
+                    }
+
+                    if (!statusMessage.isNullOrBlank()) {
+                        Card(
+                            shape = RoundedCornerShape(16.dp),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                        ) {
+                            Text(
+                                text = statusMessage,
+                                modifier = Modifier.padding(14.dp),
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                    }
+                } else {
+                    Card(
+                        shape = RoundedCornerShape(18.dp),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Text(
+                                text = "Theme Options",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = "Choose color roles for background, status cards, and done/actions.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+
+                            ThemeColorSelector(
+                                title = "Background",
+                                options = BACKGROUND_THEME_OPTIONS,
+                                selectedOptionId = backgroundThemeOptionId,
+                                onSelected = onBackgroundThemeOptionChanged
+                            )
+
+                            ThemeColorSelector(
+                                title = "Status (Exercise cards)",
+                                options = STATUS_THEME_OPTIONS,
+                                selectedOptionId = statusThemeOptionId,
+                                onSelected = onStatusThemeOptionChanged
+                            )
+
+                            ThemeColorSelector(
+                                title = "Done / Actions",
+                                options = DONE_THEME_OPTIONS,
+                                selectedOptionId = doneThemeOptionId,
+                                onSelected = onDoneThemeOptionChanged
+                            )
+                        }
+                    }
+                }
+            }
+
+            TextButton(
+                onClick = { showVersionDetails = true },
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 10.dp, bottom = 8.dp),
+                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+            ) {
+                Text(
+                    text = "v$appVersion",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+
+    if (showVersionDetails) {
+        AlertDialog(
+            onDismissRequest = { showVersionDetails = false },
+            title = { Text("Version v$appVersion") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "Latest design version: v$LATEST_DESIGN_VERSION",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    LATEST_VERSION_HIGHLIGHTS.forEach { line ->
                         Text(
-                            text = statusMessage,
-                            modifier = Modifier.padding(14.dp),
+                            text = "- $line",
                             style = MaterialTheme.typography.bodyMedium
                         )
                     }
                 }
+            },
+            confirmButton = {
+                TextButton(onClick = { showVersionDetails = false }) {
+                    Text("Close")
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun ThemeColorSelector(
+    title: String,
+    options: List<ThemeColorOption>,
+    selectedOptionId: String,
+    onSelected: (String) -> Unit
+) {
+    val rowScrollState = rememberScrollState()
+
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rowScrollState),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            options.forEach { option ->
+                FilterChip(
+                    selected = option.id == selectedOptionId,
+                    onClick = { onSelected(option.id) },
+                    label = { Text(option.label) },
+                    leadingIcon = {
+                        Box(
+                            modifier = Modifier
+                                .size(12.dp)
+                                .background(option.color, CircleShape)
+                                .border(
+                                    width = 1.dp,
+                                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f),
+                                    shape = CircleShape
+                                )
+                        )
+                    }
+                )
             }
         }
     }
@@ -838,6 +1170,7 @@ private fun ScheduleScreen(
 private fun WorkoutDayScreen(
     day: WorkoutDayModel,
     repository: WorkoutRepository,
+    onRequestExport: () -> Unit,
     onBack: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
@@ -864,6 +1197,8 @@ private fun WorkoutDayScreen(
     var showSummary by remember(day.dayNumber) { mutableStateOf(false) }
     var showAchievementPopup by remember(day.dayNumber) { mutableStateOf(false) }
     var showExitWorkoutModeConfirm by remember(day.dayNumber) { mutableStateOf(false) }
+    var showExportAfterEditPrompt by remember(day.dayNumber) { mutableStateOf(false) }
+    var hasEditChangesPendingExport by remember(day.dayNumber) { mutableStateOf(false) }
     var nextExercisePrompt by remember(day.dayNumber) { mutableStateOf<String?>(null) }
     var quickEditExercise by remember(day.dayNumber) { mutableStateOf<ExerciseModel?>(null) }
     var quickEditField by remember(day.dayNumber) { mutableStateOf<QuickEditField?>(null) }
@@ -890,6 +1225,7 @@ private fun WorkoutDayScreen(
                 scope.launch {
                     repository.updateDayDateAndPushForward(day.dayNumber, newDate)
                 }
+                hasEditChangesPendingExport = true
             },
             year,
             month,
@@ -905,6 +1241,7 @@ private fun WorkoutDayScreen(
                 isDone = !day.isCompleted
             )
         }
+        hasEditChangesPendingExport = true
     }
 
     fun openQuickEditDialog(exercise: ExerciseModel, field: QuickEditField) {
@@ -927,6 +1264,7 @@ private fun WorkoutDayScreen(
         intervalSeconds: Int = exercise.intervalSeconds,
         plannedWeight: String = exercise.plannedWeight
     ) {
+        hasEditChangesPendingExport = true
         scope.launch {
             repository.updateExercise(
                 exercise = exercise,
@@ -968,6 +1306,7 @@ private fun WorkoutDayScreen(
                     scope.launch {
                         repository.moveExercise(day.dayNumber, movingId, moveBy = 1)
                     }
+                    hasEditChangesPendingExport = true
                     dragOffsetY -= rowHeight
                 }
             }
@@ -978,6 +1317,7 @@ private fun WorkoutDayScreen(
                     scope.launch {
                         repository.moveExercise(day.dayNumber, movingId, moveBy = -1)
                     }
+                    hasEditChangesPendingExport = true
                     dragOffsetY += rowHeight
                 }
             }
@@ -1107,8 +1447,11 @@ private fun WorkoutDayScreen(
                 ),
                 title = { Text("") },
                 navigationIcon = {
-                    TextButton(onClick = { requestBackNavigation() }) {
-                        Text("Back")
+                    IconButton(onClick = { requestBackNavigation() }) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                            contentDescription = "Back"
+                        )
                     }
                 },
                 actions = {
@@ -1132,9 +1475,16 @@ private fun WorkoutDayScreen(
                         Switch(
                             checked = editMode,
                             onCheckedChange = { enabled ->
-                                editMode = enabled
                                 if (enabled) {
+                                    editMode = true
                                     editCollapseSignal += 1
+                                    hasEditChangesPendingExport = false
+                                    showExportAfterEditPrompt = false
+                                } else {
+                                    editMode = false
+                                    if (hasEditChangesPendingExport) {
+                                        showExportAfterEditPrompt = true
+                                    }
                                 }
                             }
                         )
@@ -1367,6 +1717,7 @@ private fun WorkoutDayScreen(
                                     scope.launch {
                                         repository.deleteExercise(exercise)
                                     }
+                                    hasEditChangesPendingExport = true
                                 }
                             )
                         }
@@ -1392,6 +1743,7 @@ private fun WorkoutDayScreen(
                 scope.launch {
                     repository.addExercise(day.dayNumber, draft)
                 }
+                hasEditChangesPendingExport = true
                 showAddDialog = false
             }
         )
@@ -1412,6 +1764,7 @@ private fun WorkoutDayScreen(
                 scope.launch {
                     repository.updateExercise(target, draft)
                 }
+                hasEditChangesPendingExport = true
                 editExerciseTarget = null
             }
         )
@@ -1425,6 +1778,7 @@ private fun WorkoutDayScreen(
                 scope.launch {
                     repository.renameWorkout(day.dayNumber, newName)
                 }
+                hasEditChangesPendingExport = true
                 showRenameWorkoutDialog = false
             }
         )
@@ -1463,14 +1817,22 @@ private fun WorkoutDayScreen(
             }
 
             QuickEditField.WEIGHT -> {
+                val selectedHalfKg = ((parseWeightValue(activeQuickEditExercise.plannedWeight) ?: 20f) * 2f)
+                    .roundToInt()
+                    .coerceIn(0, 600)
+
                 NumberWheelDialog(
                     title = "Weight",
-                    value = parseWeightValue(activeQuickEditExercise.plannedWeight) ?: 20,
-                    range = 0..300,
-                    valueText = { "$it kg" },
+                    value = selectedHalfKg,
+                    range = 0..600,
+                    valueText = { halfKgStep -> "${formatHalfKgValue(halfKgStep)} kg" },
                     onDismiss = { dismissQuickEditDialog() },
-                    onConfirm = { selected ->
-                        updateExerciseQuick(activeQuickEditExercise, plannedWeight = "$selected kg")
+                    onConfirm = { selectedHalfKgValue ->
+                        val selectedKg = selectedHalfKgValue / 2f
+                        updateExerciseQuick(
+                            activeQuickEditExercise,
+                            plannedWeight = "${formatKgValue(selectedKg)} kg"
+                        )
                         dismissQuickEditDialog()
                     }
                 )
@@ -1481,6 +1843,7 @@ private fun WorkoutDayScreen(
                     title = "Interval",
                     value = activeQuickEditExercise.intervalSeconds,
                     range = 0..600,
+                    step = 15,
                     valueText = { "$it sec" },
                     onDismiss = { dismissQuickEditDialog() },
                     onConfirm = { selected ->
@@ -1513,6 +1876,38 @@ private fun WorkoutDayScreen(
             confirmButton = {
                 TextButton(onClick = { showAchievementPopup = false }) {
                     Text("Nice")
+                }
+            }
+        )
+    }
+
+    if (showExportAfterEditPrompt) {
+        AlertDialog(
+            onDismissRequest = {
+                showExportAfterEditPrompt = false
+                hasEditChangesPendingExport = false
+            },
+            title = { Text("Export changes?") },
+            text = { Text("You changed workout template values. Export a backup now?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showExportAfterEditPrompt = false
+                        hasEditChangesPendingExport = false
+                        onRequestExport()
+                    }
+                ) {
+                    Text("Export")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showExportAfterEditPrompt = false
+                        hasEditChangesPendingExport = false
+                    }
+                ) {
+                    Text("Later")
                 }
             }
         )
@@ -1678,8 +2073,8 @@ private fun ExerciseRow(
         border = BorderStroke(
             width = if (isCurrent || isDragging) 1.1.dp else 0.7.dp,
             color = when {
-                isDragging -> MaterialTheme.colorScheme.primary.copy(alpha = 0.62f)
-                isCurrent -> MaterialTheme.colorScheme.primary.copy(alpha = 0.42f)
+                isDragging -> MaterialTheme.colorScheme.secondary.copy(alpha = 0.62f)
+                isCurrent -> MaterialTheme.colorScheme.secondary.copy(alpha = 0.42f)
                 else -> MaterialTheme.colorScheme.outline.copy(alpha = 0.18f)
             }
         ),
@@ -1692,8 +2087,7 @@ private fun ExerciseRow(
         ),
         colors = CardDefaults.cardColors(
             containerColor = when {
-                exercise.isDone -> MaterialTheme.colorScheme.surfaceVariant
-                isCurrent -> MaterialTheme.colorScheme.primaryContainer
+                exercise.isDone || isCurrent -> MaterialTheme.colorScheme.secondaryContainer
                 else -> MaterialTheme.colorScheme.surface
             }
         )
@@ -2038,11 +2432,64 @@ private fun formatDateShort(epochDay: Long): String {
     return formatter.format(Date(epochDay * MILLIS_PER_DAY))
 }
 
-private fun parseWeightValue(text: String): Int? {
-    return Regex("\\d+")
+private fun parseWeightValue(text: String): Float? {
+    return Regex("\\d+(?:\\.\\d+)?")
         .find(text)
         ?.value
-        ?.toIntOrNull()
+        ?.toFloatOrNull()
+}
+
+@Suppress("DEPRECATION")
+private fun currentAppVersionName(context: Context): String {
+    return runCatching {
+        context.packageManager
+            .getPackageInfo(context.packageName, 0)
+            .versionName
+            .orEmpty()
+    }
+        .getOrDefault("")
+        .ifBlank { LATEST_DESIGN_VERSION }
+}
+
+private fun resolveThemeColorOption(
+    options: List<ThemeColorOption>,
+    selectedId: String,
+    fallbackId: String
+): ThemeColorOption {
+    return options.firstOrNull { it.id == selectedId }
+        ?: options.firstOrNull { it.id == fallbackId }
+        ?: options.first()
+}
+
+private fun mixWithWhite(base: Color, whiteAmount: Float): Color {
+    val t = whiteAmount.coerceIn(0f, 1f)
+    return Color(
+        red = base.red + (1f - base.red) * t,
+        green = base.green + (1f - base.green) * t,
+        blue = base.blue + (1f - base.blue) * t,
+        alpha = 1f
+    )
+}
+
+private fun contrastColor(color: Color): Color {
+    return if (color.luminance() > 0.52f) {
+        Color(0xFF0F1720)
+    } else {
+        Color(0xFFFFFFFF)
+    }
+}
+
+private fun formatHalfKgValue(halfKgStep: Int): String {
+    return formatKgValue(halfKgStep / 2f)
+}
+
+private fun formatKgValue(weightKg: Float): String {
+    val roundedToSingleDecimal = (weightKg * 10f).roundToInt() / 10f
+    return if (roundedToSingleDecimal % 1f == 0f) {
+        roundedToSingleDecimal.toInt().toString()
+    } else {
+        String.format(Locale.ENGLISH, "%.1f", roundedToSingleDecimal)
+    }
 }
 
 private const val BACKUP_FORMAT_VERSION = 1

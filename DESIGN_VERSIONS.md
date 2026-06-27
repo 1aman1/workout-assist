@@ -556,6 +556,81 @@ How to use:
 
 ---
 
+## Version 1.24 (2026-06-27)
+- Change summary:
+  - Replaced day-screen back text button with a back arrow icon.
+  - Updated quick-edit wheel behavior: interval now steps by 15 seconds, weight now steps by 0.5 kg.
+  - Applied role-driven color updates: white background, turquoise status surfaces, green done/action surfaces.
+- Why changed:
+  - Improve navigation clarity and reduce button text noise.
+  - Match picker stepping behavior to workout editing expectations.
+  - Make highlight/done presentation consistent and theme-driven.
+- UX impact:
+  - Back affordance is now icon-based in the workout day top bar.
+  - Editing interval values jumps in 15-second increments.
+  - Editing weight values supports 0.5 kg precision.
+  - Exercise status visuals use consistent turquoise surfaces; done/actions are green.
+- Data/model impact:
+  - None.
+- Migration notes (if any):
+  - None.
+
+---
+
+## Version 1.25 (2026-06-27)
+- Change summary:
+  - Added small app version label in Settings bottom-right corner.
+  - Added tap-to-open version details dialog.
+  - App package version updated to 1.25 to align with latest design version.
+- Why changed:
+  - Provide standard in-app version discoverability.
+  - Make release details accessible without leaving the app.
+- UX impact:
+  - Users can quickly see the current app version in Settings.
+  - Tapping the version shows compact release highlights dialog.
+- Data/model impact:
+  - None.
+- Migration notes (if any):
+  - None.
+
+---
+
+## Version 1.26 (2026-06-27)
+- Change summary:
+  - Added export prompt when user turns off edit mode after making template changes.
+  - Prompt offers Export now or Later.
+- Why changed:
+  - Encourage backup after editing template data without forcing export every time.
+- UX impact:
+  - If user edits template values and then disables edit mode, a dialog asks whether to export backup.
+  - Export action reuses existing backup flow; user can also skip with Later.
+- Data/model impact:
+  - None.
+- Migration notes (if any):
+  - None.
+
+---
+
+## Version 1.27 (2026-06-27)
+- Change summary:
+  - Added role-based theme customization controls in Settings.
+  - Users can now pick colors for Background, Status (exercise cards), and Done/Actions surfaces.
+  - Theme selections are persisted locally and applied immediately across the app.
+- Why changed:
+  - Allow lightweight visual personalization while preserving the established white/turquoise/green defaults.
+  - Keep theme control centralized in Settings without affecting workout behavior.
+- UX impact:
+  - New Theme Colors card appears in Settings with single-select chips and color swatches.
+  - Switching a color option updates app surfaces in real time.
+  - Defaults remain white background, turquoise status, and green done/actions.
+- Data/model impact:
+  - Added SharedPreferences keys for three theme role selections.
+  - No Room schema/data changes.
+- Migration notes (if any):
+  - Existing users automatically use default role colors until changed in Settings.
+
+---
+
 ## Versioning Rule
 - Every product/UI naming decision must be appended as a new version section.
 - Do not rewrite past version content; add only incremental deltas.
