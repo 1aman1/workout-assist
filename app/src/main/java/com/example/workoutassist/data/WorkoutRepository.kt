@@ -16,7 +16,8 @@ data class ExerciseDraft(
     val sets: Int,
     val reps: Int,
     val intervalSeconds: Int,
-    val plannedWeight: String
+    val plannedWeight: String,
+    val remarks: String
 )
 
 data class ExerciseModel(
@@ -27,6 +28,7 @@ data class ExerciseModel(
     val reps: Int,
     val intervalSeconds: Int,
     val plannedWeight: String,
+    val remarks: String,
     val position: Int,
     val isDone: Boolean
 )
@@ -35,6 +37,7 @@ data class WorkoutDayModel(
     val dayNumber: Int,
     val workoutName: String,
     val plannedDateEpochDay: Long,
+    val completedForDateEpochDay: Long?,
     val isCompleted: Boolean,
     val exercises: List<ExerciseModel>
 )
@@ -54,6 +57,7 @@ class WorkoutRepository(private val dao: WorkoutDao) {
                     dayNumber = row.day.dayNumber,
                     workoutName = row.day.workoutName,
                     plannedDateEpochDay = row.day.plannedDateEpochDay,
+                    completedForDateEpochDay = row.day.completedForDateEpochDay,
                     isCompleted = row.day.completedForDateEpochDay == row.day.plannedDateEpochDay,
                     exercises = row.exercises
                         .sortedBy { it.position }
@@ -61,6 +65,10 @@ class WorkoutRepository(private val dao: WorkoutDao) {
                 )
             }
         }
+    }
+
+    fun observeSessions(): Flow<List<WorkoutSessionEntity>> {
+        return dao.observeSessions()
     }
 
     suspend fun ensureSeedData() {
@@ -141,6 +149,7 @@ class WorkoutRepository(private val dao: WorkoutDao) {
                 reps = clean.reps,
                 intervalSeconds = clean.intervalSeconds,
                 plannedWeight = clean.plannedWeight,
+                remarks = clean.remarks,
                 position = nextPosition,
                 isDone = false
             )
@@ -158,6 +167,7 @@ class WorkoutRepository(private val dao: WorkoutDao) {
                 reps = clean.reps,
                 intervalSeconds = clean.intervalSeconds,
                 plannedWeight = clean.plannedWeight,
+                remarks = clean.remarks,
                 position = exercise.position,
                 isDone = exercise.isDone
             )
@@ -174,6 +184,7 @@ class WorkoutRepository(private val dao: WorkoutDao) {
                 reps = exercise.reps,
                 intervalSeconds = exercise.intervalSeconds,
                 plannedWeight = exercise.plannedWeight,
+                remarks = exercise.remarks,
                 position = exercise.position,
                 isDone = exercise.isDone
             )
@@ -301,6 +312,7 @@ private fun ExerciseEntity.toModel(): ExerciseModel {
         reps = reps,
         intervalSeconds = intervalSeconds,
         plannedWeight = plannedWeight,
+        remarks = remarks,
         position = position,
         isDone = isDone
     )
@@ -313,7 +325,8 @@ private fun ExerciseDraft.sanitized(): ExerciseDraft {
         sets = sets.coerceIn(MIN_SETS, MAX_SETS),
         reps = reps.coerceIn(MIN_REPS, MAX_REPS),
         intervalSeconds = intervalSeconds.coerceAtLeast(0),
-        plannedWeight = plannedWeight.trim()
+        plannedWeight = plannedWeight.trim(),
+        remarks = remarks.trim()
     )
 }
 
@@ -324,7 +337,8 @@ private fun seedExercise(
     sets: Int,
     reps: Int,
     intervalSeconds: Int,
-    plannedWeight: String = ""
+    plannedWeight: String = "",
+    remarks: String = ""
 ): ExerciseEntity {
     return ExerciseEntity(
         dayNumber = dayNumber,
@@ -333,6 +347,7 @@ private fun seedExercise(
         reps = reps.coerceIn(MIN_REPS, MAX_REPS),
         intervalSeconds = intervalSeconds.coerceAtLeast(0),
         plannedWeight = plannedWeight,
+        remarks = remarks,
         position = position,
         isDone = false
     )

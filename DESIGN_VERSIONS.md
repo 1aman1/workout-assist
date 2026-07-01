@@ -631,6 +631,404 @@ How to use:
 
 ---
 
+## Version 1.28 (2026-07-01)
+- Change summary:
+  - Upgraded backup import/export status to styled feedback cards (success and failure) in Settings.
+  - Added exercise remarks field and surfaced it in expanded exercise card details only.
+  - Added remarks to exercise add/edit dialog and persisted it in local storage and backup JSON.
+- Why changed:
+  - Improve clarity and confidence for backup operations with stronger visual feedback.
+  - Capture exercise-specific notes without cluttering compact metric chips.
+- UX impact:
+  - Users now see a clear titled status card with icon and dismiss action after import/export.
+  - Exercise cards show remarks only when expanded; collapsed cards remain scan-friendly.
+  - Add/Edit exercise dialog now supports entering remarks.
+- Data/model impact:
+  - Added `remarks` column to exercises table (Room schema version 4 with migration from 3).
+  - Backup export/import now includes remarks for each exercise.
+- Migration notes (if any):
+  - Existing exercises default to empty remarks after migration.
+
+---
+
+## Version 1.29 (2026-07-01)
+- Change summary:
+  - Added page partition at the top of Schedule screen with `Schedule` and `Infinity` labels.
+  - `Schedule` remains the default section and preserves the existing Day 1-7 card UI.
+  - Tapping either page label switches between sections in-place.
+- Why changed:
+  - Use the top empty area to split the schedule landing into named sections.
+  - Keep current workflow untouched while enabling expansion into alternate flows.
+- UX impact:
+  - Users can switch sections by tapping `Schedule` or `Infinity` at the top.
+  - Day 1-7 behavior remains unchanged under `Schedule`.
+  - `Infinity` is reachable from the same screen and users can switch back instantly.
+- Data/model impact:
+  - None.
+- Migration notes (if any):
+  - None.
+
+---
+
+## Version 1.30 (2026-07-01)
+- Change summary:
+  - Upgraded `Infinity` from placeholder to an extended free-scroll schedule window.
+  - Infinity now repeats the same Day 1-7 templates across many cycles.
+  - Scrolling upward shows earlier cycle days; scrolling downward shows later cycle days.
+- Why changed:
+  - Make Infinity a practical extension of Schedule instead of a static alternate page.
+  - Provide a larger browsing window while preserving existing weekly structure.
+- UX impact:
+  - Schedule remains default and unchanged for current-week focus.
+  - Infinity provides continuous browsing of repeated cycle days in both directions.
+  - Users can tap page names to swap between sections and return instantly.
+- Data/model impact:
+  - None.
+- Migration notes (if any):
+  - None.
+
+---
+
+## Version 1.31 (2026-07-01)
+- Change summary:
+  - Added a small `Today` quick-jump button in Infinity section.
+  - Tapping the button scrolls Infinity list back to today's day entry.
+- Why changed:
+  - Improve navigation speed in long Infinity scrolling windows.
+  - Reduce effort to re-center after browsing far earlier/later cycles.
+- UX impact:
+  - Infinity now has a bottom-right `Today` action.
+  - Users can instantly return to current-day entry while staying in Infinity view.
+- Data/model impact:
+  - None.
+- Migration notes (if any):
+  - None.
+
+---
+
+## Version 1.32 (2026-07-01)
+- Change summary:
+  - Replaced small page chips with a larger 50-50 segmented switch for `Schedule` and `Infinity`.
+  - Each page option now occupies half width of the top control area.
+- Why changed:
+  - Improve readability and touch ergonomics of page switching.
+  - Better use of the top area with clearer partitioned navigation.
+- UX impact:
+  - Switching between Schedule and Infinity is easier and more visually distinct.
+  - Active page is highlighted inside a wider segmented control.
+- Data/model impact:
+  - None.
+- Migration notes (if any):
+  - None.
+
+---
+
+## Version 1.33 (2026-07-01)
+- Change summary:
+  - Removed the top Workout Schedule header section from schedule landing.
+  - Added Settings controls to rename both segmented page labels (`Schedule` and `Infinity`).
+- Why changed:
+  - Reduce wasted vertical space and focus the screen on section switching.
+  - Allow users to personalize page names directly from Settings.
+- UX impact:
+  - Top area now starts with only the two main page buttons.
+  - Users can edit both labels in Settings and see changes reflected on the switcher.
+- Data/model impact:
+  - Added SharedPreferences keys for schedule/infinity page labels.
+- Migration notes (if any):
+  - Existing installs default to "Schedule" and "Infinity" until changed.
+
+---
+
+## Version 1.34 (2026-07-01)
+- Change summary:
+  - Restored schedule title rename through a compact pencil action beside the page switcher.
+  - Kept the Workout Schedule header section removed as requested.
+- Why changed:
+  - Preserve rename convenience after removing the header/title row.
+- UX impact:
+  - Top area still stays minimal (switcher-first) while keeping quick rename access.
+- Data/model impact:
+  - No schema/data model changes.
+- Migration notes (if any):
+  - None.
+
+---
+
+## Version 1.35 (2026-07-01)
+- Change summary:
+  - Removed the compact schedule pencil action from the top section.
+  - Removed custom right-edge scrollbar indicators from Schedule and Infinity lists.
+- Why changed:
+  - Keep the schedule landing cleaner and focused on just the two page buttons.
+  - Reduce visual noise while retaining native list scrolling behavior.
+- UX impact:
+  - Top area now shows only the `Schedule` and `Infinity` segmented buttons.
+  - Lists still scroll normally, but without custom scrollbar overlays.
+- Data/model impact:
+  - No schema or persistence changes.
+- Migration notes (if any):
+  - None.
+
+---
+
+## Version 1.36 (2026-07-01)
+- Change summary:
+  - Removed extra top spacing inside Workout Day screen content.
+- Why changed:
+  - Align Workout Day spacing with Home/Schedule layout so content starts tighter.
+- UX impact:
+  - First workout card now starts immediately after top app bar content area without additional gap.
+- Data/model impact:
+  - None.
+- Migration notes (if any):
+  - None.
+
+---
+
+## Version 1.37 (2026-07-01)
+- Change summary:
+  - Removed top app bar inset gap on Workout Day screen.
+- Why changed:
+  - Ensure the back arrow and top actions begin without unnecessary top spacing.
+- UX impact:
+  - Workout Day header now aligns tighter to the top, matching Home behavior expectations.
+- Data/model impact:
+  - None.
+- Migration notes (if any):
+  - None.
+
+---
+
+## Version 1.38 (2026-07-01)
+- Change summary:
+  - Updated Workout Day exercise list container to use remaining-height layout.
+- Why changed:
+  - Prevent visible lower-screen blank strip caused by oversized list measurement in the detail column.
+- UX impact:
+  - Exercise section now occupies the available area under the header more naturally.
+  - Reduces perceived unused space near the lower part of Workout Day screen.
+- Data/model impact:
+  - None.
+- Migration notes (if any):
+  - None.
+
+---
+
+## Version 1.39 (2026-07-01)
+- Change summary:
+  - Made Workout Day list bottom padding adaptive to floating action button visibility.
+- Why changed:
+  - Remove leftover lower empty strip when edit FAB is not present.
+- UX impact:
+  - In normal view mode, list ends closer to bottom without excessive trailing space.
+  - In edit mode, list still keeps enough bottom clearance for FAB.
+- Data/model impact:
+  - None.
+- Migration notes (if any):
+  - None.
+
+---
+
+## Version 1.40 (2026-07-01)
+- Change summary:
+  - Updated Infinity card completion rendering to compare against each virtual date.
+- Why changed:
+  - Avoid repeating `Done` markers on all historical/future cycle copies of a day template.
+- UX impact:
+  - `Done` appears only on the specific Infinity date that was completed.
+  - Past/future repeated instances of the same day no longer inherit completion badge incorrectly.
+- Data/model impact:
+  - Added completion-date exposure in UI model (`WorkoutDayModel.completedForDateEpochDay`) for rendering.
+- Migration notes (if any):
+  - None.
+
+---
+
+## Version 1.41 (2026-07-01)
+- Change summary:
+  - Added `Insights` as a new bottom tab between `Workout` and `Settings`.
+  - Made bottom tab labels (`Workout`, `Insights`, `Settings`) user-renamable.
+  - Moved label renaming into a dedicated nested `Settings -> Labels -> Options` flow (similar to Theme options).
+- Why changed:
+  - Expand primary navigation with an insights section.
+  - Centralize and scale label customization in a cleaner settings structure.
+- UX impact:
+  - Bottom navigation now has three tabs.
+  - Users can rename both schedule page buttons and bottom tab labels from one Labels options screen.
+  - Renamed labels apply directly to bottom navigation and schedule page switcher.
+- Data/model impact:
+  - Added SharedPreferences keys for root tab labels.
+- Migration notes (if any):
+  - Existing installs default to `Workout`, `Insights`, `Settings` until changed.
+
+---
+
+## Version 1.42 (2026-07-01)
+- Change summary:
+  - Refined Insights metrics to be strictly session-level (finished sessions only).
+- Why changed:
+  - Match expected behavior: ratios should represent workout sessions, not exercise/day aggregates.
+- UX impact:
+  - Insights now shows rolling done-session ratios such as `2/7` and `13/31`.
+  - Day/exercise summary fields were removed from Insights to avoid mixed-level interpretation.
+- Data/model impact:
+  - None.
+- Migration notes (if any):
+  - None.
+
+---
+
+## Version 1.43 (2026-07-01)
+- Change summary:
+  - Made `My Ratio` (last 7 days) the leading metric in Insights.
+- Why changed:
+  - Prioritize the primary user ratio at the top of the Insights screen.
+  - Keep the ratio strictly based on finished workout sessions.
+- UX impact:
+  - Insights now shows `My Ratio` first as a prominent `done/7` value with percentage.
+  - 31-day and work:break metrics remain available as secondary context.
+- Data/model impact:
+  - None.
+- Migration notes (if any):
+  - None.
+
+---
+
+## Version 1.44 (2026-07-01)
+- Change summary:
+  - Added per-setting RGB color pickers in Theme options.
+- Why changed:
+  - Enable direct color customization for each theme role instead of only fixed presets.
+- UX impact:
+  - Theme options now provide sliders for Background, Status, and Done/Actions custom colors.
+  - Adjusting sliders auto-selects `Custom` for that role and updates app colors immediately.
+  - Preset chips remain available alongside the new picker.
+- Data/model impact:
+  - Added SharedPreferences keys for persisted custom color hex values by theme role.
+- Migration notes (if any):
+  - Existing installs keep current preset selections; custom color values use role defaults until edited.
+
+---
+
+## Version 1.45 (2026-07-01)
+- Change summary:
+  - Revamped Start Workout into a dedicated focused workout page.
+- Why changed:
+  - Improve one-hand usability and remove keyboard-heavy set logging while training.
+  - Let users explicitly choose which exercise to focus first instead of auto-focusing by default.
+- UX impact:
+  - Entering workout mode now emphasizes an exercise-focus flow rather than inline text fields.
+  - Focused exercise shows `(1 + n)` data rows: one read-only planned reps row plus one editable row per set.
+  - Set values are chosen via wheel picker dialogs (same interaction style as existing reps/sets wheel edits).
+  - Back navigation during active workout remains confirmation-gated before exiting.
+- Data/model impact:
+  - None (session and set-log persistence remains unchanged).
+- Migration notes (if any):
+  - None.
+
+---
+
+## Version 1.46 (2026-07-01)
+- Change summary:
+  - Disabled back navigation while workout Edit mode is active.
+- Why changed:
+  - Prevent accidental exits while users are intentionally editing workout templates.
+- UX impact:
+  - Top back button is disabled (gray/inactive) during Edit mode.
+  - System back is consumed during Edit mode and no longer navigates away.
+  - Normal back behavior resumes once Edit mode is turned off.
+- Data/model impact:
+  - None.
+- Migration notes (if any):
+  - None.
+
+---
+
+## Version 1.47 (2026-07-01)
+- Change summary:
+  - Removed extra helper headings from workout start page.
+- Why changed:
+  - Reduce visual noise and keep focus on exercise chips and set rows.
+- UX impact:
+  - Hidden labels: `Pick exercise to focus`, `Focused Exercise`, and `Data section (...)`.
+  - Workout start page remains functionally the same with a cleaner look.
+- Data/model impact:
+  - None.
+- Migration notes (if any):
+  - None.
+
+---
+
+## Version 1.48 (2026-07-01)
+- Change summary:
+  - Styled workout planned-reps row as grayed/read-only.
+- Why changed:
+  - Improve visual affordance that planned reps are informational and not editable.
+- UX impact:
+  - Planned reps row text now appears muted/gray in workout start page data section.
+  - Editable set rows remain visually stronger for clearer interaction focus.
+- Data/model impact:
+  - None.
+- Migration notes (if any):
+  - None.
+
+---
+
+## Version 1.49 (2026-07-01)
+- Change summary:
+  - Added Insights `Refresh Stats` button with circular refresh action.
+  - Reduced Insights metrics to only trailing 7-day ratio and this-month ratio.
+  - Removed post-finish workout summary stats popup.
+- Why changed:
+  - Keep Insights focused on the most useful ratio signals.
+  - Provide an explicit refresh action for stats.
+  - Reduce interruption after finishing workout sessions.
+- UX impact:
+  - Insights top area now offers `Refresh Stats` with rotating refresh icon action.
+  - Insights card now displays only: `Trailing 7 Day Ratio` and `This Month Ratio`.
+  - Finishing a workout closes the active session directly without extra summary dialog.
+- Data/model impact:
+  - None.
+- Migration notes (if any):
+  - None.
+
+---
+
+## Version 1.50 (2026-07-01)
+- Change summary:
+  - Updated Insights this-month ratio denominator to total days in current month.
+- Why changed:
+  - Align this-month ratio with expected definition: done sessions divided by days in month.
+- UX impact:
+  - `This Month Ratio` now displays values like `done/30` or `done/31` (month length based).
+  - Early in month, percentage may appear lower because denominator is full month length.
+- Data/model impact:
+  - None.
+- Migration notes (if any):
+  - None.
+
+---
+
+## Version 1.51 (2026-07-01)
+- Change summary:
+  - Separated `Finish Workout` from default active-session view.
+  - Increased `Log Exercise` touch target and anchored it lower on the active-session page.
+  - Added explicit `Show Session Actions` reveal step before showing `Finish Workout`.
+- Why changed:
+  - Reduce accidental finish taps during logging.
+  - Improve one-handed reach and finger-target comfort for the primary logging action.
+- UX impact:
+  - Active session now prioritizes a large, full-width bottom `Log Exercise` button.
+  - `Finish Workout` is hidden by default and appears only after tapping `Show Session Actions`.
+  - Logging the final exercise no longer auto-opens finish confirmation; finishing remains explicit.
+- Data/model impact:
+  - None.
+- Migration notes (if any):
+  - None.
+
+---
+
 ## Versioning Rule
 - Every product/UI naming decision must be appended as a new version section.
 - Do not rewrite past version content; add only incremental deltas.

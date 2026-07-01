@@ -4,11 +4,11 @@ Lean Android utility app for fast workout logging during training.
 
 Primary design source: see DESIGN_VERSIONS.md and append all future design updates as version increments.
 
-## Current Product Snapshot (v1.27)
+## Current Product Snapshot (v1.51)
 
 - Local-only Android app (no auth, no cloud sync).
 - 7-day repeating workout template, seeded on first launch.
-- Bottom-tab navigation with Workout (default) and Settings.
+- Bottom-tab navigation with Workout (default), Insights, and Settings.
 - Workout tab has schedule-first navigation with day detail and in-session logging.
 - Planned vs actual capture at set level (actual reps and optional actual weight).
 - Modernized visual system (refreshed cards, gradients, typography, theme tokens) with no behavioral regressions.
@@ -17,17 +17,53 @@ Primary design source: see DESIGN_VERSIONS.md and append all future design updat
 - Theme direction is role-based: white background, turquoise status surfaces, green done/action surfaces.
 - Settings now shows a small bottom-corner app version label that opens version details on tap.
 - Settings includes role-based theme color selectors for background, status surfaces, and done/action surfaces.
+- Export/import now surfaces a styled success/failure feedback card in Settings.
+- Schedule screen includes a top page switcher with `Schedule` (default) and `Infinity` sections.
+- `Infinity` extends Schedule as a free-scrolling window that continues to earlier and later cycle days.
+- `Infinity` includes a small `Today` button to quickly jump back to today entry.
+- The Schedule/Infinity switcher uses a larger 50-50 segmented control for easier tapping.
+- The old Workout Schedule header section is removed to prioritize the page switcher.
+- Custom right-edge scrollbar indicators are removed from Schedule and Infinity lists.
+- Workout day screen no longer adds extra top spacing above its first content card.
+- Workout day top app bar no longer keeps extra top inset space before navigation/actions.
+- Workout day exercise list now fills remaining vertical area to avoid lower blank strips.
+- Workout day list bottom reserve is reduced when FAB is hidden to avoid excess lower empty space.
+- Infinity `Done` markers are now date-specific and no longer repeat across past/future cycle copies.
+- Bottom tab labels (Workout/Insights/Settings) are user-renamable from Settings.
+- Insights metrics are session-level (finished sessions), including rolling ratios like `2/7` and `13/31`.
+- Insights now leads with a prominent `My Ratio` for last 7 days (`done/7`) based on finished session status.
+- Theme settings now include per-role RGB color pickers (Background, Status, Done/Actions) with persisted custom colors.
+- Start Workout now switches to a dedicated focused workout page where users explicitly pick an exercise, see a `(1 + n)` data section (planned reps + one row per set), and set per-set reps via wheel picker interaction.
+- While Edit mode is active on workout screen, back navigation is disabled to prevent accidental exits.
+- Workout start page hides extra helper headings (`Pick exercise to focus`, `Focused Exercise`, and `Data section (...)`) for a cleaner interface.
+- Planned reps row in workout start page data section is now visually grayed to reinforce read-only behavior.
+- Insights now includes a `Refresh Stats` button with circular refresh action.
+- Insights now shows only two metrics: trailing 7-day ratio and this-month ratio.
+- This-month ratio is now `done sessions / total days in current month`.
+- Finishing a workout session no longer shows a workout summary stats popup.
+- Active workout now uses a wider bottom-anchored `Log Exercise` button for easier thumb reach.
+- `Finish Workout` is hidden by default and appears only after explicit `Show Session Actions` tap.
 
 ## Screen Map
 
 ### 1) Schedule Screen
 
+- Top page labels can switch between `Schedule` and `Infinity` sections.
+- The top section control is split into two equal-width segments.
+- `Schedule` section keeps the existing Day 1 to Day 7 stacked card experience.
+- `Infinity` section repeats those day templates in a long vertical window.
+- Scrolling up reveals earlier cycle days; scrolling down reveals later cycle days.
+- A bottom-right `Today` quick action scrolls directly to the current-day entry.
+
+### 6) Settings Screen
+
+- Includes a `Labels` option similar to `Theme` for nested rename controls.
+- Labels options can rename Schedule/Infinity page buttons and Workout/Insights/Settings bottom tabs.
+- Renamed labels apply immediately to navigation and workout page switch buttons.
 - Shows stacked day cards for the 7-day loop.
 - Today card is visually dominant.
 - Completed workout days show a done indicator.
-- Schedule title is renameable from top app bar.
 - Tap any day card to open workout day detail.
-- Right-edge scrollbar indicator appears when list has more content to scroll.
 
 ### 2) Workout Day Screen
 
@@ -38,7 +74,7 @@ Primary design source: see DESIGN_VERSIONS.md and append all future design updat
 - Manual workout done toggle is visible only in edit mode.
 - Pre-workout primary CTA is full-width Start Workout.
 - Start Workout is disabled while edit mode is ON.
-- Active workout state shows Finish action and freeze status text.
+- Active workout header shows freeze status text, while finish is accessed through explicit session actions.
 - Entering edit mode collapses expanded exercise cards for cleaner editing context.
 - While workout mode is active, back action asks confirmation before exiting session.
 - Turning edit mode OFF after making template changes prompts for backup export.
@@ -67,6 +103,7 @@ Primary design source: see DESIGN_VERSIONS.md and append all future design updat
 - Exercise status cards (current or done) use a shared turquoise status surface.
 - Each row always shows a compact metric strip (set, reps, weight, interval) for quick scanning.
 - Expand reveals detailed metric rows and deeper context.
+- Expanded exercise details now include a remarks section (remarks are not shown in metric chips).
 - In edit-capable context:
   - Long-press drag handle enables reorder.
   - Metric chips and metric detail fields open wheel picker for direct numeric edits.

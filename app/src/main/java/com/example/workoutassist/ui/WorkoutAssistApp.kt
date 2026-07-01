@@ -4,6 +4,8 @@ import android.app.DatePickerDialog
 import android.content.Context
 import android.net.Uri
 import android.widget.NumberPicker
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -16,11 +18,11 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -30,7 +32,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
@@ -51,7 +52,9 @@ import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.RadioButtonUnchecked
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -71,6 +74,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
@@ -95,6 +99,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
@@ -120,6 +125,7 @@ import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -133,11 +139,11 @@ private enum class AppScreen {
 }
 
 private enum class RootTab(
-    val label: String,
     val icon: ImageVector
 ) {
-    WORKOUT(label = "Workout", icon = Icons.Rounded.FitnessCenter),
-    SETTINGS(label = "Settings", icon = Icons.Rounded.Settings)
+    WORKOUT(icon = Icons.Rounded.FitnessCenter),
+    INSIGHTS(icon = Icons.Rounded.CheckCircle),
+    SETTINGS(icon = Icons.Rounded.Settings)
 }
 
 private data class ThemeColorOption(
@@ -148,8 +154,25 @@ private data class ThemeColorOption(
 
 private enum class SettingsView {
     ROOT,
-    THEME_OPTIONS
+    THEME_OPTIONS,
+    LABEL_OPTIONS
 }
+
+private enum class SchedulePage {
+    SCHEDULE,
+    INFINITY
+}
+
+private enum class SettingsFeedbackKind {
+    SUCCESS,
+    FAILURE
+}
+
+private data class SettingsFeedback(
+    val kind: SettingsFeedbackKind,
+    val title: String,
+    val message: String
+)
 
 @Composable
 private fun ExerciseAttributeField(
@@ -355,13 +378,30 @@ private enum class QuickEditField {
 private const val DEFAULT_SCHEDULE_TITLE = "Workout Schedule"
 private const val PREFS_NAME = "gudhealth_prefs"
 private const val KEY_SCHEDULE_TITLE = "schedule_title"
+private const val KEY_PAGE_LABEL_SCHEDULE = "page_label_schedule"
+private const val KEY_PAGE_LABEL_INFINITY = "page_label_infinity"
+private const val KEY_TAB_LABEL_WORKOUT = "tab_label_workout"
+private const val KEY_TAB_LABEL_INSIGHTS = "tab_label_insights"
+private const val KEY_TAB_LABEL_SETTINGS = "tab_label_settings"
 private const val KEY_THEME_BACKGROUND = "theme_background"
 private const val KEY_THEME_STATUS = "theme_status"
 private const val KEY_THEME_DONE = "theme_done"
+private const val KEY_THEME_BACKGROUND_CUSTOM_HEX = "theme_background_custom_hex"
+private const val KEY_THEME_STATUS_CUSTOM_HEX = "theme_status_custom_hex"
+private const val KEY_THEME_DONE_CUSTOM_HEX = "theme_done_custom_hex"
+private const val DEFAULT_PAGE_LABEL_SCHEDULE = "Schedule"
+private const val DEFAULT_PAGE_LABEL_INFINITY = "Infinity"
+private const val DEFAULT_TAB_LABEL_WORKOUT = "Workout"
+private const val DEFAULT_TAB_LABEL_INSIGHTS = "Insights"
+private const val DEFAULT_TAB_LABEL_SETTINGS = "Settings"
 private const val DEFAULT_THEME_BACKGROUND_ID = "white"
 private const val DEFAULT_THEME_STATUS_ID = "turquoise"
 private const val DEFAULT_THEME_DONE_ID = "green"
-private const val LATEST_DESIGN_VERSION = "1.27"
+private const val DEFAULT_THEME_BACKGROUND_CUSTOM_HEX = "#FFFFFF"
+private const val DEFAULT_THEME_STATUS_CUSTOM_HEX = "#1CCBCB"
+private const val DEFAULT_THEME_DONE_CUSTOM_HEX = "#1E9E58"
+private const val CUSTOM_THEME_OPTION_ID = "custom"
+private const val LATEST_DESIGN_VERSION = "1.51"
 
 private val BACKGROUND_THEME_OPTIONS = listOf(
     ThemeColorOption(id = "white", label = "White", color = Color(0xFFFFFFFF)),
@@ -382,6 +422,35 @@ private val DONE_THEME_OPTIONS = listOf(
 )
 
 private val LATEST_VERSION_HIGHLIGHTS = listOf(
+    "Workout session now keeps Finish hidden until explicit Session Actions reveal; Log Exercise is wider and bottom-anchored for easier thumb reach.",
+    "This Month ratio now uses done sessions divided by total days in current month.",
+    "Insights now has a Refresh Stats button with circular refresh action and only 7-day + this-month ratios.",
+    "Finishing a workout session now closes directly without showing summary stats popup.",
+    "Workout planned-reps row is now visually grayed to indicate read-only state.",
+    "Workout start page now hides helper headings for a cleaner focus layout.",
+    "Back navigation is disabled while Edit mode is active on workout screen.",
+    "Workout start mode now opens a dedicated focus flow with per-set wheel input rows.",
+    "Theme settings now include a per-role RGB color picker with custom persistence.",
+    "Insights now leads with My Ratio (last 7 days, session-based).",
+    "Insights now shows rolling done-session ratios for 7 and 31 days.",
+    "Added Insights tab between Workout and Settings.",
+    "Tab labels (Workout, Insights, Settings) are now renamable.",
+    "Moved label rename controls into a dedicated Settings -> Labels options view.",
+    "Infinity done state now matches only the exact completed date instance.",
+    "Workout list bottom reserve now adapts to FAB visibility to cut extra empty strip.",
+    "Workout exercise list now fills remaining height to avoid lower blank strip.",
+    "Workout day top app bar now uses zero top inset to remove leading gap.",
+    "Removed extra top spacing in workout day screen content.",
+    "Removed schedule top pencil action to keep only two page buttons.",
+    "Removed custom right-edge scroll indicator from Schedule and Infinity lists.",
+    "Removed schedule header section; page switcher is now the top focus.",
+    "Settings can rename both page labels (left and right switch segments).",
+    "Schedule/Infinity selector now uses a larger 50-50 segmented switch.",
+    "Infinity page now includes a Today quick-jump button.",
+    "Infinity page now free-scrolls repeated schedule cycles above and below.",
+    "Schedule/Infinity top switch keeps Schedule as default.",
+    "Import/export now shows styled success and failure feedback cards.",
+    "Exercise cards include remarks in expanded details only.",
     "Added Settings color-role customization options.",
     "Added prompt to export backup when exiting edit mode after making changes.",
     "Settings keeps small version badge with tap-to-open details dialog.",
@@ -404,6 +473,7 @@ fun WorkoutAssistApp() {
     }
 
     val days by repository.observeDays().collectAsState(initial = emptyList())
+    val sessions by repository.observeSessions().collectAsState(initial = emptyList())
     val todayDateEpochDay = currentDateEpochDay()
     val highlightedTodayDayNumber = days
         .firstOrNull { it.plannedDateEpochDay == todayDateEpochDay }
@@ -411,11 +481,36 @@ fun WorkoutAssistApp() {
     var scheduleTitle by remember {
         mutableStateOf(prefs.getString(KEY_SCHEDULE_TITLE, DEFAULT_SCHEDULE_TITLE) ?: DEFAULT_SCHEDULE_TITLE)
     }
-    var showScheduleRenameDialog by remember { mutableStateOf(false) }
     var selectedDayNumber by remember { mutableIntStateOf(0) }
     var currentScreen by remember { mutableStateOf(AppScreen.SCHEDULE) }
     var selectedTab by remember { mutableStateOf(RootTab.WORKOUT) }
-    var settingsStatusMessage by remember { mutableStateOf<String?>(null) }
+    var settingsFeedback by remember { mutableStateOf<SettingsFeedback?>(null) }
+    var importResultFeedback by remember { mutableStateOf<SettingsFeedback?>(null) }
+    var schedulePageLabel by remember {
+        mutableStateOf(
+            prefs.getString(KEY_PAGE_LABEL_SCHEDULE, DEFAULT_PAGE_LABEL_SCHEDULE) ?: DEFAULT_PAGE_LABEL_SCHEDULE
+        )
+    }
+    var infinityPageLabel by remember {
+        mutableStateOf(
+            prefs.getString(KEY_PAGE_LABEL_INFINITY, DEFAULT_PAGE_LABEL_INFINITY) ?: DEFAULT_PAGE_LABEL_INFINITY
+        )
+    }
+    var workoutTabLabel by remember {
+        mutableStateOf(
+            prefs.getString(KEY_TAB_LABEL_WORKOUT, DEFAULT_TAB_LABEL_WORKOUT) ?: DEFAULT_TAB_LABEL_WORKOUT
+        )
+    }
+    var insightsTabLabel by remember {
+        mutableStateOf(
+            prefs.getString(KEY_TAB_LABEL_INSIGHTS, DEFAULT_TAB_LABEL_INSIGHTS) ?: DEFAULT_TAB_LABEL_INSIGHTS
+        )
+    }
+    var settingsTabLabel by remember {
+        mutableStateOf(
+            prefs.getString(KEY_TAB_LABEL_SETTINGS, DEFAULT_TAB_LABEL_SETTINGS) ?: DEFAULT_TAB_LABEL_SETTINGS
+        )
+    }
     var backgroundThemeOptionId by remember {
         mutableStateOf(
             prefs.getString(KEY_THEME_BACKGROUND, DEFAULT_THEME_BACKGROUND_ID) ?: DEFAULT_THEME_BACKGROUND_ID
@@ -429,6 +524,24 @@ fun WorkoutAssistApp() {
     var doneThemeOptionId by remember {
         mutableStateOf(
             prefs.getString(KEY_THEME_DONE, DEFAULT_THEME_DONE_ID) ?: DEFAULT_THEME_DONE_ID
+        )
+    }
+    var backgroundThemeCustomHex by remember {
+        mutableStateOf(
+            prefs.getString(KEY_THEME_BACKGROUND_CUSTOM_HEX, DEFAULT_THEME_BACKGROUND_CUSTOM_HEX)
+                ?: DEFAULT_THEME_BACKGROUND_CUSTOM_HEX
+        )
+    }
+    var statusThemeCustomHex by remember {
+        mutableStateOf(
+            prefs.getString(KEY_THEME_STATUS_CUSTOM_HEX, DEFAULT_THEME_STATUS_CUSTOM_HEX)
+                ?: DEFAULT_THEME_STATUS_CUSTOM_HEX
+        )
+    }
+    var doneThemeCustomHex by remember {
+        mutableStateOf(
+            prefs.getString(KEY_THEME_DONE_CUSTOM_HEX, DEFAULT_THEME_DONE_CUSTOM_HEX)
+                ?: DEFAULT_THEME_DONE_CUSTOM_HEX
         )
     }
 
@@ -449,10 +562,18 @@ fun WorkoutAssistApp() {
                 )
             }
                 .onSuccess {
-                    settingsStatusMessage = "Backup exported successfully."
+                    settingsFeedback = SettingsFeedback(
+                        kind = SettingsFeedbackKind.SUCCESS,
+                        title = "Export Complete",
+                        message = "Backup exported successfully."
+                    )
                 }
                 .onFailure { error ->
-                    settingsStatusMessage = "Export failed: ${error.message ?: "Unknown error"}"
+                    settingsFeedback = SettingsFeedback(
+                        kind = SettingsFeedbackKind.FAILURE,
+                        title = "Export Failed",
+                        message = error.message ?: "Unknown error while exporting backup."
+                    )
                 }
         }
     }
@@ -478,11 +599,22 @@ fun WorkoutAssistApp() {
                     selectedTab = RootTab.WORKOUT
                     currentScreen = AppScreen.SCHEDULE
                     selectedDayNumber = 0
-                    showScheduleRenameDialog = false
-                    settingsStatusMessage = "Backup imported successfully."
+                    val feedback = SettingsFeedback(
+                        kind = SettingsFeedbackKind.SUCCESS,
+                        title = "Import Complete",
+                        message = "Backup imported successfully and workout data was refreshed."
+                    )
+                    settingsFeedback = feedback
+                    importResultFeedback = feedback
                 }
                 .onFailure { error ->
-                    settingsStatusMessage = "Import failed: ${error.message ?: "Invalid file"}"
+                    val feedback = SettingsFeedback(
+                        kind = SettingsFeedbackKind.FAILURE,
+                        title = "Import Failed",
+                        message = error.message ?: "Invalid or unsupported backup file."
+                    )
+                    settingsFeedback = feedback
+                    importResultFeedback = feedback
                 }
         }
     }
@@ -492,18 +624,51 @@ fun WorkoutAssistApp() {
     }
 
     val baseScheme = MaterialTheme.colorScheme
+    val backgroundThemeCustomColor = parseThemeHexColorOrDefault(
+        hexValue = backgroundThemeCustomHex,
+        fallback = Color(0xFFFFFFFF)
+    )
+    val statusThemeCustomColor = parseThemeHexColorOrDefault(
+        hexValue = statusThemeCustomHex,
+        fallback = Color(0xFF1CCBCB)
+    )
+    val doneThemeCustomColor = parseThemeHexColorOrDefault(
+        hexValue = doneThemeCustomHex,
+        fallback = Color(0xFF1E9E58)
+    )
+    val backgroundThemeOptions = remember(backgroundThemeCustomColor) {
+        BACKGROUND_THEME_OPTIONS + ThemeColorOption(
+            id = CUSTOM_THEME_OPTION_ID,
+            label = "Custom",
+            color = backgroundThemeCustomColor
+        )
+    }
+    val statusThemeOptions = remember(statusThemeCustomColor) {
+        STATUS_THEME_OPTIONS + ThemeColorOption(
+            id = CUSTOM_THEME_OPTION_ID,
+            label = "Custom",
+            color = statusThemeCustomColor
+        )
+    }
+    val doneThemeOptions = remember(doneThemeCustomColor) {
+        DONE_THEME_OPTIONS + ThemeColorOption(
+            id = CUSTOM_THEME_OPTION_ID,
+            label = "Custom",
+            color = doneThemeCustomColor
+        )
+    }
     val backgroundThemeColor = resolveThemeColorOption(
-        options = BACKGROUND_THEME_OPTIONS,
+        options = backgroundThemeOptions,
         selectedId = backgroundThemeOptionId,
         fallbackId = DEFAULT_THEME_BACKGROUND_ID
     ).color
     val statusThemeColor = resolveThemeColorOption(
-        options = STATUS_THEME_OPTIONS,
+        options = statusThemeOptions,
         selectedId = statusThemeOptionId,
         fallbackId = DEFAULT_THEME_STATUS_ID
     ).color
     val doneThemeColor = resolveThemeColorOption(
-        options = DONE_THEME_OPTIONS,
+        options = doneThemeOptions,
         selectedId = doneThemeOptionId,
         fallbackId = DEFAULT_THEME_DONE_ID
     ).color
@@ -552,16 +717,22 @@ fun WorkoutAssistApp() {
             bottomBar = {
                 NavigationBar {
                     RootTab.entries.forEach { tab ->
+                        val tabLabel = when (tab) {
+                            RootTab.WORKOUT -> workoutTabLabel
+                            RootTab.INSIGHTS -> insightsTabLabel
+                            RootTab.SETTINGS -> settingsTabLabel
+                        }
+
                         NavigationBarItem(
                             selected = selectedTab == tab,
                             onClick = { selectedTab = tab },
                             icon = {
                                 Icon(
                                     imageVector = tab.icon,
-                                    contentDescription = tab.label
+                                    contentDescription = tabLabel
                                 )
                             },
-                            label = { Text(tab.label) }
+                            label = { Text(tabLabel) }
                         )
                     }
                 }
@@ -581,9 +752,9 @@ fun WorkoutAssistApp() {
                                 AppScreen.SCHEDULE -> {
                                     ScheduleScreen(
                                         days = days,
-                                        scheduleTitle = scheduleTitle,
+                                        schedulePageLabel = schedulePageLabel,
+                                        infinityPageLabel = infinityPageLabel,
                                         highlightedTodayDayNumber = highlightedTodayDayNumber,
-                                        onRenameTitle = { showScheduleRenameDialog = true },
                                         onDaySelected = { dayNumber ->
                                             selectedDayNumber = dayNumber
                                             currentScreen = AppScreen.DAY_DETAIL
@@ -606,9 +777,18 @@ fun WorkoutAssistApp() {
                         }
                     }
 
+                    RootTab.INSIGHTS -> {
+                        if (days.isEmpty()) {
+                            LoadingScreen()
+                        } else {
+                            InsightsScreen(sessions = sessions)
+                        }
+                    }
+
                     RootTab.SETTINGS -> {
                         SettingsScreen(
-                            statusMessage = settingsStatusMessage,
+                            statusFeedback = settingsFeedback,
+                            onDismissStatusFeedback = { settingsFeedback = null },
                             backgroundThemeOptionId = backgroundThemeOptionId,
                             statusThemeOptionId = statusThemeOptionId,
                             doneThemeOptionId = doneThemeOptionId,
@@ -624,6 +804,63 @@ fun WorkoutAssistApp() {
                                 doneThemeOptionId = selectedId
                                 prefs.edit().putString(KEY_THEME_DONE, selectedId).apply()
                             },
+                            backgroundThemeOptions = backgroundThemeOptions,
+                            statusThemeOptions = statusThemeOptions,
+                            doneThemeOptions = doneThemeOptions,
+                            backgroundCustomColor = backgroundThemeCustomColor,
+                            statusCustomColor = statusThemeCustomColor,
+                            doneCustomColor = doneThemeCustomColor,
+                            onBackgroundCustomColorChanged = { selectedColor ->
+                                val hex = colorToHexRgb(selectedColor)
+                                backgroundThemeCustomHex = hex
+                                backgroundThemeOptionId = CUSTOM_THEME_OPTION_ID
+                                prefs.edit()
+                                    .putString(KEY_THEME_BACKGROUND_CUSTOM_HEX, hex)
+                                    .putString(KEY_THEME_BACKGROUND, CUSTOM_THEME_OPTION_ID)
+                                    .apply()
+                            },
+                            onStatusCustomColorChanged = { selectedColor ->
+                                val hex = colorToHexRgb(selectedColor)
+                                statusThemeCustomHex = hex
+                                statusThemeOptionId = CUSTOM_THEME_OPTION_ID
+                                prefs.edit()
+                                    .putString(KEY_THEME_STATUS_CUSTOM_HEX, hex)
+                                    .putString(KEY_THEME_STATUS, CUSTOM_THEME_OPTION_ID)
+                                    .apply()
+                            },
+                            onDoneCustomColorChanged = { selectedColor ->
+                                val hex = colorToHexRgb(selectedColor)
+                                doneThemeCustomHex = hex
+                                doneThemeOptionId = CUSTOM_THEME_OPTION_ID
+                                prefs.edit()
+                                    .putString(KEY_THEME_DONE_CUSTOM_HEX, hex)
+                                    .putString(KEY_THEME_DONE, CUSTOM_THEME_OPTION_ID)
+                                    .apply()
+                            },
+                            schedulePageLabel = schedulePageLabel,
+                            infinityPageLabel = infinityPageLabel,
+                            workoutTabLabel = workoutTabLabel,
+                            insightsTabLabel = insightsTabLabel,
+                            settingsTabLabel = settingsTabLabel,
+                            onLabelsSaved = { scheduleLabel, infinityLabel, workoutLabel, insightsLabel, settingsLabel ->
+                                val cleanSchedule = scheduleLabel.trim().ifEmpty { DEFAULT_PAGE_LABEL_SCHEDULE }
+                                val cleanInfinity = infinityLabel.trim().ifEmpty { DEFAULT_PAGE_LABEL_INFINITY }
+                                val cleanWorkoutTab = workoutLabel.trim().ifEmpty { DEFAULT_TAB_LABEL_WORKOUT }
+                                val cleanInsightsTab = insightsLabel.trim().ifEmpty { DEFAULT_TAB_LABEL_INSIGHTS }
+                                val cleanSettingsTab = settingsLabel.trim().ifEmpty { DEFAULT_TAB_LABEL_SETTINGS }
+                                schedulePageLabel = cleanSchedule
+                                infinityPageLabel = cleanInfinity
+                                workoutTabLabel = cleanWorkoutTab
+                                insightsTabLabel = cleanInsightsTab
+                                settingsTabLabel = cleanSettingsTab
+                                prefs.edit()
+                                    .putString(KEY_PAGE_LABEL_SCHEDULE, cleanSchedule)
+                                    .putString(KEY_PAGE_LABEL_INFINITY, cleanInfinity)
+                                    .putString(KEY_TAB_LABEL_WORKOUT, cleanWorkoutTab)
+                                    .putString(KEY_TAB_LABEL_INSIGHTS, cleanInsightsTab)
+                                    .putString(KEY_TAB_LABEL_SETTINGS, cleanSettingsTab)
+                                    .apply()
+                            },
                             onExportBackup = {
                                 requestBackupExport()
                             },
@@ -636,16 +873,35 @@ fun WorkoutAssistApp() {
             }
         }
 
-        if (showScheduleRenameDialog) {
-            RenameWorkoutDialog(
-                dialogTitle = "Rename Schedule",
-                fieldLabel = "Schedule title",
-                initialName = scheduleTitle,
-                onDismiss = { showScheduleRenameDialog = false },
-                onConfirm = { newName ->
-                    scheduleTitle = newName
-                    prefs.edit().putString(KEY_SCHEDULE_TITLE, newName).apply()
-                    showScheduleRenameDialog = false
+        importResultFeedback?.let { feedback ->
+            AlertDialog(
+                onDismissRequest = { importResultFeedback = null },
+                title = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (feedback.kind == SettingsFeedbackKind.SUCCESS) {
+                                Icons.Rounded.CheckCircle
+                            } else {
+                                Icons.Rounded.Warning
+                            },
+                            contentDescription = null,
+                            tint = if (feedback.kind == SettingsFeedbackKind.SUCCESS) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.error
+                            }
+                        )
+                        Text(feedback.title)
+                    }
+                },
+                text = { Text(feedback.message) },
+                confirmButton = {
+                    TextButton(onClick = { importResultFeedback = null }) {
+                        Text("Close")
+                    }
                 }
             )
         }
@@ -675,16 +931,171 @@ private fun LoadingScreen() {
     }
 }
 
+@Composable
+private fun InsightsScreen(
+    sessions: List<WorkoutSessionEntity>
+) {
+    val scope = rememberCoroutineScope()
+    val todayEpochDay = currentDateEpochDay()
+    var refreshNonce by remember { mutableIntStateOf(0) }
+    var isRefreshing by remember { mutableStateOf(false) }
+
+    val refreshRotation by animateFloatAsState(
+        targetValue = if (isRefreshing) 360f else 0f,
+        animationSpec = tween(durationMillis = 550),
+        label = "insightsRefreshRotation"
+    )
+
+    val completedSessionEpochDays = remember(sessions, refreshNonce) {
+        sessions
+            .asSequence()
+            .mapNotNull { session -> session.finishedAt }
+            .map { finishedAt -> timestampMillisToEpochDay(finishedAt) }
+            .toSet()
+    }
+
+    val (todayYear, todayMonth, _) = remember(todayEpochDay, refreshNonce) {
+        epochDayToYearMonthDay(todayEpochDay)
+    }
+    val monthStartEpochDay = remember(todayYear, todayMonth, refreshNonce) {
+        yearMonthDayToEpochDay(todayYear, todayMonth, 1)
+    }
+    val nextMonthStartEpochDay = remember(todayYear, todayMonth, refreshNonce) {
+        yearMonthDayToEpochDay(todayYear, todayMonth + 1, 1)
+    }
+
+    val doneLast7 = remember(completedSessionEpochDays, todayEpochDay, refreshNonce) {
+        val startDay = todayEpochDay - 6L
+        completedSessionEpochDays.count { day -> day in startDay..todayEpochDay }
+    }
+    val doneThisMonth = remember(completedSessionEpochDays, monthStartEpochDay, todayEpochDay, refreshNonce) {
+        completedSessionEpochDays.count { day -> day in monthStartEpochDay..todayEpochDay }
+    }
+    val thisMonthWindowDays = remember(monthStartEpochDay, nextMonthStartEpochDay, refreshNonce) {
+        (nextMonthStartEpochDay - monthStartEpochDay).toInt().coerceAtLeast(1)
+    }
+    val ratioLast7Percent = remember(doneLast7, refreshNonce) {
+        ((doneLast7.toFloat() / 7f) * 100f).roundToInt()
+    }
+    val ratioThisMonthPercent = remember(doneThisMonth, thisMonthWindowDays, refreshNonce) {
+        ((doneThisMonth.toFloat() / thisMonthWindowDays.toFloat()) * 100f).roundToInt()
+    }
+
+    val insightsGradient = Brush.verticalGradient(
+        colors = listOf(
+            MaterialTheme.colorScheme.background,
+            MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.18f)
+        )
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(insightsGradient)
+            .padding(16.dp)
+    ) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "Insights",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    OutlinedButton(
+                        onClick = {
+                            refreshNonce += 1
+                            scope.launch {
+                                isRefreshing = true
+                                delay(560)
+                                isRefreshing = false
+                            }
+                        },
+                        shape = RoundedCornerShape(999.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Refresh,
+                            contentDescription = "Refresh Stats",
+                            modifier = Modifier.graphicsLayer(rotationZ = refreshRotation)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Refresh Stats")
+                    }
+                }
+
+                HorizontalDivider()
+
+                Text(
+                    text = "Trailing 7 Day Ratio",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = "$doneLast7/7 • $ratioLast7Percent%",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+
+                HorizontalDivider()
+
+                Text(
+                    text = "This Month Ratio",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = "$doneThisMonth/$thisMonthWindowDays • $ratioThisMonthPercent%",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SettingsScreen(
-    statusMessage: String?,
+    statusFeedback: SettingsFeedback?,
+    onDismissStatusFeedback: () -> Unit,
     backgroundThemeOptionId: String,
     statusThemeOptionId: String,
     doneThemeOptionId: String,
     onBackgroundThemeOptionChanged: (String) -> Unit,
     onStatusThemeOptionChanged: (String) -> Unit,
     onDoneThemeOptionChanged: (String) -> Unit,
+    backgroundThemeOptions: List<ThemeColorOption>,
+    statusThemeOptions: List<ThemeColorOption>,
+    doneThemeOptions: List<ThemeColorOption>,
+    backgroundCustomColor: Color,
+    statusCustomColor: Color,
+    doneCustomColor: Color,
+    onBackgroundCustomColorChanged: (Color) -> Unit,
+    onStatusCustomColorChanged: (Color) -> Unit,
+    onDoneCustomColorChanged: (Color) -> Unit,
+    schedulePageLabel: String,
+    infinityPageLabel: String,
+    workoutTabLabel: String,
+    insightsTabLabel: String,
+    settingsTabLabel: String,
+    onLabelsSaved: (String, String, String, String, String) -> Unit,
     onExportBackup: () -> Unit,
     onImportBackup: () -> Unit
 ) {
@@ -693,8 +1104,13 @@ private fun SettingsScreen(
     var showVersionDetails by remember { mutableStateOf(false) }
     var settingsView by remember { mutableStateOf(SettingsView.ROOT) }
     val settingsScrollState = rememberScrollState()
+    var scheduleLabelInput by remember(schedulePageLabel) { mutableStateOf(schedulePageLabel) }
+    var infinityLabelInput by remember(infinityPageLabel) { mutableStateOf(infinityPageLabel) }
+    var workoutTabLabelInput by remember(workoutTabLabel) { mutableStateOf(workoutTabLabel) }
+    var insightsTabLabelInput by remember(insightsTabLabel) { mutableStateOf(insightsTabLabel) }
+    var settingsTabLabelInput by remember(settingsTabLabel) { mutableStateOf(settingsTabLabel) }
 
-    BackHandler(enabled = settingsView == SettingsView.THEME_OPTIONS) {
+    BackHandler(enabled = settingsView != SettingsView.ROOT) {
         settingsView = SettingsView.ROOT
     }
 
@@ -715,12 +1131,16 @@ private fun SettingsScreen(
                 ),
                 title = {
                     Text(
-                        text = if (settingsView == SettingsView.ROOT) "Settings" else "Theme",
+                        text = when (settingsView) {
+                            SettingsView.ROOT -> "Settings"
+                            SettingsView.THEME_OPTIONS -> "Theme"
+                            SettingsView.LABEL_OPTIONS -> "Labels"
+                        },
                         fontWeight = FontWeight.SemiBold
                     )
                 },
                 navigationIcon = {
-                    if (settingsView == SettingsView.THEME_OPTIONS) {
+                    if (settingsView != SettingsView.ROOT) {
                         IconButton(onClick = { settingsView = SettingsView.ROOT }) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
@@ -746,6 +1166,43 @@ private fun SettingsScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 if (settingsView == SettingsView.ROOT) {
+                    Card(
+                        shape = RoundedCornerShape(18.dp),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Text(
+                                text = "Labels",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = "Rename workout page and bottom tab labels.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+
+                            OutlinedButton(
+                                onClick = { settingsView = SettingsView.LABEL_OPTIONS },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Text("Options")
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                                    contentDescription = null
+                                )
+                            }
+                        }
+                    }
+
                     Card(
                         shape = RoundedCornerShape(18.dp),
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
@@ -820,63 +1277,160 @@ private fun SettingsScreen(
                         }
                     }
 
-                    if (!statusMessage.isNullOrBlank()) {
-                        Card(
-                            shape = RoundedCornerShape(16.dp),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                        ) {
-                            Text(
-                                text = statusMessage,
-                                modifier = Modifier.padding(14.dp),
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                        }
+                    if (statusFeedback != null) {
+                        SettingsFeedbackCard(
+                            feedback = statusFeedback,
+                            onDismiss = onDismissStatusFeedback
+                        )
                     }
                 } else {
-                    Card(
-                        shape = RoundedCornerShape(18.dp),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Text(
-                                text = "Theme Options",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text(
-                                text = "Choose color roles for background, status cards, and done/actions.",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                    when (settingsView) {
+                        SettingsView.THEME_OPTIONS -> {
+                            Card(
+                                shape = RoundedCornerShape(18.dp),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Text(
+                                        text = "Theme Options",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Text(
+                                        text = "Choose color roles for background, status cards, and done/actions.",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
 
-                            ThemeColorSelector(
-                                title = "Background",
-                                options = BACKGROUND_THEME_OPTIONS,
-                                selectedOptionId = backgroundThemeOptionId,
-                                onSelected = onBackgroundThemeOptionChanged
-                            )
+                                    ThemeColorSelector(
+                                        title = "Background",
+                                        options = backgroundThemeOptions,
+                                        selectedOptionId = backgroundThemeOptionId,
+                                        onSelected = onBackgroundThemeOptionChanged
+                                    )
+                                    ThemeRgbColorPicker(
+                                        title = "Background custom",
+                                        color = backgroundCustomColor,
+                                        onColorChanged = onBackgroundCustomColorChanged
+                                    )
 
-                            ThemeColorSelector(
-                                title = "Status (Exercise cards)",
-                                options = STATUS_THEME_OPTIONS,
-                                selectedOptionId = statusThemeOptionId,
-                                onSelected = onStatusThemeOptionChanged
-                            )
+                                    ThemeColorSelector(
+                                        title = "Status (Exercise cards)",
+                                        options = statusThemeOptions,
+                                        selectedOptionId = statusThemeOptionId,
+                                        onSelected = onStatusThemeOptionChanged
+                                    )
+                                    ThemeRgbColorPicker(
+                                        title = "Status custom",
+                                        color = statusCustomColor,
+                                        onColorChanged = onStatusCustomColorChanged
+                                    )
 
-                            ThemeColorSelector(
-                                title = "Done / Actions",
-                                options = DONE_THEME_OPTIONS,
-                                selectedOptionId = doneThemeOptionId,
-                                onSelected = onDoneThemeOptionChanged
-                            )
+                                    ThemeColorSelector(
+                                        title = "Done / Actions",
+                                        options = doneThemeOptions,
+                                        selectedOptionId = doneThemeOptionId,
+                                        onSelected = onDoneThemeOptionChanged
+                                    )
+                                    ThemeRgbColorPicker(
+                                        title = "Done / Actions custom",
+                                        color = doneCustomColor,
+                                        onColorChanged = onDoneCustomColorChanged
+                                    )
+                                }
+                            }
                         }
+
+                        SettingsView.LABEL_OPTIONS -> {
+                            Card(
+                                shape = RoundedCornerShape(18.dp),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Text(
+                                        text = "Label Options",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Text(
+                                        text = "Rename page buttons and bottom tabs.",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+
+                                    OutlinedTextField(
+                                        value = scheduleLabelInput,
+                                        onValueChange = { scheduleLabelInput = it },
+                                        label = { Text("Schedule button") },
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                    OutlinedTextField(
+                                        value = infinityLabelInput,
+                                        onValueChange = { infinityLabelInput = it },
+                                        label = { Text("Infinity button") },
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                    OutlinedTextField(
+                                        value = workoutTabLabelInput,
+                                        onValueChange = { workoutTabLabelInput = it },
+                                        label = { Text("Workout tab") },
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                    OutlinedTextField(
+                                        value = insightsTabLabelInput,
+                                        onValueChange = { insightsTabLabelInput = it },
+                                        label = { Text("Insights tab") },
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                    OutlinedTextField(
+                                        value = settingsTabLabelInput,
+                                        onValueChange = { settingsTabLabelInput = it },
+                                        label = { Text("Settings tab") },
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+
+                                    Button(
+                                        onClick = {
+                                            onLabelsSaved(
+                                                scheduleLabelInput,
+                                                infinityLabelInput,
+                                                workoutTabLabelInput,
+                                                insightsTabLabelInput,
+                                                settingsTabLabelInput
+                                            )
+                                        },
+                                        enabled = scheduleLabelInput.isNotBlank() &&
+                                            infinityLabelInput.isNotBlank() &&
+                                            workoutTabLabelInput.isNotBlank() &&
+                                            insightsTabLabelInput.isNotBlank() &&
+                                            settingsTabLabelInput.isNotBlank(),
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(12.dp)
+                                    ) {
+                                        Text("Save labels")
+                                    }
+                                }
+                            }
+                        }
+
+                        SettingsView.ROOT -> Unit
                     }
                 }
             }
@@ -971,57 +1525,328 @@ private fun ThemeColorSelector(
 }
 
 @Composable
-private fun ScheduleScrollIndicator(
-    listState: LazyListState,
-    modifier: Modifier = Modifier
+private fun ThemeRgbColorPicker(
+    title: String,
+    color: Color,
+    onColorChanged: (Color) -> Unit
 ) {
-    val layoutInfo = listState.layoutInfo
-    val visibleItems = layoutInfo.visibleItemsInfo
-    val totalItems = layoutInfo.totalItemsCount
-    val canScroll = listState.canScrollBackward || listState.canScrollForward
-    if (!canScroll || totalItems == 0 || visibleItems.isEmpty()) {
-        return
+    val red = (color.red * 255f).roundToInt().coerceIn(0, 255)
+    val green = (color.green * 255f).roundToInt().coerceIn(0, 255)
+    val blue = (color.blue * 255f).roundToInt().coerceIn(0, 255)
+
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(18.dp)
+                    .background(color, CircleShape)
+                    .border(
+                        width = 1.dp,
+                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f),
+                        shape = CircleShape
+                    )
+            )
+            Text(
+                text = "Hex ${colorToHexRgb(color)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = "(Auto-uses Custom)",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        Text(text = "R: $red", style = MaterialTheme.typography.bodySmall)
+        Slider(
+            value = red.toFloat(),
+            onValueChange = { nextRed ->
+                onColorChanged(
+                    colorFromRgb(
+                        red = nextRed.roundToInt().coerceIn(0, 255),
+                        green = green,
+                        blue = blue
+                    )
+                )
+            },
+            valueRange = 0f..255f
+        )
+
+        Text(text = "G: $green", style = MaterialTheme.typography.bodySmall)
+        Slider(
+            value = green.toFloat(),
+            onValueChange = { nextGreen ->
+                onColorChanged(
+                    colorFromRgb(
+                        red = red,
+                        green = nextGreen.roundToInt().coerceIn(0, 255),
+                        blue = blue
+                    )
+                )
+            },
+            valueRange = 0f..255f
+        )
+
+        Text(text = "B: $blue", style = MaterialTheme.typography.bodySmall)
+        Slider(
+            value = blue.toFloat(),
+            onValueChange = { nextBlue ->
+                onColorChanged(
+                    colorFromRgb(
+                        red = red,
+                        green = green,
+                        blue = nextBlue.roundToInt().coerceIn(0, 255)
+                    )
+                )
+            },
+            valueRange = 0f..255f
+        )
+    }
+}
+
+@Composable
+private fun SettingsFeedbackCard(
+    feedback: SettingsFeedback,
+    onDismiss: () -> Unit
+) {
+    val accentColor = when (feedback.kind) {
+        SettingsFeedbackKind.SUCCESS -> MaterialTheme.colorScheme.primary
+        SettingsFeedbackKind.FAILURE -> MaterialTheme.colorScheme.error
+    }
+    val containerColor = when (feedback.kind) {
+        SettingsFeedbackKind.SUCCESS -> mixWithWhite(accentColor, 0.88f)
+        SettingsFeedbackKind.FAILURE -> mixWithWhite(accentColor, 0.9f)
     }
 
-    val visibleCount = visibleItems.size.coerceAtLeast(1)
-    val visibleFraction = (visibleCount.toFloat() / totalItems.toFloat()).coerceIn(0.14f, 1f)
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, accentColor.copy(alpha = 0.38f)),
+        colors = CardDefaults.cardColors(containerColor = containerColor)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    imageVector = if (feedback.kind == SettingsFeedbackKind.SUCCESS) {
+                        Icons.Rounded.CheckCircle
+                    } else {
+                        Icons.Rounded.Warning
+                    },
+                    contentDescription = null,
+                    tint = accentColor
+                )
+                Text(
+                    text = feedback.title,
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                TextButton(onClick = onDismiss) {
+                    Text("Dismiss")
+                }
+            }
 
-    val averageItemSizePx = visibleItems
-        .map { it.size }
-        .average()
-        .toFloat()
-        .coerceAtLeast(1f)
-    val firstVisibleProgress = listState.firstVisibleItemIndex +
-        (listState.firstVisibleItemScrollOffset / averageItemSizePx)
-    val maxStartIndex = (totalItems - visibleCount).coerceAtLeast(1)
-    val scrollFraction = (firstVisibleProgress / maxStartIndex.toFloat()).coerceIn(0f, 1f)
+            Text(
+                text = feedback.message,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        }
+    }
+}
 
-    BoxWithConstraints(
+@Composable
+private fun ScheduleDayCard(
+    dayLabel: String,
+    workoutName: String,
+    exerciseCountText: String?,
+    isToday: Boolean,
+    isCompleted: Boolean,
+    onClick: () -> Unit,
+    supportingText: String? = null
+) {
+    val cardHeight = when {
+        isToday -> 132.dp
+        !supportingText.isNullOrBlank() -> 102.dp
+        else -> 86.dp
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(cardHeight)
+            .clickable { onClick() },
+        shape = RoundedCornerShape(if (isToday) 24.dp else 18.dp),
+        border = BorderStroke(
+            width = if (isToday) 1.2.dp else 0.8.dp,
+            color = if (isToday) {
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.34f)
+            } else {
+                MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
+            }
+        ),
+        elevation = CardDefaults.cardElevation(
+            defaultElevation = if (isToday) 8.dp else 2.dp
+        ),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isToday) {
+                MaterialTheme.colorScheme.primaryContainer
+            } else {
+                MaterialTheme.colorScheme.surface
+            }
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 18.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = dayLabel,
+                    style = MaterialTheme.typography.labelMedium
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = workoutName,
+                    style = if (isToday) {
+                        MaterialTheme.typography.headlineSmall
+                    } else {
+                        MaterialTheme.typography.titleMedium
+                    },
+                    fontWeight = FontWeight.Bold
+                )
+
+                if (!exerciseCountText.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = exerciseCountText,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+
+                if (!supportingText.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = supportingText,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            if (isCompleted) {
+                Column(horizontalAlignment = Alignment.End) {
+                    Icon(
+                        imageVector = Icons.Rounded.CheckCircle,
+                        contentDescription = "Workout done",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = "Done",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SchedulePageSwitcher(
+    scheduleLabel: String,
+    infinityLabel: String,
+    selectedPage: SchedulePage,
+    onPageSelected: (SchedulePage) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier,
+        shape = RoundedCornerShape(18.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.24f)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp)
+                .padding(4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SchedulePageSwitchItem(
+                label = scheduleLabel,
+                selected = selectedPage == SchedulePage.SCHEDULE,
+                onClick = { onPageSelected(SchedulePage.SCHEDULE) },
+                modifier = Modifier.weight(1f)
+            )
+
+            Box(
+                modifier = Modifier
+                    .width(1.dp)
+                    .height(28.dp)
+                    .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.22f))
+            )
+
+            SchedulePageSwitchItem(
+                label = infinityLabel,
+                selected = selectedPage == SchedulePage.INFINITY,
+                onClick = { onPageSelected(SchedulePage.INFINITY) },
+                modifier = Modifier.weight(1f)
+            )
+        }
+    }
+}
+
+@Composable
+private fun SchedulePageSwitchItem(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
         modifier = modifier
-            .width(5.dp)
             .fillMaxHeight()
             .background(
-                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f),
-                shape = RoundedCornerShape(999.dp)
+                color = if (selected) {
+                    MaterialTheme.colorScheme.primaryContainer
+                } else {
+                    Color.Transparent
+                },
+                shape = RoundedCornerShape(14.dp)
             )
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
     ) {
-        val minThumbHeight = if (maxHeight > 28.dp) 28.dp else maxHeight
-        val thumbHeight = (maxHeight * visibleFraction)
-            .coerceAtLeast(minThumbHeight)
-            .coerceAtMost(maxHeight)
-        val maxOffset = (maxHeight - thumbHeight).coerceAtLeast(0.dp)
-        val thumbOffset = maxOffset * scrollFraction
-
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .offset(y = thumbOffset)
-                .fillMaxWidth()
-                .height(thumbHeight)
-                .background(
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.55f),
-                    shape = RoundedCornerShape(999.dp)
-                )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+            color = if (selected) {
+                MaterialTheme.colorScheme.onPrimaryContainer
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            }
         )
     }
 }
@@ -1030,12 +1855,69 @@ private fun ScheduleScrollIndicator(
 @Composable
 private fun ScheduleScreen(
     days: List<WorkoutDayModel>,
-    scheduleTitle: String,
+    schedulePageLabel: String,
+    infinityPageLabel: String,
     highlightedTodayDayNumber: Int?,
-    onRenameTitle: () -> Unit,
     onDaySelected: (Int) -> Unit
 ) {
+    val orderedDays = remember(days) { days.sortedBy { it.dayNumber } }
+    val dayCount = orderedDays.size
+    val scheduleScope = rememberCoroutineScope()
+
     val scheduleListState = rememberLazyListState()
+    val infinityListState = rememberLazyListState()
+    var selectedPage by remember { mutableStateOf(SchedulePage.SCHEDULE) }
+    val todayEpochDay = currentDateEpochDay()
+    val infinityHalfCycles = 800
+    val infinityTotalItems = if (dayCount == 0) 0 else dayCount * (infinityHalfCycles * 2 + 1)
+    val defaultDayIndex = ((highlightedTodayDayNumber ?: 1) - 1).coerceIn(0, (dayCount - 1).coerceAtLeast(0))
+    val infinityStartIndex = if (dayCount == 0) 0 else (infinityHalfCycles * dayCount) + defaultDayIndex
+    val infinityTodayIndex = remember(
+        orderedDays,
+        dayCount,
+        highlightedTodayDayNumber,
+        todayEpochDay,
+        infinityHalfCycles,
+        infinityTotalItems,
+        infinityStartIndex
+    ) {
+        if (dayCount == 0 || infinityTotalItems == 0) {
+            return@remember 0
+        }
+
+        val highlightedIndex = highlightedTodayDayNumber
+            ?.let { dayNumber -> orderedDays.indexOfFirst { it.dayNumber == dayNumber } }
+            ?.takeIf { it >= 0 }
+        if (highlightedIndex != null) {
+            return@remember ((infinityHalfCycles * dayCount) + highlightedIndex)
+                .coerceIn(0, infinityTotalItems - 1)
+        }
+
+        val mappedIndex = orderedDays.withIndex().firstNotNullOfOrNull { indexedDay ->
+            val diff = todayEpochDay - indexedDay.value.plannedDateEpochDay
+            if (diff % dayCount.toLong() != 0L) {
+                null
+            } else {
+                val cycleOffset = (diff / dayCount.toLong())
+                    .coerceIn(-infinityHalfCycles.toLong(), infinityHalfCycles.toLong())
+                ((cycleOffset + infinityHalfCycles.toLong()) * dayCount + indexedDay.index).toInt()
+            }
+        }
+
+        (mappedIndex ?: infinityStartIndex).coerceIn(0, infinityTotalItems - 1)
+    }
+
+    LaunchedEffect(selectedPage, infinityStartIndex, dayCount) {
+        if (
+            selectedPage == SchedulePage.INFINITY &&
+            dayCount > 0 &&
+            infinityListState.firstVisibleItemIndex == 0 &&
+            infinityListState.firstVisibleItemScrollOffset == 0
+        ) {
+            infinityListState.scrollToItem(infinityStartIndex)
+        }
+    }
+
     val scheduleGradient = Brush.verticalGradient(
         colors = listOf(
             MaterialTheme.colorScheme.background,
@@ -1043,129 +1925,131 @@ private fun ScheduleScreen(
         )
     )
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            TopAppBar(
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    scrolledContainerColor = MaterialTheme.colorScheme.background
-                ),
-                title = {
-                    Text(
-                        text = scheduleTitle,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                },
-                actions = {
-                    IconButton(onClick = onRenameTitle) {
-                        Icon(Icons.Rounded.Edit, contentDescription = "Rename Schedule")
-                    }
-                }
-            )
-        }
-    ) { innerPadding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .background(scheduleGradient)
-        ) {
-            LazyColumn(
-                state = scheduleListState,
-                modifier = Modifier.fillMaxSize(),
-                userScrollEnabled = true,
-                contentPadding = PaddingValues(16.dp),
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(scheduleGradient)
+    ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                itemsIndexed(days, key = { _, day -> day.dayNumber }) { _, day ->
-                    val isToday = day.dayNumber == highlightedTodayDayNumber
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(if (isToday) 132.dp else 86.dp)
-                            .clickable { onDaySelected(day.dayNumber) },
-                        shape = RoundedCornerShape(if (isToday) 24.dp else 18.dp),
-                        border = BorderStroke(
-                            width = if (isToday) 1.2.dp else 0.8.dp,
-                            color = if (isToday) {
-                                MaterialTheme.colorScheme.primary.copy(alpha = 0.34f)
-                            } else {
-                                MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
-                            }
-                        ),
-                        elevation = CardDefaults.cardElevation(
-                            defaultElevation = if (isToday) 8.dp else 2.dp
-                        ),
-                        colors = CardDefaults.cardColors(
-                            containerColor = if (isToday) {
-                                MaterialTheme.colorScheme.primaryContainer
-                            } else {
-                                MaterialTheme.colorScheme.surface
-                            }
-                        )
-                    ) {
-                        Row(
+                SchedulePageSwitcher(
+                    scheduleLabel = schedulePageLabel,
+                    infinityLabel = infinityPageLabel,
+                    selectedPage = selectedPage,
+                    onPageSelected = { selectedPage = it }
+                )
+
+                when (selectedPage) {
+                    SchedulePage.SCHEDULE -> {
+                        Box(
                             modifier = Modifier
-                                .fillMaxSize()
-                                .padding(horizontal = 18.dp, vertical = 14.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                                .weight(1f)
+                                .fillMaxWidth()
                         ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = if (isToday) {
-                                        "Today • ${formatDateShort(day.plannedDateEpochDay)}"
-                                    } else {
-                                        "Day ${day.dayNumber} • ${formatDateShort(day.plannedDateEpochDay)}"
-                                    },
-                                    style = MaterialTheme.typography.labelMedium
-                                )
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Text(
-                                    text = day.workoutName,
-                                    style = if (isToday) {
-                                        MaterialTheme.typography.headlineSmall
-                                    } else {
-                                        MaterialTheme.typography.titleMedium
-                                    },
-                                    fontWeight = FontWeight.Bold
-                                )
-                                if (isToday) {
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                    Text(
-                                        text = "${day.exercises.size} exercises",
-                                        style = MaterialTheme.typography.bodyMedium
+                            LazyColumn(
+                                state = scheduleListState,
+                                modifier = Modifier.fillMaxSize(),
+                                userScrollEnabled = true,
+                                contentPadding = PaddingValues(bottom = 8.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                itemsIndexed(orderedDays, key = { _, day -> day.dayNumber }) { _, day ->
+                                    val isToday = day.dayNumber == highlightedTodayDayNumber
+                                    ScheduleDayCard(
+                                        dayLabel = if (isToday) {
+                                            "Today • ${formatDateShort(day.plannedDateEpochDay)}"
+                                        } else {
+                                            "Day ${day.dayNumber} • ${formatDateShort(day.plannedDateEpochDay)}"
+                                        },
+                                        workoutName = day.workoutName,
+                                        exerciseCountText = if (isToday) "${day.exercises.size} exercises" else null,
+                                        isToday = isToday,
+                                        isCompleted = day.isCompleted,
+                                        onClick = { onDaySelected(day.dayNumber) }
                                     )
                                 }
                             }
 
-                            if (day.isCompleted) {
-                                Column(horizontalAlignment = Alignment.End) {
-                                    Icon(
-                                        imageVector = Icons.Rounded.CheckCircle,
-                                        contentDescription = "Workout done",
-                                        tint = MaterialTheme.colorScheme.primary
-                                    )
-                                    Text(
-                                        text = "Done",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
+                        }
+                    }
+
+                    SchedulePage.INFINITY -> {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                        ) {
+                            LazyColumn(
+                                state = infinityListState,
+                                modifier = Modifier.fillMaxSize(),
+                                userScrollEnabled = true,
+                                contentPadding = PaddingValues(bottom = 8.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                if (dayCount > 0) {
+                                    items(
+                                        count = infinityTotalItems,
+                                        key = { index -> index }
+                                    ) { index ->
+                                        val dayIndex = index % dayCount
+                                        val cycleOffset = (index / dayCount) - infinityHalfCycles
+                                        val day = orderedDays[dayIndex]
+                                        val virtualDateEpochDay = day.plannedDateEpochDay +
+                                            (cycleOffset.toLong() * dayCount.toLong())
+                                        val isToday = virtualDateEpochDay == todayEpochDay
+                                        val isCompletedForVirtualDate =
+                                            day.completedForDateEpochDay == virtualDateEpochDay
+                                        val cycleLabel = when {
+                                            cycleOffset == 0 -> "Current cycle"
+                                            cycleOffset > 0 -> "Cycle +$cycleOffset"
+                                            else -> "Cycle $cycleOffset"
+                                        }
+
+                                        ScheduleDayCard(
+                                            dayLabel = if (isToday) {
+                                                "Today • ${formatDateShort(virtualDateEpochDay)}"
+                                            } else {
+                                                "Day ${day.dayNumber} • ${formatDateShort(virtualDateEpochDay)}"
+                                            },
+                                            workoutName = day.workoutName,
+                                            exerciseCountText = "${day.exercises.size} exercises",
+                                            supportingText = cycleLabel,
+                                            isToday = isToday,
+                                            isCompleted = isCompletedForVirtualDate,
+                                            onClick = { onDaySelected(day.dayNumber) }
+                                        )
+                                    }
                                 }
+                            }
+
+                            OutlinedButton(
+                                onClick = {
+                                    scheduleScope.launch {
+                                        infinityListState.animateScrollToItem(infinityTodayIndex)
+                                    }
+                                },
+                                enabled = dayCount > 0,
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .padding(end = 14.dp, bottom = 14.dp),
+                                shape = RoundedCornerShape(999.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)
+                                )
+                            ) {
+                                Text("Today")
                             }
                         }
                     }
                 }
             }
-
-            ScheduleScrollIndicator(
-                listState = scheduleListState,
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .padding(end = 4.dp, top = 18.dp, bottom = 18.dp)
-            )
         }
-    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -1188,21 +2072,20 @@ private fun WorkoutDayScreen(
     var editExerciseTarget by remember(day.dayNumber) { mutableStateOf<ExerciseModel?>(null) }
     var showRenameWorkoutDialog by remember(day.dayNumber) { mutableStateOf(false) }
 
-    var currentExerciseIndex by remember(day.dayNumber) { mutableIntStateOf(0) }
-    var currentSetNumber by remember(day.dayNumber) { mutableIntStateOf(1) }
-    var actualRepsInput by remember(day.dayNumber) { mutableStateOf("") }
-    var actualWeightInput by remember(day.dayNumber) { mutableStateOf("") }
+    var focusedExerciseId by remember(day.dayNumber) { mutableLongStateOf(0L) }
+    var selectedSetRepsByExerciseId by remember(day.dayNumber) {
+        mutableStateOf<Map<Long, List<Int>>>(emptyMap())
+    }
+    var loggedExerciseIds by remember(day.dayNumber) { mutableStateOf<Set<Long>>(emptySet()) }
+    var setPickerTarget by remember(day.dayNumber) { mutableStateOf<Pair<Long, Int>?>(null) }
 
     var activeSessionId by remember(day.dayNumber) { mutableLongStateOf(0L) }
-    var loggedSetCount by remember(day.dayNumber) { mutableIntStateOf(0) }
 
     var showFinishConfirm by remember(day.dayNumber) { mutableStateOf(false) }
-    var showSummary by remember(day.dayNumber) { mutableStateOf(false) }
     var showAchievementPopup by remember(day.dayNumber) { mutableStateOf(false) }
     var showExitWorkoutModeConfirm by remember(day.dayNumber) { mutableStateOf(false) }
     var showExportAfterEditPrompt by remember(day.dayNumber) { mutableStateOf(false) }
     var hasEditChangesPendingExport by remember(day.dayNumber) { mutableStateOf(false) }
-    var nextExercisePrompt by remember(day.dayNumber) { mutableStateOf<String?>(null) }
     var quickEditExercise by remember(day.dayNumber) { mutableStateOf<ExerciseModel?>(null) }
     var quickEditField by remember(day.dayNumber) { mutableStateOf<QuickEditField?>(null) }
 
@@ -1212,6 +2095,7 @@ private fun WorkoutDayScreen(
     var editCollapseSignal by remember(day.dayNumber) { mutableIntStateOf(0) }
 
     val canEditTemplate = editMode && (!workoutActive || !freezeMode)
+    val exerciseListBottomPadding = if (canEditTemplate) 96.dp else 16.dp
     val dayDetailGradient = Brush.verticalGradient(
         colors = listOf(
             MaterialTheme.colorScheme.background,
@@ -1276,7 +2160,8 @@ private fun WorkoutDayScreen(
                     sets = sets,
                     reps = reps,
                     intervalSeconds = intervalSeconds,
-                    plannedWeight = plannedWeight
+                    plannedWeight = plannedWeight,
+                    remarks = exercise.remarks
                 )
             )
         }
@@ -1332,21 +2217,12 @@ private fun WorkoutDayScreen(
         dragOffsetY = 0f
     }
 
-    LaunchedEffect(day.exercises.size) {
-        if (day.exercises.isEmpty()) {
-            currentExerciseIndex = 0
-            currentSetNumber = 1
-        } else if (currentExerciseIndex > day.exercises.lastIndex) {
-            currentExerciseIndex = day.exercises.lastIndex
-            currentSetNumber = 1
-        }
-    }
-
     fun startWorkout() {
         if (day.exercises.isEmpty()) {
             return
         }
 
+        activeSessionId = 0L
         scope.launch {
             activeSessionId = repository.startSession(day)
         }
@@ -1354,47 +2230,58 @@ private fun WorkoutDayScreen(
         workoutActive = true
         freezeMode = true
         editMode = false
-        currentExerciseIndex = 0
-        currentSetNumber = 1
-        actualRepsInput = ""
-        actualWeightInput = ""
-        loggedSetCount = 0
+        focusedExerciseId = 0L
+        selectedSetRepsByExerciseId = day.exercises.associate { exercise ->
+            exercise.id to List(exercise.sets) { exercise.reps }
+        }
+        loggedExerciseIds = emptySet()
+        setPickerTarget = null
     }
 
-    fun saveCurrentSet() {
-        val currentExercise = day.exercises.getOrNull(currentExerciseIndex) ?: return
-        val actualReps = actualRepsInput.toIntOrNull()?.coerceIn(1, 50) ?: return
+    fun updateSetRepsSelection(exercise: ExerciseModel, setIndex: Int, selectedReps: Int) {
+        val current = selectedSetRepsByExerciseId[exercise.id]
+            ?: List(exercise.sets) { exercise.reps }
+        if (setIndex !in current.indices) {
+            return
+        }
+        val updated = current.toMutableList()
+        updated[setIndex] = selectedReps.coerceIn(1, 50)
+        selectedSetRepsByExerciseId = selectedSetRepsByExerciseId + (exercise.id to updated.toList())
+    }
+
+    fun saveFocusedExerciseSets() {
+        val focusedExercise = day.exercises.firstOrNull { exercise -> exercise.id == focusedExerciseId } ?: return
         if (activeSessionId == 0L) {
             return
         }
+        if (focusedExercise.id in loggedExerciseIds) {
+            return
+        }
+
+        val selectedReps = selectedSetRepsByExerciseId[focusedExercise.id]
+            ?: List(focusedExercise.sets) { focusedExercise.reps }
+        val normalizedReps = if (selectedReps.size >= focusedExercise.sets) {
+            selectedReps.take(focusedExercise.sets)
+        } else {
+            selectedReps + List(focusedExercise.sets - selectedReps.size) { focusedExercise.reps }
+        }
 
         scope.launch {
-            repository.logSet(
-                sessionId = activeSessionId,
-                exercise = currentExercise,
-                setNumber = currentSetNumber,
-                actualReps = actualReps,
-                actualWeight = actualWeightInput
-            )
+            normalizedReps.forEachIndexed { setIndex, reps ->
+                repository.logSet(
+                    sessionId = activeSessionId,
+                    exercise = focusedExercise,
+                    setNumber = setIndex + 1,
+                    actualReps = reps,
+                    actualWeight = ""
+                )
+            }
         }
 
-        loggedSetCount += 1
-        actualRepsInput = ""
-        actualWeightInput = ""
-
-        if (currentSetNumber < currentExercise.sets) {
-            currentSetNumber += 1
-            return
-        }
-
-        if (currentExerciseIndex < day.exercises.lastIndex) {
-            currentExerciseIndex += 1
-            currentSetNumber = 1
-            nextExercisePrompt = day.exercises[currentExerciseIndex].name
-            return
-        }
-
-        showFinishConfirm = true
+        val updatedLogged = loggedExerciseIds + focusedExercise.id
+        loggedExerciseIds = updatedLogged
+        focusedExerciseId = 0L
+        setPickerTarget = null
     }
 
     fun finishActiveSessionIfAny() {
@@ -1406,23 +2293,28 @@ private fun WorkoutDayScreen(
         }
     }
 
-    fun resetWorkoutModeState(showSummaryDialog: Boolean) {
+    fun resetWorkoutModeState() {
         workoutActive = false
         freezeMode = true
         editMode = false
+        focusedExerciseId = 0L
+        selectedSetRepsByExerciseId = emptyMap()
+        loggedExerciseIds = emptySet()
+        setPickerTarget = null
         activeSessionId = 0L
         showFinishConfirm = false
-        showSummary = false
         showExitWorkoutModeConfirm = false
-        showSummary = showSummaryDialog
     }
 
     fun finishWorkout() {
         finishActiveSessionIfAny()
-        resetWorkoutModeState(showSummaryDialog = true)
+        resetWorkoutModeState()
     }
 
     fun requestBackNavigation() {
+        if (editMode && !workoutActive) {
+            return
+        }
         if (workoutActive) {
             showExitWorkoutModeConfirm = true
             return
@@ -1432,8 +2324,12 @@ private fun WorkoutDayScreen(
 
     fun exitWorkoutModeAndLeave() {
         finishActiveSessionIfAny()
-        resetWorkoutModeState(showSummaryDialog = false)
+        resetWorkoutModeState()
         onBack()
+    }
+
+    BackHandler(enabled = editMode && !workoutActive) {
+        // Intentionally consume back while editing to avoid accidental screen exit.
     }
 
     BackHandler(enabled = workoutActive) {
@@ -1448,9 +2344,13 @@ private fun WorkoutDayScreen(
                     containerColor = MaterialTheme.colorScheme.background,
                     scrolledContainerColor = MaterialTheme.colorScheme.background
                 ),
+                windowInsets = WindowInsets(0, 0, 0, 0),
                 title = { Text("") },
                 navigationIcon = {
-                    IconButton(onClick = { requestBackNavigation() }) {
+                    IconButton(
+                        onClick = { requestBackNavigation() },
+                        enabled = !editMode
+                    ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
                             contentDescription = "Back"
@@ -1477,6 +2377,7 @@ private fun WorkoutDayScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Switch(
                             checked = editMode,
+                            enabled = !workoutActive,
                             onCheckedChange = { enabled ->
                                 if (enabled) {
                                     editMode = true
@@ -1514,8 +2415,6 @@ private fun WorkoutDayScreen(
                     .fillMaxSize()
                     .padding(horizontal = 16.dp)
             ) {
-                Spacer(modifier = Modifier.height(8.dp))
-
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(22.dp),
@@ -1596,16 +2495,11 @@ private fun WorkoutDayScreen(
                         } else {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                horizontalArrangement = Arrangement.End,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                OutlinedButton(onClick = { showFinishConfirm = true }) {
-                                    Icon(Icons.Rounded.CheckCircle, contentDescription = null)
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Finish")
-                                }
                                 Text(
                                     text = if (freezeMode) "Template Frozen" else "Template Unlocked",
-                                    modifier = Modifier.align(Alignment.CenterVertically),
                                     style = MaterialTheme.typography.bodyMedium
                                 )
                             }
@@ -1615,118 +2509,128 @@ private fun WorkoutDayScreen(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-            if (workoutActive) {
-                CurrentSetLogger(
-                    day = day,
-                    currentExerciseIndex = currentExerciseIndex,
-                    currentSetNumber = currentSetNumber,
-                    actualRepsInput = actualRepsInput,
-                    actualWeightInput = actualWeightInput,
-                    onActualRepsChanged = { actualRepsInput = it.filter(Char::isDigit).take(2) },
-                    onActualWeightChanged = { actualWeightInput = it },
-                    onSaveSet = { saveCurrentSet() }
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-            }
-
-            if (day.exercises.isEmpty()) {
-                Card(shape = RoundedCornerShape(14.dp)) {
-                    Text(
-                        text = "No exercises yet. Turn on Edit mode and tap + to add one.",
-                        modifier = Modifier.padding(16.dp)
+                if (workoutActive) {
+                    WorkoutActivePage(
+                        day = day,
+                        isSessionReady = activeSessionId != 0L,
+                        focusedExerciseId = focusedExerciseId,
+                        selectedSetRepsByExerciseId = selectedSetRepsByExerciseId,
+                        loggedExerciseIds = loggedExerciseIds,
+                        onFocusExercise = { exerciseId ->
+                            if (exerciseId !in loggedExerciseIds) {
+                                focusedExerciseId = exerciseId
+                            }
+                        },
+                        onSetTap = { exerciseId, setIndex ->
+                            if (exerciseId !in loggedExerciseIds) {
+                                setPickerTarget = exerciseId to setIndex
+                            }
+                        },
+                        onLogFocusedExercise = { saveFocusedExerciseSets() },
+                        onFinish = { showFinishConfirm = true }
                     )
-                }
-            }
-
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(bottom = 96.dp)
-            ) {
-                itemsIndexed(day.exercises, key = { _, exercise -> exercise.id }) { index, exercise ->
-                    key(exercise.id, exercise.isDone) {
-                        val dismissState = rememberSwipeToDismissBoxState(
-                            confirmValueChange = { targetValue ->
-                                when (targetValue) {
-                                    SwipeToDismissBoxValue.StartToEnd -> {
-                                        if (canToggleExerciseDone) {
-                                            val toggledDone = !exercise.isDone
-                                            val allExercisesDoneAfterToggle = day.exercises.all { item ->
-                                                if (item.id == exercise.id) toggledDone else item.isDone
-                                            }
-                                            scope.launch {
-                                                repository.setExerciseDone(exercise.id, toggledDone)
-                                                if (allExercisesDoneAfterToggle && !day.isCompleted) {
-                                                    repository.setWorkoutDone(
-                                                        dayNumber = day.dayNumber,
-                                                        plannedDateEpochDay = day.plannedDateEpochDay,
-                                                        isDone = true
-                                                    )
-                                                    showAchievementPopup = true
-                                                }
-                                            }
-                                        }
-                                        false
-                                    }
-
-                                    SwipeToDismissBoxValue.EndToStart -> false
-
-                                    SwipeToDismissBoxValue.Settled -> true
-                                }
-                            }
-                        )
-
-                        SwipeToDismissBox(
-                            state = dismissState,
-                            enableDismissFromStartToEnd = !editMode && canToggleExerciseDone,
-                            enableDismissFromEndToStart = false,
-                            backgroundContent = {
-                                SwipeHintBackground(
-                                    targetValue = dismissState.targetValue,
-                                    exerciseDone = exercise.isDone
-                                )
-                            }
-                        ) {
-                            ExerciseRow(
-                                exercise = exercise,
-                                index = index,
-                                editMode = editMode,
-                                canEditTemplate = canEditTemplate,
-                                canDelete = editMode && canEditTemplate,
-                                isCurrent = workoutActive && index == currentExerciseIndex,
-                                currentSetNumber = currentSetNumber,
-                                canQuickEdit = canEditTemplate,
-                                collapseSignal = editCollapseSignal,
-                                isDragging = draggingExerciseId == exercise.id,
-                                dragOffsetY = if (draggingExerciseId == exercise.id) dragOffsetY else 0f,
-                                onDragStart = { onDragStart(exercise.id) },
-                                onDrag = { deltaY -> onDrag(deltaY) },
-                                onDragEnd = { onDragEnd() },
-                                onEdit = { editExerciseTarget = exercise },
-                                onQuickEditSets = {
-                                    openQuickEditDialog(exercise, QuickEditField.SETS)
-                                },
-                                onQuickEditReps = {
-                                    openQuickEditDialog(exercise, QuickEditField.REPS)
-                                },
-                                onQuickEditWeight = {
-                                    openQuickEditDialog(exercise, QuickEditField.WEIGHT)
-                                },
-                                onQuickEditInterval = {
-                                    openQuickEditDialog(exercise, QuickEditField.INTERVAL)
-                                },
-                                onDelete = {
-                                    scope.launch {
-                                        repository.deleteExercise(exercise)
-                                    }
-                                    hasEditChangesPendingExport = true
-                                }
+                } else {
+                    if (day.exercises.isEmpty()) {
+                        Card(shape = RoundedCornerShape(14.dp)) {
+                            Text(
+                                text = "No exercises yet. Turn on Edit mode and tap + to add one.",
+                                modifier = Modifier.padding(16.dp)
                             )
                         }
                     }
+
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        contentPadding = PaddingValues(bottom = exerciseListBottomPadding)
+                    ) {
+                        itemsIndexed(day.exercises, key = { _, exercise -> exercise.id }) { index, exercise ->
+                            key(exercise.id, exercise.isDone) {
+                                val dismissState = rememberSwipeToDismissBoxState(
+                                    confirmValueChange = { targetValue ->
+                                        when (targetValue) {
+                                            SwipeToDismissBoxValue.StartToEnd -> {
+                                                if (canToggleExerciseDone) {
+                                                    val toggledDone = !exercise.isDone
+                                                    val allExercisesDoneAfterToggle = day.exercises.all { item ->
+                                                        if (item.id == exercise.id) toggledDone else item.isDone
+                                                    }
+                                                    scope.launch {
+                                                        repository.setExerciseDone(exercise.id, toggledDone)
+                                                        if (allExercisesDoneAfterToggle && !day.isCompleted) {
+                                                            repository.setWorkoutDone(
+                                                                dayNumber = day.dayNumber,
+                                                                plannedDateEpochDay = day.plannedDateEpochDay,
+                                                                isDone = true
+                                                            )
+                                                            showAchievementPopup = true
+                                                        }
+                                                    }
+                                                }
+                                                false
+                                            }
+
+                                            SwipeToDismissBoxValue.EndToStart -> false
+
+                                            SwipeToDismissBoxValue.Settled -> true
+                                        }
+                                    }
+                                )
+
+                                SwipeToDismissBox(
+                                    state = dismissState,
+                                    enableDismissFromStartToEnd = !editMode && canToggleExerciseDone,
+                                    enableDismissFromEndToStart = false,
+                                    backgroundContent = {
+                                        SwipeHintBackground(
+                                            targetValue = dismissState.targetValue,
+                                            exerciseDone = exercise.isDone
+                                        )
+                                    }
+                                ) {
+                                    ExerciseRow(
+                                        exercise = exercise,
+                                        index = index,
+                                        editMode = editMode,
+                                        canEditTemplate = canEditTemplate,
+                                        canDelete = editMode && canEditTemplate,
+                                        isCurrent = false,
+                                        currentSetNumber = 1,
+                                        canQuickEdit = canEditTemplate,
+                                        collapseSignal = editCollapseSignal,
+                                        isDragging = draggingExerciseId == exercise.id,
+                                        dragOffsetY = if (draggingExerciseId == exercise.id) dragOffsetY else 0f,
+                                        onDragStart = { onDragStart(exercise.id) },
+                                        onDrag = { deltaY -> onDrag(deltaY) },
+                                        onDragEnd = { onDragEnd() },
+                                        onEdit = { editExerciseTarget = exercise },
+                                        onQuickEditSets = {
+                                            openQuickEditDialog(exercise, QuickEditField.SETS)
+                                        },
+                                        onQuickEditReps = {
+                                            openQuickEditDialog(exercise, QuickEditField.REPS)
+                                        },
+                                        onQuickEditWeight = {
+                                            openQuickEditDialog(exercise, QuickEditField.WEIGHT)
+                                        },
+                                        onQuickEditInterval = {
+                                            openQuickEditDialog(exercise, QuickEditField.INTERVAL)
+                                        },
+                                        onDelete = {
+                                            scope.launch {
+                                                repository.deleteExercise(exercise)
+                                            }
+                                            hasEditChangesPendingExport = true
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
-            }
         }
         }
     }
@@ -1739,7 +2643,8 @@ private fun WorkoutDayScreen(
                 sets = 3,
                 reps = 12,
                 intervalSeconds = 90,
-                plannedWeight = ""
+                plannedWeight = "",
+                remarks = ""
             ),
             onDismiss = { showAddDialog = false },
             onSave = { draft ->
@@ -1760,7 +2665,8 @@ private fun WorkoutDayScreen(
                 sets = target.sets,
                 reps = target.reps,
                 intervalSeconds = target.intervalSeconds,
-                plannedWeight = target.plannedWeight
+                plannedWeight = target.plannedWeight,
+                remarks = target.remarks
             ),
             onDismiss = { editExerciseTarget = null },
             onSave = { draft ->
@@ -1858,17 +2764,30 @@ private fun WorkoutDayScreen(
         }
     }
 
-    nextExercisePrompt?.let { nextName ->
-        AlertDialog(
-            onDismissRequest = { nextExercisePrompt = null },
-            title = { Text("Next Exercise") },
-            text = { Text("Move to $nextName") },
-            confirmButton = {
-                TextButton(onClick = { nextExercisePrompt = null }) {
-                    Text("Continue")
+    setPickerTarget?.let { (exerciseId, setIndex) ->
+        val targetExercise = day.exercises.firstOrNull { exercise -> exercise.id == exerciseId }
+        if (targetExercise != null) {
+            val selectedForExercise = selectedSetRepsByExerciseId[exerciseId]
+                ?: List(targetExercise.sets) { targetExercise.reps }
+            val initialValue = selectedForExercise.getOrElse(setIndex) { targetExercise.reps }
+            NumberWheelDialog(
+                title = "${targetExercise.name} - Set ${setIndex + 1}",
+                value = initialValue,
+                range = 1..50,
+                valueText = { "$it reps" },
+                onDismiss = { setPickerTarget = null },
+                onConfirm = { selected ->
+                    updateSetRepsSelection(
+                        exercise = targetExercise,
+                        setIndex = setIndex,
+                        selectedReps = selected
+                    )
+                    setPickerTarget = null
                 }
-            }
-        )
+            )
+        } else {
+            setPickerTarget = null
+        }
     }
 
     if (showAchievementPopup) {
@@ -1938,7 +2857,7 @@ private fun WorkoutDayScreen(
         AlertDialog(
             onDismissRequest = { showFinishConfirm = false },
             title = { Text("Finish day workout?") },
-            text = { Text("This will close the active session and show summary.") },
+            text = { Text("This will close the active workout session.") },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -1956,83 +2875,238 @@ private fun WorkoutDayScreen(
             }
         )
     }
+}
 
-    if (showSummary) {
-        AlertDialog(
-            onDismissRequest = { showSummary = false },
-            title = { Text("Workout Summary") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("Workout: ${day.workoutName}")
-                    Text("Exercises: ${day.exercises.size}")
-                    Text("Planned sets: ${day.exercises.sumOf { it.sets }}")
-                    Text("Logged sets: $loggedSetCount")
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showSummary = false }) {
-                    Text("Done")
+@Composable
+private fun WorkoutActivePage(
+    day: WorkoutDayModel,
+    isSessionReady: Boolean,
+    focusedExerciseId: Long,
+    selectedSetRepsByExerciseId: Map<Long, List<Int>>,
+    loggedExerciseIds: Set<Long>,
+    onFocusExercise: (Long) -> Unit,
+    onSetTap: (Long, Int) -> Unit,
+    onLogFocusedExercise: () -> Unit,
+    onFinish: () -> Unit
+) {
+    val focusedExercise = day.exercises.firstOrNull { exercise -> exercise.id == focusedExerciseId }
+    val canLogFocusedExercise =
+        isSessionReady && focusedExercise != null && focusedExercise.id !in loggedExerciseIds
+    val canFinishWorkout = loggedExerciseIds.isNotEmpty()
+    var showSessionActions by remember(day.dayNumber) { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .fillMaxHeight(),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Card(
+            shape = RoundedCornerShape(18.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = "Logged ${loggedExerciseIds.size}/${day.exercises.size} exercises",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    day.exercises.forEach { exercise ->
+                        val isFocused = focusedExerciseId == exercise.id
+                        val isLogged = exercise.id in loggedExerciseIds
+                        FilterChip(
+                            selected = isFocused,
+                            enabled = !isLogged,
+                            onClick = { onFocusExercise(exercise.id) },
+                            label = {
+                                Text(
+                                    if (isLogged) {
+                                        "${exercise.name} Done"
+                                    } else {
+                                        exercise.name
+                                    }
+                                )
+                            }
+                        )
+                    }
                 }
             }
-        )
+        }
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)),
+            elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.78f)
+            )
+        ) {
+            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (focusedExercise == null) {
+                    Text(
+                        text = "Select any exercise chip above to start logging reps.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                } else {
+                    Text(
+                        text = focusedExercise.name,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+
+                    WorkoutDataRowReadOnly(
+                        label = "Planned reps",
+                        value = "${focusedExercise.reps}"
+                    )
+
+                    val selectedSetReps = selectedSetRepsByExerciseId[focusedExercise.id]
+                        ?: List(focusedExercise.sets) { focusedExercise.reps }
+
+                    repeat(focusedExercise.sets) { setIndex ->
+                        val selectedValue = selectedSetReps.getOrElse(setIndex) { focusedExercise.reps }
+                        WorkoutDataRowEditable(
+                            label = "Set ${setIndex + 1}",
+                            value = "$selectedValue reps",
+                            enabled = focusedExercise.id !in loggedExerciseIds,
+                            onClick = { onSetTap(focusedExercise.id, setIndex) }
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.weight(1f, fill = true))
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(18.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = onLogFocusedExercise,
+                    enabled = canLogFocusedExercise,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(58.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 3.dp)
+                ) {
+                    Text(if (isSessionReady) "Log Exercise" else "Starting...")
+                }
+
+                TextButton(
+                    onClick = { showSessionActions = !showSessionActions },
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                ) {
+                    Text(if (showSessionActions) "Hide Session Actions" else "Show Session Actions")
+                }
+
+                if (showSessionActions) {
+                    OutlinedButton(
+                        onClick = onFinish,
+                        enabled = canFinishWorkout,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.45f)),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.error
+                        )
+                    ) {
+                        Icon(Icons.Rounded.CheckCircle, contentDescription = null)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Finish Workout")
+                    }
+                }
+            }
+        }
     }
 }
 
 @Composable
-private fun CurrentSetLogger(
-    day: WorkoutDayModel,
-    currentExerciseIndex: Int,
-    currentSetNumber: Int,
-    actualRepsInput: String,
-    actualWeightInput: String,
-    onActualRepsChanged: (String) -> Unit,
-    onActualWeightChanged: (String) -> Unit,
-    onSaveSet: () -> Unit
+private fun WorkoutDataRowReadOnly(
+    label: String,
+    value: String
 ) {
-    val currentExercise = day.exercises.getOrNull(currentExerciseIndex) ?: return
+    val mutedTextColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.86f)
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.78f)
-        )
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
-        Column(modifier = Modifier.padding(14.dp)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Text(
-                text = "Current Set",
+                text = label,
+                style = MaterialTheme.typography.bodyMedium,
+                color = mutedTextColor
+            )
+            Text(
+                text = value,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Medium,
+                color = mutedTextColor
+            )
+        }
+    }
+}
+
+@Composable
+private fun WorkoutDataRowEditable(
+    label: String,
+    value: String,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = enabled, onClick = onClick),
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(text = label, style = MaterialTheme.typography.bodyMedium)
+            Text(
+                text = value,
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold
             )
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(currentExercise.name)
-            Text("Set $currentSetNumber/${currentExercise.sets} - Planned ${currentExercise.reps} reps")
-            if (currentExercise.plannedWeight.isNotBlank()) {
-                Text("Planned weight: ${currentExercise.plannedWeight}")
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-            OutlinedTextField(
-                modifier = Modifier.fillMaxWidth(),
-                value = actualRepsInput,
-                onValueChange = onActualRepsChanged,
-                label = { Text("Actual reps") },
-                singleLine = true
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            OutlinedTextField(
-                modifier = Modifier.fillMaxWidth(),
-                value = actualWeightInput,
-                onValueChange = onActualWeightChanged,
-                label = { Text("Actual weight (optional)") },
-                singleLine = true
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            TextButton(onClick = onSaveSet) {
-                Text("Save Set")
-            }
         }
     }
 }
@@ -2221,6 +3295,18 @@ private fun ExerciseRow(
                         enabled = canQuickEdit,
                         onClick = onQuickEditInterval
                     )
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                    Text(
+                        text = "remarks",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = exercise.remarks.ifBlank { "No remarks" },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f)
+                    )
                 }
 
                 if (isCurrent) {
@@ -2285,6 +3371,7 @@ private fun ExerciseEditorDialog(
     var reps by remember(initialDraft.reps) { mutableStateOf(initialDraft.reps.toString()) }
     var interval by remember(initialDraft.intervalSeconds) { mutableStateOf(initialDraft.intervalSeconds.toString()) }
     var plannedWeight by remember(initialDraft.plannedWeight) { mutableStateOf(initialDraft.plannedWeight) }
+    var remarks by remember(initialDraft.remarks) { mutableStateOf(initialDraft.remarks) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -2321,6 +3408,14 @@ private fun ExerciseEditorDialog(
                     label = { Text("Planned weight") },
                     singleLine = true
                 )
+                OutlinedTextField(
+                    value = remarks,
+                    onValueChange = { remarks = it },
+                    label = { Text("Remarks") },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 2,
+                    maxLines = 4
+                )
             }
         },
         confirmButton = {
@@ -2336,7 +3431,8 @@ private fun ExerciseEditorDialog(
                             sets = (sets.toIntOrNull() ?: 3).coerceIn(1, 8),
                             reps = (reps.toIntOrNull() ?: 12).coerceIn(1, 50),
                             intervalSeconds = (interval.toIntOrNull() ?: 90).coerceAtLeast(0),
-                            plannedWeight = plannedWeight.trim()
+                            plannedWeight = plannedWeight.trim(),
+                            remarks = remarks.trim()
                         )
                     )
                 }
@@ -2435,6 +3531,24 @@ private fun formatDateShort(epochDay: Long): String {
     return formatter.format(Date(epochDay * MILLIS_PER_DAY))
 }
 
+private fun timestampMillisToEpochDay(timestampMillis: Long): Long {
+    val local = Calendar.getInstance().apply {
+        timeInMillis = timestampMillis
+    }
+    val utc = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
+    utc.clear()
+    utc.set(
+        local.get(Calendar.YEAR),
+        local.get(Calendar.MONTH),
+        local.get(Calendar.DAY_OF_MONTH),
+        0,
+        0,
+        0
+    )
+    utc.set(Calendar.MILLISECOND, 0)
+    return utc.timeInMillis / MILLIS_PER_DAY
+}
+
 private fun parseWeightValue(text: String): Float? {
     return Regex("\\d+(?:\\.\\d+)?")
         .find(text)
@@ -2462,6 +3576,58 @@ private fun resolveThemeColorOption(
     return options.firstOrNull { it.id == selectedId }
         ?: options.firstOrNull { it.id == fallbackId }
         ?: options.first()
+}
+
+private fun parseThemeHexColorOrDefault(hexValue: String?, fallback: Color): Color {
+    return parseThemeHexColor(hexValue) ?: fallback
+}
+
+private fun parseThemeHexColor(hexValue: String?): Color? {
+    val normalized = hexValue
+        ?.trim()
+        ?.removePrefix("#")
+        ?: return null
+
+    val rawValue = normalized.toLongOrNull(16) ?: return null
+    return when (normalized.length) {
+        6 -> {
+            val red = ((rawValue shr 16) and 0xFF).toInt()
+            val green = ((rawValue shr 8) and 0xFF).toInt()
+            val blue = (rawValue and 0xFF).toInt()
+            colorFromRgb(red = red, green = green, blue = blue)
+        }
+
+        8 -> {
+            val alpha = ((rawValue shr 24) and 0xFF).toInt()
+            val red = ((rawValue shr 16) and 0xFF).toInt()
+            val green = ((rawValue shr 8) and 0xFF).toInt()
+            val blue = (rawValue and 0xFF).toInt()
+            Color(
+                red = red / 255f,
+                green = green / 255f,
+                blue = blue / 255f,
+                alpha = alpha / 255f
+            )
+        }
+
+        else -> null
+    }
+}
+
+private fun colorFromRgb(red: Int, green: Int, blue: Int): Color {
+    return Color(
+        red = red.coerceIn(0, 255) / 255f,
+        green = green.coerceIn(0, 255) / 255f,
+        blue = blue.coerceIn(0, 255) / 255f,
+        alpha = 1f
+    )
+}
+
+private fun colorToHexRgb(color: Color): String {
+    val red = (color.red * 255f).roundToInt().coerceIn(0, 255)
+    val green = (color.green * 255f).roundToInt().coerceIn(0, 255)
+    val blue = (color.blue * 255f).roundToInt().coerceIn(0, 255)
+    return String.format(Locale.ENGLISH, "#%02X%02X%02X", red, green, blue)
 }
 
 private fun mixWithWhite(base: Color, whiteAmount: Float): Color {
@@ -2583,6 +3749,7 @@ private fun buildBackupJson(scheduleTitle: String, snapshot: BackupSnapshot): St
                             .put("reps", exercise.reps)
                             .put("intervalSeconds", exercise.intervalSeconds)
                             .put("plannedWeight", exercise.plannedWeight)
+                            .put("remarks", exercise.remarks)
                             .put("position", exercise.position)
                             .put("isDone", exercise.isDone)
                     )
@@ -2691,6 +3858,7 @@ private fun JSONArray?.toExercises(): List<ExerciseEntity> {
                     reps = exercise.optInt("reps", 12),
                     intervalSeconds = exercise.optInt("intervalSeconds", 90),
                     plannedWeight = exercise.optString("plannedWeight", ""),
+                    remarks = exercise.optString("remarks", ""),
                     position = exercise.optInt("position", index + 1),
                     isDone = exercise.optBoolean("isDone", false)
                 )

@@ -95,6 +95,7 @@ viewModelScope.launch {
 - Room schema changes must include migration strategy.
 - `fallbackToDestructiveMigration` is acceptable for debug prototypes, not for production releases.
 - Keep transactions explicit for multi-step writes.
+- When a persisted field is added/changed, update backup export/import mapping in the same change.
 
 ## 7. Error handling and logging
 
@@ -102,6 +103,13 @@ viewModelScope.launch {
 - Convert technical errors into user-meaningful UI messages.
 - Log with enough context for debugging, but never log secrets.
 - Keep logs structured and avoid noisy logs in release builds.
+- For user-triggered operations (import/export/restore), show explicit success and failure feedback in UI, not only logs.
+
+## 7.1 Backup Feedback UX
+
+- Prefer a styled status card/dialog with title, message, and clear visual state (success/error icon and color).
+- Keep feedback dismissible and avoid transient messages that disappear before users can read them.
+- If navigation changes right after an operation, ensure feedback is still visible in the destination screen/context.
 
 ## 8. Testing standards
 
@@ -136,6 +144,8 @@ Windows:
 - Use immutable UI models for predictable recomposition behavior.
 - Avoid blocking main thread (disk/network/large parsing).
 - Keep animations meaningful and short.
+- Keep dense list rows scan-first: only critical metrics in compact chips/strips.
+- Place long-form notes (for example exercise remarks) in expanded details, not in collapsed summary chips.
 
 ## 10. Security and privacy
 

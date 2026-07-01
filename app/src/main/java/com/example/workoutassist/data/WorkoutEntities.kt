@@ -35,6 +35,7 @@ data class ExerciseEntity(
     val reps: Int,
     val intervalSeconds: Int,
     val plannedWeight: String,
+    val remarks: String = "",
     val position: Int,
     val isDone: Boolean = false
 )
