@@ -1029,6 +1029,140 @@ How to use:
 
 ---
 
+## Version 1.52 (2026-07-01)
+- Change summary:
+  - Updated active-session `Finish Workout` to long-press gesture.
+  - Kept `Finish Workout` always enabled inside revealed session actions.
+- Why changed:
+  - Further reduce accidental finish activation while preserving quick intentional access.
+  - Avoid blocking finish based on logged exercise count.
+- UX impact:
+  - `Finish Workout` remains hidden by default behind `Show Session Actions`.
+  - After revealing session actions, users must long-press `Finish Workout` to trigger finish confirmation.
+  - Finish is available even when no exercises are logged.
+- Data/model impact:
+  - None.
+- Migration notes (if any):
+  - None.
+
+---
+
+## Version 1.53 (2026-07-01)
+- Change summary:
+  - Added random motivational start message when a workout session begins.
+  - Message auto-dismisses after 2 seconds and supports early close with `X`.
+- Why changed:
+  - Add a light, fun engagement moment at workout start without adding friction.
+  - Keep interruption minimal with short timeout and manual override.
+- UX impact:
+  - On `Start Workout`, one of three motivational lines is shown in random order.
+  - Message is visible briefly (2s) and can be dismissed sooner via close icon.
+  - Core workout flow (focus chips, set rows, log/finish actions) remains unchanged.
+- Data/model impact:
+  - None.
+- Migration notes (if any):
+  - None.
+
+---
+
+## Version 1.54 (2026-07-01)
+- Change summary:
+  - Fixed residual top empty-space across app pages by normalizing inset handling.
+  - Applied minimal code-quality cleanup by using the same Scaffold inset policy across root and nested page scaffolds.
+- Why changed:
+  - Ensure no page keeps unexpected blank strip above content/title.
+  - Improve consistency and maintainability of layout behavior.
+- UX impact:
+  - Settings top blank space is removed.
+  - Schedule, Insights, Settings, and Workout Day render with consistent top alignment.
+- Data/model impact:
+  - None.
+- Migration notes (if any):
+  - None.
+
+---
+
+## Version 1.55 (2026-07-01)
+- Change summary:
+  - Added edited-state tracking for active-session set rows.
+  - Edited set rows now show explicit `Edited` indicator and highlighted styling.
+- Why changed:
+  - Prevent confusion where already-updated set rows looked identical to untouched rows.
+  - Reduce accidental re-editing of sets users already changed.
+- UX impact:
+  - After confirming a set value in wheel picker, that set row remains marked as `Edited`.
+  - Edited rows use stronger border/background/value emphasis compared with untouched rows.
+  - Logged exercise flow and persistence remain unchanged.
+- Data/model impact:
+  - None.
+- Migration notes (if any):
+  - None.
+
+---
+
+## Version 1.56 (2026-07-01)
+- Change summary:
+  - Rolled back forced zero-inset overrides on root/settings/workout scaffolds and top app bars.
+- Why changed:
+  - Recent inset normalization caused top content to render pulled-up and hard to touch on some pages/devices.
+  - Prioritized immediate usability rollback.
+- UX impact:
+  - Top content touchability is restored with default inset handling.
+  - Pages may temporarily show prior top spacing behavior until a safer cross-device inset strategy is reintroduced.
+- Data/model impact:
+  - None.
+- Migration notes (if any):
+  - None.
+
+---
+
+## Version 1.57 (2026-07-01)
+- Change summary:
+  - Center-aligned focused exercise name in the workout session set-info card.
+- Why changed:
+  - Improve visual focus and hierarchy while reviewing set rows during session logging.
+- UX impact:
+  - Exercise title now appears centered above planned reps and editable set rows.
+  - Set editing behavior remains unchanged.
+- Data/model impact:
+  - None.
+- Migration notes (if any):
+  - None.
+
+---
+
+## Version 1.58 (2026-07-01)
+- Change summary:
+  - Removed explicit `Edited` text badge from active-session set rows.
+  - Kept edited row visual emphasis (border/background/value styling).
+- Why changed:
+  - Reduce visual clutter while preserving the accidental re-edit prevention cue.
+- UX impact:
+  - Edited rows are still clearly distinguishable, but without textual `Edited` tag.
+  - Set editing flow and behavior remain unchanged.
+- Data/model impact:
+  - None.
+- Migration notes (if any):
+  - None.
+
+---
+
+## Version 1.59 (2026-07-01)
+- Change summary:
+  - Removed Template Frozen/Unlocked lock toggle from active workout UI.
+  - Simplified template edit gating to remain blocked during active workout without freeze mode state.
+- Why changed:
+  - Freeze control provided little practical value in current flow and added UI clutter/confusion.
+- UX impact:
+  - Lock icon and freeze label are no longer shown during workout sessions.
+  - Template edits still remain blocked while workout is active.
+- Data/model impact:
+  - None.
+- Migration notes (if any):
+  - None.
+
+---
+
 ## Versioning Rule
 - Every product/UI naming decision must be appended as a new version section.
 - Do not rewrite past version content; add only incremental deltas.

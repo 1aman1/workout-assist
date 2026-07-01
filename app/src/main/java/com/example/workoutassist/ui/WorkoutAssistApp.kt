@@ -13,6 +13,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
@@ -22,7 +23,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -44,12 +44,11 @@ import androidx.compose.material.icons.outlined.DragHandle
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.FitnessCenter
-import androidx.compose.material.icons.rounded.Lock
-import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material.icons.rounded.Refresh
@@ -105,6 +104,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -401,7 +401,13 @@ private const val DEFAULT_THEME_BACKGROUND_CUSTOM_HEX = "#FFFFFF"
 private const val DEFAULT_THEME_STATUS_CUSTOM_HEX = "#1CCBCB"
 private const val DEFAULT_THEME_DONE_CUSTOM_HEX = "#1E9E58"
 private const val CUSTOM_THEME_OPTION_ID = "custom"
-private const val LATEST_DESIGN_VERSION = "1.51"
+private const val LATEST_DESIGN_VERSION = "1.59"
+
+private val WORKOUT_SESSION_START_MESSAGES = listOf(
+    "Lift weights and come back!",
+    "This is something you won't regret!",
+    "Last time you lifted more with less sweat."
+)
 
 private val BACKGROUND_THEME_OPTIONS = listOf(
     ThemeColorOption(id = "white", label = "White", color = Color(0xFFFFFFFF)),
@@ -422,6 +428,14 @@ private val DONE_THEME_OPTIONS = listOf(
 )
 
 private val LATEST_VERSION_HIGHLIGHTS = listOf(
+    "Dropped Template Frozen lock toggle and status label from active workout view; template edits remain blocked during active workout.",
+    "Edited set rows in workout session now keep visual highlight styling without showing an explicit Edited text badge.",
+    "Focused exercise name in workout session data card is now centered for clearer visual hierarchy.",
+    "Rolled back forced zero-inset overrides to restore touchable top content across pages.",
+    "Edited set rows in workout session are visually highlighted after confirmation to reduce accidental re-edits.",
+    "Removed residual top empty space across pages by aligning Scaffold and TopAppBar insets.",
+    "Starting a workout now shows a random 2-second motivational message with an X to close early.",
+    "Finish Workout now requires long-press (inside explicit Session Actions), and remains available regardless of logged exercise count.",
     "Workout session now keeps Finish hidden until explicit Session Actions reveal; Log Exercise is wider and bottom-anchored for easier thumb reach.",
     "This Month ratio now uses done sessions divided by total days in current month.",
     "Insights now has a Refresh Stats button with circular refresh action and only 7-day + this-month ratios.",
@@ -2066,7 +2080,6 @@ private fun WorkoutDayScreen(
 
     var editMode by remember(day.dayNumber) { mutableStateOf(false) }
     var workoutActive by remember(day.dayNumber) { mutableStateOf(false) }
-    var freezeMode by remember(day.dayNumber) { mutableStateOf(true) }
 
     var showAddDialog by remember(day.dayNumber) { mutableStateOf(false) }
     var editExerciseTarget by remember(day.dayNumber) { mutableStateOf<ExerciseModel?>(null) }
@@ -2076,10 +2089,14 @@ private fun WorkoutDayScreen(
     var selectedSetRepsByExerciseId by remember(day.dayNumber) {
         mutableStateOf<Map<Long, List<Int>>>(emptyMap())
     }
+    var editedSetIndexesByExerciseId by remember(day.dayNumber) {
+        mutableStateOf<Map<Long, Set<Int>>>(emptyMap())
+    }
     var loggedExerciseIds by remember(day.dayNumber) { mutableStateOf<Set<Long>>(emptySet()) }
     var setPickerTarget by remember(day.dayNumber) { mutableStateOf<Pair<Long, Int>?>(null) }
 
     var activeSessionId by remember(day.dayNumber) { mutableLongStateOf(0L) }
+    var sessionStartMessage by remember(day.dayNumber) { mutableStateOf<String?>(null) }
 
     var showFinishConfirm by remember(day.dayNumber) { mutableStateOf(false) }
     var showAchievementPopup by remember(day.dayNumber) { mutableStateOf(false) }
@@ -2094,7 +2111,18 @@ private fun WorkoutDayScreen(
     var dragOffsetY by remember(day.dayNumber) { mutableFloatStateOf(0f) }
     var editCollapseSignal by remember(day.dayNumber) { mutableIntStateOf(0) }
 
-    val canEditTemplate = editMode && (!workoutActive || !freezeMode)
+    LaunchedEffect(workoutActive, sessionStartMessage) {
+        val message = sessionStartMessage ?: return@LaunchedEffect
+        if (!workoutActive) {
+            return@LaunchedEffect
+        }
+        delay(2000)
+        if (sessionStartMessage == message) {
+            sessionStartMessage = null
+        }
+    }
+
+    val canEditTemplate = editMode && !workoutActive
     val exerciseListBottomPadding = if (canEditTemplate) 96.dp else 16.dp
     val dayDetailGradient = Brush.verticalGradient(
         colors = listOf(
@@ -2228,14 +2256,15 @@ private fun WorkoutDayScreen(
         }
 
         workoutActive = true
-        freezeMode = true
         editMode = false
         focusedExerciseId = 0L
         selectedSetRepsByExerciseId = day.exercises.associate { exercise ->
             exercise.id to List(exercise.sets) { exercise.reps }
         }
+        editedSetIndexesByExerciseId = emptyMap()
         loggedExerciseIds = emptySet()
         setPickerTarget = null
+        sessionStartMessage = WORKOUT_SESSION_START_MESSAGES.random()
     }
 
     fun updateSetRepsSelection(exercise: ExerciseModel, setIndex: Int, selectedReps: Int) {
@@ -2247,6 +2276,9 @@ private fun WorkoutDayScreen(
         val updated = current.toMutableList()
         updated[setIndex] = selectedReps.coerceIn(1, 50)
         selectedSetRepsByExerciseId = selectedSetRepsByExerciseId + (exercise.id to updated.toList())
+
+        val editedSetIndexes = editedSetIndexesByExerciseId[exercise.id].orEmpty() + setIndex
+        editedSetIndexesByExerciseId = editedSetIndexesByExerciseId + (exercise.id to editedSetIndexes)
     }
 
     fun saveFocusedExerciseSets() {
@@ -2295,12 +2327,13 @@ private fun WorkoutDayScreen(
 
     fun resetWorkoutModeState() {
         workoutActive = false
-        freezeMode = true
         editMode = false
         focusedExerciseId = 0L
         selectedSetRepsByExerciseId = emptyMap()
+        editedSetIndexesByExerciseId = emptyMap()
         loggedExerciseIds = emptySet()
         setPickerTarget = null
+        sessionStartMessage = null
         activeSessionId = 0L
         showFinishConfirm = false
         showExitWorkoutModeConfirm = false
@@ -2344,7 +2377,6 @@ private fun WorkoutDayScreen(
                     containerColor = MaterialTheme.colorScheme.background,
                     scrolledContainerColor = MaterialTheme.colorScheme.background
                 ),
-                windowInsets = WindowInsets(0, 0, 0, 0),
                 title = { Text("") },
                 navigationIcon = {
                     IconButton(
@@ -2363,15 +2395,6 @@ private fun WorkoutDayScreen(
                         enabled = canEditTemplate
                     ) {
                         Icon(Icons.Rounded.Edit, contentDescription = "Rename Workout")
-                    }
-
-                    if (workoutActive) {
-                        IconButton(onClick = { freezeMode = !freezeMode }) {
-                            Icon(
-                                imageVector = if (freezeMode) Icons.Rounded.Lock else Icons.Rounded.LockOpen,
-                                contentDescription = if (freezeMode) "Freeze On" else "Freeze Off"
-                            )
-                        }
                     }
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -2492,22 +2515,19 @@ private fun WorkoutDayScreen(
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text("Start Workout")
                             }
-                        } else {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.End,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = if (freezeMode) "Template Frozen" else "Template Unlocked",
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
-                            }
                         }
                     }
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
+
+                if (workoutActive && !sessionStartMessage.isNullOrBlank()) {
+                    WorkoutSessionStartMessageCard(
+                        message = sessionStartMessage.orEmpty(),
+                        onDismiss = { sessionStartMessage = null }
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
 
                 if (workoutActive) {
                     WorkoutActivePage(
@@ -2515,6 +2535,7 @@ private fun WorkoutDayScreen(
                         isSessionReady = activeSessionId != 0L,
                         focusedExerciseId = focusedExerciseId,
                         selectedSetRepsByExerciseId = selectedSetRepsByExerciseId,
+                        editedSetIndexesByExerciseId = editedSetIndexesByExerciseId,
                         loggedExerciseIds = loggedExerciseIds,
                         onFocusExercise = { exerciseId ->
                             if (exerciseId !in loggedExerciseIds) {
@@ -2878,11 +2899,50 @@ private fun WorkoutDayScreen(
 }
 
 @Composable
+private fun WorkoutSessionStartMessageCard(
+    message: String,
+    onDismiss: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.64f)
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = message,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onPrimaryContainer
+            )
+            IconButton(onClick = onDismiss) {
+                Icon(
+                    imageVector = Icons.Rounded.Close,
+                    contentDescription = "Dismiss message",
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun WorkoutActivePage(
     day: WorkoutDayModel,
     isSessionReady: Boolean,
     focusedExerciseId: Long,
     selectedSetRepsByExerciseId: Map<Long, List<Int>>,
+    editedSetIndexesByExerciseId: Map<Long, Set<Int>>,
     loggedExerciseIds: Set<Long>,
     onFocusExercise: (Long) -> Unit,
     onSetTap: (Long, Int) -> Unit,
@@ -2892,7 +2952,6 @@ private fun WorkoutActivePage(
     val focusedExercise = day.exercises.firstOrNull { exercise -> exercise.id == focusedExerciseId }
     val canLogFocusedExercise =
         isSessionReady && focusedExercise != null && focusedExercise.id !in loggedExerciseIds
-    val canFinishWorkout = loggedExerciseIds.isNotEmpty()
     var showSessionActions by remember(day.dayNumber) { mutableStateOf(false) }
 
     Column(
@@ -2964,8 +3023,10 @@ private fun WorkoutActivePage(
                 } else {
                     Text(
                         text = focusedExercise.name,
+                        modifier = Modifier.fillMaxWidth(),
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
+                        fontWeight = FontWeight.SemiBold,
+                        textAlign = TextAlign.Center
                     )
 
                     WorkoutDataRowReadOnly(
@@ -2975,12 +3036,14 @@ private fun WorkoutActivePage(
 
                     val selectedSetReps = selectedSetRepsByExerciseId[focusedExercise.id]
                         ?: List(focusedExercise.sets) { focusedExercise.reps }
+                    val editedSetIndexes = editedSetIndexesByExerciseId[focusedExercise.id].orEmpty()
 
                     repeat(focusedExercise.sets) { setIndex ->
                         val selectedValue = selectedSetReps.getOrElse(setIndex) { focusedExercise.reps }
                         WorkoutDataRowEditable(
                             label = "Set ${setIndex + 1}",
                             value = "$selectedValue reps",
+                            isEdited = setIndex in editedSetIndexes,
                             enabled = focusedExercise.id !in loggedExerciseIds,
                             onClick = { onSetTap(focusedExercise.id, setIndex) }
                         )
@@ -3023,21 +3086,39 @@ private fun WorkoutActivePage(
                 }
 
                 if (showSessionActions) {
-                    OutlinedButton(
-                        onClick = onFinish,
-                        enabled = canFinishWorkout,
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(52.dp),
-                        shape = RoundedCornerShape(14.dp),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.45f)),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = MaterialTheme.colorScheme.error
-                        )
+                            .height(52.dp)
+                            .border(
+                                width = 1.dp,
+                                color = MaterialTheme.colorScheme.error.copy(alpha = 0.45f),
+                                shape = RoundedCornerShape(14.dp)
+                            )
+                            .background(
+                                color = MaterialTheme.colorScheme.surface,
+                                shape = RoundedCornerShape(14.dp)
+                            )
+                            .combinedClickable(onClick = { }, onLongClick = onFinish)
+                            .padding(horizontal = 14.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Rounded.CheckCircle, contentDescription = null)
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Finish Workout")
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.CheckCircle,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                            Text(
+                                text = "Long Press to Finish Workout",
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
                     }
                 }
             }
@@ -3083,16 +3164,28 @@ private fun WorkoutDataRowReadOnly(
 private fun WorkoutDataRowEditable(
     label: String,
     value: String,
+    isEdited: Boolean,
     enabled: Boolean,
     onClick: () -> Unit
 ) {
+    val borderColor = if (isEdited) {
+        MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+    } else {
+        MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)
+    }
+    val containerColor = if (isEdited) {
+        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
+    } else {
+        MaterialTheme.colorScheme.surface
+    }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(enabled = enabled, onClick = onClick),
         shape = RoundedCornerShape(12.dp),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        border = BorderStroke(1.dp, borderColor),
+        colors = CardDefaults.cardColors(containerColor = containerColor)
     ) {
         Row(
             modifier = Modifier
@@ -3101,11 +3194,19 @@ private fun WorkoutDataRowEditable(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(text = label, style = MaterialTheme.typography.bodyMedium)
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyMedium
+            )
             Text(
                 text = value,
                 style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold
+                fontWeight = FontWeight.SemiBold,
+                color = if (isEdited) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                }
             )
         }
     }

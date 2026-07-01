@@ -4,7 +4,7 @@ Lean Android utility app for fast workout logging during training.
 
 Primary design source: see DESIGN_VERSIONS.md and append all future design updates as version increments.
 
-## Current Product Snapshot (v1.51)
+## Current Product Snapshot (v1.59)
 
 - Local-only Android app (no auth, no cloud sync).
 - 7-day repeating workout template, seeded on first launch.
@@ -43,6 +43,12 @@ Primary design source: see DESIGN_VERSIONS.md and append all future design updat
 - Finishing a workout session no longer shows a workout summary stats popup.
 - Active workout now uses a wider bottom-anchored `Log Exercise` button for easier thumb reach.
 - `Finish Workout` is hidden by default and appears only after explicit `Show Session Actions` tap.
+- `Finish Workout` in session actions now requires long press and stays available regardless of exercises logged.
+- Starting a workout session now briefly shows one random motivational message (2s) with an `X` to dismiss early.
+- Forced zero-inset overrides were rolled back to restore touchable top content across pages.
+- In active workout data rows, confirmed set edits keep highlighted styling without showing an explicit `Edited` text badge.
+- Focused exercise name is centered in the workout session set-info card.
+- Active workout no longer shows the Template Frozen/Unlocked lock control.
 
 ## Screen Map
 
@@ -68,13 +74,18 @@ Primary design source: see DESIGN_VERSIONS.md and append all future design updat
 ### 2) Workout Day Screen
 
 - Top app bar includes back arrow navigation icon, rename workout action (edit-capable context), and edit mode switch.
-- During active workout, freeze lock toggle appears in top app bar.
+- During active workout, freeze lock toggle is removed for a cleaner top bar.
 - Header shows workout name with date on the right.
 - Date change is available only when edit mode is ON and workout is not active.
 - Manual workout done toggle is visible only in edit mode.
 - Pre-workout primary CTA is full-width Start Workout.
 - Start Workout is disabled while edit mode is ON.
-- Active workout header shows freeze status text, while finish is accessed through explicit session actions.
+- Active workout header keeps focus on workout/session controls, with finish accessed through explicit session actions.
+- Finish action is triggered by long-press gesture inside session actions to reduce accidental taps.
+- On workout start, a short-lived motivational message card appears and auto-dismisses after 2 seconds unless closed sooner.
+- Recent forced inset alignment was reverted for now to avoid pulled-up, hard-to-touch top content.
+- Set rows that have been edited remain visually distinct (style-only) to reduce accidental re-editing of previously changed sets.
+- Exercise title above planned/set rows is centered for better scanability in session mode.
 - Entering edit mode collapses expanded exercise cards for cleaner editing context.
 - While workout mode is active, back action asks confirmation before exiting session.
 - Turning edit mode OFF after making template changes prompts for backup export.
@@ -129,8 +140,7 @@ Primary design source: see DESIGN_VERSIONS.md and append all future design updat
 ## Interaction Rules
 
 - Edit mode gates template changes.
-- Freeze mode defaults ON when workout starts.
-- While freeze is ON during active workout, destructive/template structure edits remain blocked.
+- Template structure edits remain blocked during active workout.
 - Reorder is only available in edit-capable context.
 - Workout mode exits only after explicit user confirmation when back is pressed.
 - Start Workout cannot begin while edit mode is active.
