@@ -4,7 +4,7 @@ Lean Android utility app for fast workout logging during training.
 
 Primary design source: see DESIGN_VERSIONS.md and append all future design updates as version increments.
 
-## Current Product Snapshot (v1.86)
+## Current Product Snapshot (v1.89)
 
 - Local-only Android app (no auth, no cloud sync).
 - 7-day repeating workout template, seeded on first launch.
@@ -67,8 +67,11 @@ Primary design source: see DESIGN_VERSIONS.md and append all future design updat
 - Insights now focuses on ratios plus workout-specific history by workout name.
 - Top `Trailing 7 Day Ratio` and `This Month Ratio` now show plain count format only (no percentage suffix).
 - Insights top ratio strip now displays only the two values (for example `2/7` and `10/31`) without metric label text.
-- Insights workout selection for history now uses a dropdown control instead of chips.
-- Insights lets users select a workout (for example Chest) and view the last 4-8 same workouts in a date-based history grid.
+- Insights history selection now uses workout-level dropdown first (day-style workout), then exercise selection within that workout.
+- Insights renders selected exercise history as stacked date cards from newest to oldest.
+- Each date card shows set-level `weight x reps` entries (for example `50 x6`, `60 x6x6`).
+- Insights exercise history now supports pointed edit/delete at set-entry level.
+- Insights also supports complete delete of one selected date entry for selected exercise only; same workout on other dates remains untouched.
 - A one-time production reset now clears existing persisted workout/session data and reseeds template dates from today on first launch after this update.
 - Room destructive migration fallback has been removed so future schema upgrades must use explicit migrations to preserve data.
 - On `workout.day`, expanded reps/wgt table edits are now truly per-set and persisted independently (editing one set no longer changes all sets).

@@ -1611,6 +1611,61 @@ How to use:
 
 ---
 
+## Version 1.87 (2026-07-07)
+- Change summary:
+  - Replaced the workout history summary grid (`sets`, `ex`, overall `reps`) with day-level `weight x reps` entries.
+  - Updated Insights history selection focus to exercise-level progression using a dropdown selector.
+- Why changed:
+  - Users need quick date-by-date recall of what weight and reps were performed, not aggregate counts.
+- UX impact:
+  - For each logged date, Insights now shows compact lines like `50 x6` and `60 x6x6`.
+  - Set count is naturally inferred from entry repetitions without extra summary rows.
+  - History remains focused on recent dates (last up to 8).
+- Data/model impact:
+  - None.
+- Migration notes (if any):
+  - None.
+
+---
+
+## Version 1.88 (2026-07-07)
+- Change summary:
+  - Added pointed set-entry edit in Insights exercise history (fix wrong set data directly).
+  - Added set-entry delete in Insights for targeted cleanup.
+  - Added complete date-entry delete for selected exercise and selected date only.
+- Why changed:
+  - Users need precise correction tools for wrong set logs without affecting same workout history on other dates.
+- UX impact:
+  - Inside each date section, users can edit reps/weight for an individual set entry.
+  - Users can delete only one set entry, or delete the whole selected-date entry for selected exercise.
+  - Deleting one date entry does not remove same-workout entries from other dates.
+- Data/model impact:
+  - No schema changes.
+  - Added DAO/repository operations for targeted set-log update/delete and exercise-date scoped delete.
+- Migration notes (if any):
+  - None.
+
+---
+
+## Version 1.89 (2026-07-07)
+- Change summary:
+  - Changed Insights selection flow to workout-first dropdown (day-level workout), then exercise selection within that workout.
+  - Reworked history display into stacked date cards ordered newest to oldest.
+- Why changed:
+  - Users requested workout-level entry point (like schedule workout grouping) before drilling into exercise history.
+  - Card stack layout improves scanability of recent-to-older history.
+- UX impact:
+  - Users first choose a workout (for example Chest day), then pick a specific exercise from that workout.
+  - Selected exercise history appears as stacked date cards with recent date at top and older dates below.
+  - Existing pointed set edit/delete and date-scoped delete controls remain available inside each card.
+- Data/model impact:
+  - No schema changes.
+  - Query/filter logic now scopes exercise options and date history by selected workout.
+- Migration notes (if any):
+  - None.
+
+---
+
 ## Versioning Rule
 - Every product/UI naming decision must be appended as a new version section.
 - Do not rewrite past version content; add only incremental deltas.

@@ -379,6 +379,27 @@ class WorkoutRepository(private val dao: WorkoutDao) {
         dao.finishSession(sessionId, System.currentTimeMillis())
     }
 
+    suspend fun updateSetLogEntry(logId: Long, actualReps: Int, actualWeight: String) {
+        dao.updateSetLogEntry(
+            logId = logId,
+            actualReps = actualReps.coerceIn(MIN_REPS, MAX_REPS),
+            actualWeight = actualWeight.trim()
+        )
+    }
+
+    suspend fun deleteSetLogEntry(logId: Long, sessionId: Long) {
+        dao.deleteSetLogEntry(logId)
+        dao.deleteSessionIfNoLogs(sessionId)
+    }
+
+    suspend fun deleteExerciseHistoryForSession(sessionId: Long, exerciseId: Long) {
+        dao.deleteExerciseLogsForSession(
+            sessionId = sessionId,
+            exerciseId = exerciseId
+        )
+        dao.deleteSessionIfNoLogs(sessionId)
+    }
+
     suspend fun exportBackupSnapshot(): BackupSnapshot {
         return BackupSnapshot(
             days = dao.getAllDays().sortedBy { it.dayNumber },

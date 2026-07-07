@@ -87,6 +87,18 @@ interface WorkoutDao {
     @Insert
     suspend fun insertSetLog(log: SetLogEntity)
 
+    @Query("UPDATE set_logs SET actualReps = :actualReps, actualWeight = :actualWeight WHERE id = :logId")
+    suspend fun updateSetLogEntry(logId: Long, actualReps: Int, actualWeight: String): Int
+
+    @Query("DELETE FROM set_logs WHERE id = :logId")
+    suspend fun deleteSetLogEntry(logId: Long): Int
+
+    @Query("DELETE FROM set_logs WHERE sessionId = :sessionId AND exerciseId = :exerciseId")
+    suspend fun deleteExerciseLogsForSession(sessionId: Long, exerciseId: Long): Int
+
+    @Query("DELETE FROM workout_sessions WHERE id = :sessionId AND NOT EXISTS (SELECT 1 FROM set_logs WHERE sessionId = :sessionId)")
+    suspend fun deleteSessionIfNoLogs(sessionId: Long): Int
+
     @Query("DELETE FROM set_logs")
     suspend fun deleteAllSetLogs()
 

@@ -1,0 +1,683 @@
+package com.example.workoutassist.ui
+
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import com.example.workoutassist.data.SetLogEntity
+import com.example.workoutassist.data.WorkoutRepository
+import com.example.workoutassist.data.WorkoutSessionEntity
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+
+private data class FinishedWorkoutSessionSnapshot(
+    val sessionId: Long,
+    val workoutName: String,
+    val epochDay: Long,
+    val finishedAtMillis: Long
+)
+
+private data class WorkoutHistorySnapshot(
+    val sessionId: Long,
+    val exerciseId: Long,
+    val epochDay: Long,
+    val setLogs: List<SetLogEntity>
+)
+
+private fun formatSetLogEntry(log: SetLogEntity): String {
+    val weightLabel = log.actualWeight
+        .trim()
+        .ifBlank { log.plannedWeight.trim() }
+        .ifBlank { "-" }
+    val reps = log.actualReps.coerceAtLeast(0)
+    return "$weightLabel x$reps"
+}
+
+@Composable
+internal fun InsightsScreen(
+    sessions: List<WorkoutSessionEntity>,
+    setLogs: List<SetLogEntity>,
+    repository: WorkoutRepository
+) {
+    val scope = rememberCoroutineScope()
+    val todayEpochDay = currentDateEpochDay()
+    var refreshNonce by remember { mutableIntStateOf(0) }
+    var isRefreshing by remember { mutableStateOf(false) }
+
+    val refreshRotation by animateFloatAsState(
+        targetValue = if (isRefreshing) 360f else 0f,
+        animationSpec = tween(durationMillis = 550),
+        label = "insightsRefreshRotation"
+    )
+
+    val finishedSessionSamples = remember(sessions, refreshNonce) {
+        sessions
+            .asSequence()
+            .mapNotNull { session ->
+                val finishedAt = session.finishedAt ?: return@mapNotNull null
+                val resolvedWorkoutName = session.workoutName
+                    .trim()
+                    .ifBlank { "Day ${session.dayNumber}" }
+
+                FinishedWorkoutSessionSnapshot(
+                    sessionId = session.id,
+                    workoutName = resolvedWorkoutName,
+                    epochDay = timestampMillisToEpochDay(finishedAt),
+                    finishedAtMillis = finishedAt
+                )
+            }
+            .sortedByDescending { sample -> sample.finishedAtMillis }
+            .toList()
+    }
+
+    val completedSessionEpochDays = remember(finishedSessionSamples, refreshNonce) {
+        finishedSessionSamples
+            .asSequence()
+            .map { sample -> sample.epochDay }
+            .toSet()
+    }
+
+    val (todayYear, todayMonth, _) = remember(todayEpochDay, refreshNonce) {
+        epochDayToYearMonthDay(todayEpochDay)
+    }
+    val monthStartEpochDay = remember(todayYear, todayMonth, refreshNonce) {
+        yearMonthDayToEpochDay(todayYear, todayMonth, 1)
+    }
+    val nextMonthStartEpochDay = remember(todayYear, todayMonth, refreshNonce) {
+        yearMonthDayToEpochDay(todayYear, todayMonth + 1, 1)
+    }
+
+    val doneLast7 = remember(completedSessionEpochDays, todayEpochDay, refreshNonce) {
+        val startDay = todayEpochDay - 6L
+        completedSessionEpochDays.count { day -> day in startDay..todayEpochDay }
+    }
+    val doneThisMonth = remember(completedSessionEpochDays, monthStartEpochDay, todayEpochDay, refreshNonce) {
+        completedSessionEpochDays.count { day -> day in monthStartEpochDay..todayEpochDay }
+    }
+    val thisMonthWindowDays = remember(monthStartEpochDay, nextMonthStartEpochDay, refreshNonce) {
+        (nextMonthStartEpochDay - monthStartEpochDay).toInt().coerceAtLeast(1)
+    }
+
+    val setLogsBySessionId = remember(setLogs, refreshNonce) {
+        setLogs.groupBy { log -> log.sessionId }
+    }
+
+    val trackedWorkoutNames = remember(finishedSessionSamples, refreshNonce) {
+        finishedSessionSamples
+            .map { sample -> sample.workoutName }
+            .distinct()
+    }
+    var selectedWorkoutName by remember { mutableStateOf("") }
+
+    LaunchedEffect(trackedWorkoutNames) {
+        selectedWorkoutName = when {
+            trackedWorkoutNames.isEmpty() -> ""
+            selectedWorkoutName in trackedWorkoutNames -> selectedWorkoutName
+            else -> trackedWorkoutNames.first()
+        }
+    }
+
+    val exerciseNamesForSelectedWorkout = remember(
+        selectedWorkoutName,
+        finishedSessionSamples,
+        setLogsBySessionId,
+        refreshNonce
+    ) {
+        if (selectedWorkoutName.isBlank()) {
+            emptyList()
+        } else {
+            val latestLoggedAtByExercise = mutableMapOf<String, Long>()
+
+            finishedSessionSamples
+                .asSequence()
+                .filter { sample -> sample.workoutName == selectedWorkoutName }
+                .forEach { sample ->
+                    setLogsBySessionId[sample.sessionId].orEmpty().forEach { log ->
+                        val exerciseName = log.exerciseName.trim().ifBlank { "Exercise" }
+                        val existing = latestLoggedAtByExercise[exerciseName] ?: Long.MIN_VALUE
+                        if (log.loggedAt > existing) {
+                            latestLoggedAtByExercise[exerciseName] = log.loggedAt
+                        }
+                    }
+                }
+
+            latestLoggedAtByExercise
+                .entries
+                .sortedByDescending { it.value }
+                .map { it.key }
+        }
+    }
+    var selectedExerciseName by remember { mutableStateOf("") }
+
+    LaunchedEffect(selectedWorkoutName, exerciseNamesForSelectedWorkout) {
+        selectedExerciseName = when {
+            exerciseNamesForSelectedWorkout.isEmpty() -> ""
+            selectedExerciseName in exerciseNamesForSelectedWorkout -> selectedExerciseName
+            else -> exerciseNamesForSelectedWorkout.first()
+        }
+    }
+
+    val selectedExerciseHistory = remember(
+        selectedWorkoutName,
+        selectedExerciseName,
+        finishedSessionSamples,
+        setLogsBySessionId,
+        refreshNonce
+    ) {
+        if (selectedWorkoutName.isBlank() || selectedExerciseName.isBlank()) {
+            emptyList()
+        } else {
+            finishedSessionSamples
+                .asSequence()
+                .filter { sample -> sample.workoutName == selectedWorkoutName }
+                .mapNotNull { sample ->
+                    val logs = setLogsBySessionId[sample.sessionId]
+                        .orEmpty()
+                        .filter { log ->
+                            log.exerciseName.trim().ifBlank { "Exercise" } == selectedExerciseName
+                        }
+
+                    if (logs.isEmpty()) {
+                        null
+                    } else {
+                        WorkoutHistorySnapshot(
+                            sessionId = sample.sessionId,
+                            exerciseId = logs.first().exerciseId,
+                            epochDay = sample.epochDay,
+                            setLogs = logs.sortedWith(
+                                compareBy<SetLogEntity> { it.setNumber }
+                                    .thenBy { it.loggedAt }
+                            )
+                        )
+                    }
+                }
+                .take(8)
+                .toList()
+        }
+    }
+
+    val insightsGradient = Brush.verticalGradient(
+        colors = listOf(
+            MaterialTheme.colorScheme.background,
+            MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.18f)
+        )
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(insightsGradient)
+            .padding(16.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "Insights",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        OutlinedButton(
+                            onClick = {
+                                refreshNonce += 1
+                                scope.launch {
+                                    isRefreshing = true
+                                    delay(560)
+                                    isRefreshing = false
+                                }
+                            },
+                            shape = RoundedCornerShape(999.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Refresh,
+                                contentDescription = "Refresh Stats",
+                                modifier = Modifier.graphicsLayer(rotationZ = refreshRotation)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Refresh Stats")
+                        }
+                    }
+
+                    HorizontalDivider()
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(18.dp)
+                    ) {
+                        Text(
+                            text = "$doneLast7/7",
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                            textAlign = TextAlign.Center
+                        )
+                        Text(
+                            text = "$doneThisMonth/$thisMonthWindowDays",
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+
+                    Text(
+                        text = "Finished sessions logged: ${finishedSessionSamples.size}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            WorkoutSpecificInsightsCard(
+                workoutNames = trackedWorkoutNames,
+                selectedWorkoutName = selectedWorkoutName,
+                onWorkoutSelected = { workoutName -> selectedWorkoutName = workoutName },
+                exerciseNames = exerciseNamesForSelectedWorkout,
+                selectedExerciseName = selectedExerciseName,
+                onExerciseSelected = { exerciseName -> selectedExerciseName = exerciseName },
+                history = selectedExerciseHistory,
+                onUpdateSetLog = { logId, actualReps, actualWeight ->
+                    scope.launch {
+                        repository.updateSetLogEntry(
+                            logId = logId,
+                            actualReps = actualReps,
+                            actualWeight = actualWeight
+                        )
+                    }
+                },
+                onDeleteSetLog = { logId, sessionId ->
+                    scope.launch {
+                        repository.deleteSetLogEntry(
+                            logId = logId,
+                            sessionId = sessionId
+                        )
+                    }
+                },
+                onDeleteDateEntry = { sessionId, exerciseId ->
+                    scope.launch {
+                        repository.deleteExerciseHistoryForSession(
+                            sessionId = sessionId,
+                            exerciseId = exerciseId
+                        )
+                    }
+                }
+            )
+        }
+    }
+}
+
+@Composable
+private fun WorkoutSpecificInsightsCard(
+    workoutNames: List<String>,
+    selectedWorkoutName: String,
+    onWorkoutSelected: (String) -> Unit,
+    exerciseNames: List<String>,
+    selectedExerciseName: String,
+    onExerciseSelected: (String) -> Unit,
+    history: List<WorkoutHistorySnapshot>,
+    onUpdateSetLog: (logId: Long, actualReps: Int, actualWeight: String) -> Unit,
+    onDeleteSetLog: (logId: Long, sessionId: Long) -> Unit,
+    onDeleteDateEntry: (sessionId: Long, exerciseId: Long) -> Unit
+) {
+    var workoutSelectorExpanded by remember { mutableStateOf(false) }
+    val exerciseScrollState = rememberScrollState()
+    var editSetTarget by remember { mutableStateOf<SetLogEntity?>(null) }
+    var editRepsInput by remember { mutableStateOf("") }
+    var editWeightInput by remember { mutableStateOf("") }
+    var deleteSetTarget by remember { mutableStateOf<SetLogEntity?>(null) }
+    var deleteDateTarget by remember { mutableStateOf<WorkoutHistorySnapshot?>(null) }
+    val parsedReps = editRepsInput.toIntOrNull()?.coerceIn(1, 50)
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = "Workout Insights",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold
+            )
+
+            if (workoutNames.isEmpty()) {
+                Text(
+                    text = "Finish and log workouts to unlock workout history.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    OutlinedButton(
+                        onClick = { workoutSelectorExpanded = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text(
+                            text = selectedWorkoutName,
+                            modifier = Modifier.weight(1f),
+                            textAlign = TextAlign.Start
+                        )
+                        Icon(
+                            imageVector = Icons.Rounded.ExpandMore,
+                            contentDescription = "Open workout selection"
+                        )
+                    }
+
+                    DropdownMenu(
+                        expanded = workoutSelectorExpanded,
+                        onDismissRequest = { workoutSelectorExpanded = false }
+                    ) {
+                        workoutNames.forEach { workoutName ->
+                            DropdownMenuItem(
+                                text = { Text(workoutName) },
+                                onClick = {
+                                    onWorkoutSelected(workoutName)
+                                    workoutSelectorExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+
+                if (exerciseNames.isEmpty()) {
+                    Text(
+                        text = "No logged exercises found for selected workout.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(exerciseScrollState),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        exerciseNames.forEach { exerciseName ->
+                            FilterChip(
+                                selected = exerciseName == selectedExerciseName,
+                                onClick = { onExerciseSelected(exerciseName) },
+                                label = { Text(exerciseName) }
+                            )
+                        }
+                    }
+
+                    if (history.isEmpty()) {
+                        Text(
+                            text = "No date history found for selected exercise in this workout.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        Text(
+                            text = "Last ${history.size} dates • ${selectedWorkoutName} • ${selectedExerciseName}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            history.forEach { item ->
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(14.dp),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f)
+                                    )
+                                ) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text(
+                                                text = formatDateShort(item.epochDay),
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+
+                                            TextButton(
+                                                onClick = { deleteDateTarget = item },
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                            ) {
+                                                Text("Delete Record")
+                                            }
+                                        }
+
+                                        item.setLogs.forEach { setLog ->
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .background(
+                                                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f),
+                                                        shape = RoundedCornerShape(10.dp)
+                                                    )
+                                                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                Text(
+                                                    text = formatSetLogEntry(setLog),
+                                                    modifier = Modifier.weight(1f),
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    color = MaterialTheme.colorScheme.onSurface,
+                                                    fontWeight = FontWeight.Medium
+                                                )
+
+                                                TextButton(
+                                                    onClick = {
+                                                        editSetTarget = setLog
+                                                        editRepsInput = setLog.actualReps.toString()
+                                                        editWeightInput = setLog.actualWeight
+                                                            .trim()
+                                                            .ifBlank { setLog.plannedWeight.trim() }
+                                                    },
+                                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                                ) {
+                                                    Text("Edit")
+                                                }
+
+                                                IconButton(onClick = { deleteSetTarget = setLog }) {
+                                                    Icon(
+                                                        imageVector = Icons.Rounded.Delete,
+                                                        contentDescription = "Delete set entry"
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Text(
+                            text = "Edit updates only the selected set. Delete Record removes only this date entry for selected workout and exercise.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    val activeEditSet = editSetTarget
+    if (activeEditSet != null) {
+        AlertDialog(
+            onDismissRequest = { editSetTarget = null },
+            title = { Text("Edit Set Entry") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = editRepsInput,
+                        onValueChange = { updated ->
+                            editRepsInput = updated.filter { char -> char.isDigit() }.take(2)
+                        },
+                        label = { Text("Reps") },
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = editWeightInput,
+                        onValueChange = { updated -> editWeightInput = updated },
+                        label = { Text("Weight") },
+                        singleLine = true
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = parsedReps != null,
+                    onClick = {
+                        onUpdateSetLog(
+                            activeEditSet.id,
+                            parsedReps ?: activeEditSet.actualReps,
+                            editWeightInput
+                        )
+                        editSetTarget = null
+                    }
+                ) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { editSetTarget = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    val activeDeleteSet = deleteSetTarget
+    if (activeDeleteSet != null) {
+        AlertDialog(
+            onDismissRequest = { deleteSetTarget = null },
+            title = { Text("Delete Set Entry?") },
+            text = { Text("This deletes only the selected set entry.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onDeleteSetLog(activeDeleteSet.id, activeDeleteSet.sessionId)
+                        deleteSetTarget = null
+                    }
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteSetTarget = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    val activeDeleteDate = deleteDateTarget
+    if (activeDeleteDate != null) {
+        AlertDialog(
+            onDismissRequest = { deleteDateTarget = null },
+            title = { Text("Delete Date Entry?") },
+            text = {
+                Text(
+                    "This deletes ${selectedWorkoutName} > ${selectedExerciseName} history for ${formatDateShort(activeDeleteDate.epochDay)} only. Other dates stay unchanged."
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onDeleteDateEntry(activeDeleteDate.sessionId, activeDeleteDate.exerciseId)
+                        deleteDateTarget = null
+                    }
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteDateTarget = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+}
