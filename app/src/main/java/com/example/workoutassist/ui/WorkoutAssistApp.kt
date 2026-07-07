@@ -1,8 +1,11 @@
 package com.example.workoutassist.ui
 
+import android.app.Activity
 import android.app.DatePickerDialog
 import android.content.Context
 import android.net.Uri
+import android.view.GestureDetector
+import android.view.MotionEvent
 import android.widget.NumberPicker
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -29,9 +32,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
@@ -49,6 +55,7 @@ import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.FitnessCenter
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material.icons.rounded.Refresh
@@ -92,6 +99,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
@@ -103,6 +111,7 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
@@ -174,22 +183,10 @@ private data class SettingsFeedback(
     val message: String
 )
 
-@Composable
-private fun ExerciseAttributeField(
-    label: String,
-    value: String,
-    enabled: Boolean,
-    onClick: () -> Unit
-) {
-    Text(
-        text = "$label : $value",
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(vertical = 3.dp),
-        style = MaterialTheme.typography.bodyMedium
-    )
-}
+private data class AppPageCommand(
+    val command: String,
+    val description: String
+)
 
 @Composable
 private fun ExerciseMetricPill(
@@ -295,6 +292,96 @@ private fun ExerciseMetricStrip(
 }
 
 @Composable
+private fun ExerciseSetTable(
+    repsBySet: List<Int>,
+    weightBySet: List<String>,
+    editable: Boolean,
+    onEditRepsAt: (Int) -> Unit,
+    onEditWeightAt: (Int) -> Unit
+) {
+    val tableScroll = rememberScrollState()
+    val columnCount = maxOf(repsBySet.size, weightBySet.size, 1)
+    val repsValues = remember(repsBySet, columnCount) {
+        List(columnCount) { index ->
+            repsBySet.getOrNull(index)?.toString() ?: "-"
+        }
+    }
+    val weightValues = remember(weightBySet, columnCount) {
+        List(columnCount) { index ->
+            weightBySet.getOrNull(index)?.ifBlank { "-" } ?: "-"
+        }
+    }
+
+    Card(
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(tableScroll)
+                .padding(horizontal = 10.dp, vertical = 8.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                ExerciseSetTableRow(
+                    label = "reps",
+                    values = repsValues,
+                    editable = editable,
+                    onValueClickAt = onEditRepsAt
+                )
+                ExerciseSetTableRow(
+                    label = "wgt",
+                    values = weightValues,
+                    editable = editable,
+                    onValueClickAt = onEditWeightAt
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ExerciseSetTableRow(
+    label: String,
+    values: List<String>,
+    editable: Boolean,
+    onValueClickAt: (Int) -> Unit
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Text(
+            text = label,
+            modifier = Modifier.width(40.dp),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        values.forEachIndexed { index, value ->
+            Box(
+                modifier = Modifier
+                    .width(58.dp)
+                    .background(
+                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
+                        shape = RoundedCornerShape(8.dp)
+                    )
+                    .clickable(enabled = editable, onClick = { onValueClickAt(index) })
+                    .padding(vertical = 6.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = value,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun NumberWheelDialog(
     title: String,
     value: Int,
@@ -318,6 +405,10 @@ private fun NumberWheelDialog(
     var selectedIndex by remember(value, range.first, range.last, stepSize) {
         mutableIntStateOf(initialIndex)
     }
+    val latestOnConfirm by rememberUpdatedState(onConfirm)
+    val confirmSelected: () -> Unit = {
+        latestOnConfirm(wheelValues[selectedIndex.coerceIn(0, wheelValues.lastIndex)])
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -331,10 +422,28 @@ private fun NumberWheelDialog(
                     modifier = Modifier.width(188.dp),
                     factory = { context ->
                         NumberPicker(context).apply {
+                            val doubleTapDetector = GestureDetector(
+                                context,
+                                object : GestureDetector.SimpleOnGestureListener() {
+                                    override fun onDown(event: MotionEvent): Boolean {
+                                        return true
+                                    }
+
+                                    override fun onDoubleTap(event: MotionEvent): Boolean {
+                                        confirmSelected()
+                                        return true
+                                    }
+                                }
+                            )
+
                             minValue = 0
                             maxValue = wheelValues.lastIndex
                             wrapSelectorWheel = wheelValues.size > 1
                             descendantFocusability = NumberPicker.FOCUS_BLOCK_DESCENDANTS
+                            setOnTouchListener { _, motionEvent ->
+                                doubleTapDetector.onTouchEvent(motionEvent)
+                                false
+                            }
                             setOnValueChangedListener { _, _, newValue ->
                                 selectedIndex = newValue
                             }
@@ -356,7 +465,7 @@ private fun NumberWheelDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = { onConfirm(wheelValues[selectedIndex.coerceIn(0, wheelValues.lastIndex)]) }) {
+            TextButton(onClick = confirmSelected) {
                 Text("Save")
             }
         },
@@ -389,6 +498,7 @@ private const val KEY_THEME_DONE = "theme_done"
 private const val KEY_THEME_BACKGROUND_CUSTOM_HEX = "theme_background_custom_hex"
 private const val KEY_THEME_STATUS_CUSTOM_HEX = "theme_status_custom_hex"
 private const val KEY_THEME_DONE_CUSTOM_HEX = "theme_done_custom_hex"
+private const val KEY_PRODUCTION_RESET_20260707_DONE = "production_reset_20260707_done"
 private const val DEFAULT_PAGE_LABEL_SCHEDULE = "Schedule"
 private const val DEFAULT_PAGE_LABEL_INFINITY = "Infinity"
 private const val DEFAULT_TAB_LABEL_WORKOUT = "Workout"
@@ -401,11 +511,14 @@ private const val DEFAULT_THEME_BACKGROUND_CUSTOM_HEX = "#FFFFFF"
 private const val DEFAULT_THEME_STATUS_CUSTOM_HEX = "#1CCBCB"
 private const val DEFAULT_THEME_DONE_CUSTOM_HEX = "#1E9E58"
 private const val CUSTOM_THEME_OPTION_ID = "custom"
-private const val LATEST_DESIGN_VERSION = "1.59"
+private const val LATEST_DESIGN_VERSION = "1.86"
 
 private val WORKOUT_SESSION_START_MESSAGES = listOf(
     "Lift weights and come back!",
     "This is something you won't regret!",
+    "hustle for that muscle!",
+    "mind plays tricks like exhaustion to skip next rep-but pain is not one of them",
+    "No need to stop when you're tired, stop when you're done!",
     "Last time you lifted more with less sweat."
 )
 
@@ -427,7 +540,44 @@ private val DONE_THEME_OPTIONS = listOf(
     ThemeColorOption(id = "blue", label = "Blue", color = Color(0xFF1F7AE0))
 )
 
+private val PAGE_COMMAND_NAMES = listOf(
+    AppPageCommand(command = "workout.schedule", description = "Workout tab schedule list"),
+    AppPageCommand(command = "workout.infinity", description = "Workout tab infinity list"),
+    AppPageCommand(command = "workout.day", description = "Workout day detail"),
+    AppPageCommand(command = "workout.session", description = "Active workout session"),
+    AppPageCommand(command = "insights.home", description = "Insights tab"),
+    AppPageCommand(command = "settings.home", description = "Settings root"),
+    AppPageCommand(command = "settings.theme", description = "Settings theme options"),
+    AppPageCommand(command = "settings.labels", description = "Settings label options")
+)
+
 private val LATEST_VERSION_HIGHLIGHTS = listOf(
+    "Insights workout history selector now uses a dropdown instead of chips for a cleaner compact control.",
+    "Insights top ratios now show only compact values (for example 2/7 and 10/31) without extra labels.",
+    "Workout-day expanded reps/wgt table edits are now truly per-set and persisted independently (editing set 2 only updates set 2).",
+    "Exercise template model now stores per-set planned reps/weight arrays and set logs read planned values by set number.",
+    "Backup export/import now includes per-set planned arrays with backward-compatible fallback for older backups.",
+    "One-time production reset now flushes stored workout data and reseeds template dates from today on first launch after update.",
+    "Room destructive migration fallback is removed to protect existing user data in future schema updates.",
+    "Insights now keeps ratio metrics and adds workout-specific history grid (last 4-8 same workouts with date columns).",
+    "Removed extra Insights trend cards so workout-specific history is the main deep view.",
+    "Exercise-card metric chips are removed; expanded table remains the primary detail UI with editable reps/wgt cells via wheel picker.",
+    "Expanded workout-day exercise details now render a set-wise table with reps and weight rows (interval removed from the table).",
+    "Workout day no longer supports cycle swipe on header; it is back to fixed-date day view.",
+    "Dropped workout-day cycle swipe + Today-return idea is now tracked in docs/DROPPED_FEATURES.md for future revisit.",
+    "Settings now includes stable page command names for quick navigation/edit references.",
+    "After logging an exercise, active session now auto-focuses and auto-scrolls to the next unfinished exercise chip.",
+    "Number wheel dialogs now support double-tap directly on the scroll value area to confirm selection.",
+    "Insights now drops session-duration trend and keeps top 7-day/month ratios as plain counts without percent.",
+    "Insights now uses logged sessions and set logs to show trend cards (consistency and rep adherence).",
+    "Infinity Today quick-jump now uses a higher-contrast filled button style for stronger visibility.",
+    "Workout strip now includes a fixed i button to open remarks for the selected exercise.",
+    "System back on Insights/Settings now returns to Workout home first.",
+    "Back on Workout home now shows an exit confirmation dialog.",
+    "Workout exercise strip labels now use larger text, along with the pinned 1/n Done strip.",
+    "Pinned 1/n Done strip now uses larger text for better readability.",
+    "Active workout 1/n Done progress is pinned beside the exercise strip and stays visible while chips scroll.",
+    "Infinity quick-jump Today button text is now bold for stronger visibility.",
     "Dropped Template Frozen lock toggle and status label from active workout view; template edits remain blocked during active workout.",
     "Edited set rows in workout session now keep visual highlight styling without showing an explicit Edited text badge.",
     "Focused exercise name in workout session data card is now centered for clearer visual hierarchy.",
@@ -474,6 +624,7 @@ private val LATEST_VERSION_HIGHLIGHTS = listOf(
 @Composable
 fun WorkoutAssistApp() {
     val context = LocalContext.current
+    val activity = context as? Activity
     val scope = rememberCoroutineScope()
     val repository = remember {
         WorkoutRepository(WorkoutDatabase.getInstance(context).workoutDao())
@@ -483,11 +634,18 @@ fun WorkoutAssistApp() {
     }
 
     LaunchedEffect(Unit) {
-        repository.ensureSeedData()
+        val resetAlreadyDone = prefs.getBoolean(KEY_PRODUCTION_RESET_20260707_DONE, false)
+        if (!resetAlreadyDone) {
+            repository.resetAllDataAndSeedFromToday()
+            prefs.edit().putBoolean(KEY_PRODUCTION_RESET_20260707_DONE, true).apply()
+        } else {
+            repository.ensureSeedData()
+        }
     }
 
     val days by repository.observeDays().collectAsState(initial = emptyList())
     val sessions by repository.observeSessions().collectAsState(initial = emptyList())
+    val setLogs by repository.observeSetLogs().collectAsState(initial = emptyList())
     val todayDateEpochDay = currentDateEpochDay()
     val highlightedTodayDayNumber = days
         .firstOrNull { it.plannedDateEpochDay == todayDateEpochDay }
@@ -498,6 +656,7 @@ fun WorkoutAssistApp() {
     var selectedDayNumber by remember { mutableIntStateOf(0) }
     var currentScreen by remember { mutableStateOf(AppScreen.SCHEDULE) }
     var selectedTab by remember { mutableStateOf(RootTab.WORKOUT) }
+    var showExitAppConfirm by remember { mutableStateOf(false) }
     var settingsFeedback by remember { mutableStateOf<SettingsFeedback?>(null) }
     var importResultFeedback by remember { mutableStateOf<SettingsFeedback?>(null) }
     var schedulePageLabel by remember {
@@ -706,12 +865,18 @@ fun WorkoutAssistApp() {
     )
 
     MaterialTheme(colorScheme = themedColorScheme) {
-        BackHandler(enabled = selectedTab == RootTab.SETTINGS) {
+        BackHandler(enabled = selectedTab == RootTab.INSIGHTS || selectedTab == RootTab.SETTINGS) {
             selectedTab = RootTab.WORKOUT
+            currentScreen = AppScreen.SCHEDULE
+            showExitAppConfirm = false
         }
 
         BackHandler(enabled = selectedTab == RootTab.WORKOUT && currentScreen == AppScreen.DAY_DETAIL) {
             currentScreen = AppScreen.SCHEDULE
+        }
+
+        BackHandler(enabled = selectedTab == RootTab.WORKOUT && currentScreen == AppScreen.SCHEDULE) {
+            showExitAppConfirm = true
         }
 
         LaunchedEffect(days, todayDateEpochDay) {
@@ -752,10 +917,20 @@ fun WorkoutAssistApp() {
                 }
             }
         ) { innerPadding ->
+            val layoutDirection = LocalLayoutDirection.current
+            val suppressRootTopInset =
+                selectedTab == RootTab.SETTINGS ||
+                    (selectedTab == RootTab.WORKOUT && currentScreen == AppScreen.DAY_DETAIL)
+
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(innerPadding)
+                    .padding(
+                        start = innerPadding.calculateStartPadding(layoutDirection),
+                        top = if (suppressRootTopInset) 0.dp else innerPadding.calculateTopPadding(),
+                        end = innerPadding.calculateEndPadding(layoutDirection),
+                        bottom = innerPadding.calculateBottomPadding()
+                    )
             ) {
                 when (selectedTab) {
                     RootTab.WORKOUT -> {
@@ -795,7 +970,10 @@ fun WorkoutAssistApp() {
                         if (days.isEmpty()) {
                             LoadingScreen()
                         } else {
-                            InsightsScreen(sessions = sessions)
+                            InsightsScreen(
+                                sessions = sessions,
+                                setLogs = setLogs
+                            )
                         }
                     }
 
@@ -887,6 +1065,29 @@ fun WorkoutAssistApp() {
             }
         }
 
+        if (showExitAppConfirm) {
+            AlertDialog(
+                onDismissRequest = { showExitAppConfirm = false },
+                title = { Text("Exit app?") },
+                text = { Text("Do you want to exit?") },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            showExitAppConfirm = false
+                            activity?.finish()
+                        }
+                    ) {
+                        Text("Exit")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showExitAppConfirm = false }) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
+
         importResultFeedback?.let { feedback ->
             AlertDialog(
                 onDismissRequest = { importResultFeedback = null },
@@ -945,9 +1146,44 @@ private fun LoadingScreen() {
     }
 }
 
+private data class FinishedWorkoutSessionSnapshot(
+    val sessionId: Long,
+    val workoutName: String,
+    val epochDay: Long,
+    val finishedAtMillis: Long
+)
+
+private data class WorkoutHistorySnapshot(
+    val epochDay: Long,
+    val setEntries: List<String>
+)
+
+private fun buildSetEntryLines(logs: List<SetLogEntity>): List<String> {
+    val repsByWeight = linkedMapOf<String, MutableList<Int>>()
+
+    logs
+        .sortedWith(compareBy<SetLogEntity> { it.setNumber }.thenBy { it.loggedAt })
+        .forEach { log ->
+            val weightLabel = log.actualWeight
+                .trim()
+                .ifBlank { log.plannedWeight.trim() }
+                .ifBlank { "-" }
+
+            repsByWeight
+                .getOrPut(weightLabel) { mutableListOf() }
+                .add(log.actualReps.coerceAtLeast(0))
+        }
+
+    return repsByWeight.map { (weight, repsList) ->
+        val repsText = repsList.joinToString(separator = "x") { reps -> reps.toString() }
+        "$weight x$repsText"
+    }
+}
+
 @Composable
 private fun InsightsScreen(
-    sessions: List<WorkoutSessionEntity>
+    sessions: List<WorkoutSessionEntity>,
+    setLogs: List<SetLogEntity>
 ) {
     val scope = rememberCoroutineScope()
     val todayEpochDay = currentDateEpochDay()
@@ -960,11 +1196,30 @@ private fun InsightsScreen(
         label = "insightsRefreshRotation"
     )
 
-    val completedSessionEpochDays = remember(sessions, refreshNonce) {
+    val finishedSessionSamples = remember(sessions, refreshNonce) {
         sessions
             .asSequence()
-            .mapNotNull { session -> session.finishedAt }
-            .map { finishedAt -> timestampMillisToEpochDay(finishedAt) }
+            .mapNotNull { session ->
+                val finishedAt = session.finishedAt ?: return@mapNotNull null
+                val resolvedWorkoutName = session.workoutName
+                    .trim()
+                    .ifBlank { "Day ${session.dayNumber}" }
+
+                FinishedWorkoutSessionSnapshot(
+                    sessionId = session.id,
+                    workoutName = resolvedWorkoutName,
+                    epochDay = timestampMillisToEpochDay(finishedAt),
+                    finishedAtMillis = finishedAt
+                )
+            }
+            .sortedByDescending { sample -> sample.finishedAtMillis }
+            .toList()
+    }
+
+    val completedSessionEpochDays = remember(finishedSessionSamples, refreshNonce) {
+        finishedSessionSamples
+            .asSequence()
+            .map { sample -> sample.epochDay }
             .toSet()
     }
 
@@ -988,11 +1243,77 @@ private fun InsightsScreen(
     val thisMonthWindowDays = remember(monthStartEpochDay, nextMonthStartEpochDay, refreshNonce) {
         (nextMonthStartEpochDay - monthStartEpochDay).toInt().coerceAtLeast(1)
     }
-    val ratioLast7Percent = remember(doneLast7, refreshNonce) {
-        ((doneLast7.toFloat() / 7f) * 100f).roundToInt()
+
+    val setLogsBySessionId = remember(setLogs, refreshNonce) {
+        setLogs.groupBy { log -> log.sessionId }
     }
-    val ratioThisMonthPercent = remember(doneThisMonth, thisMonthWindowDays, refreshNonce) {
-        ((doneThisMonth.toFloat() / thisMonthWindowDays.toFloat()) * 100f).roundToInt()
+
+    val finishedSessionIds = remember(finishedSessionSamples, refreshNonce) {
+        finishedSessionSamples
+            .map { sample -> sample.sessionId }
+            .toSet()
+    }
+
+    val trackedExerciseNames = remember(setLogs, finishedSessionIds, refreshNonce) {
+        val latestLoggedAtByExercise = mutableMapOf<String, Long>()
+
+        setLogs.forEach { log ->
+            if (log.sessionId !in finishedSessionIds) {
+                return@forEach
+            }
+
+            val exerciseName = log.exerciseName.trim().ifBlank { "Exercise" }
+            val existing = latestLoggedAtByExercise[exerciseName] ?: Long.MIN_VALUE
+            if (log.loggedAt > existing) {
+                latestLoggedAtByExercise[exerciseName] = log.loggedAt
+            }
+        }
+
+        latestLoggedAtByExercise
+            .entries
+            .sortedByDescending { it.value }
+            .map { it.key }
+    }
+    var selectedExerciseName by remember { mutableStateOf("") }
+
+    LaunchedEffect(trackedExerciseNames) {
+        selectedExerciseName = when {
+            trackedExerciseNames.isEmpty() -> ""
+            selectedExerciseName in trackedExerciseNames -> selectedExerciseName
+            else -> trackedExerciseNames.first()
+        }
+    }
+
+    val selectedExerciseHistory = remember(
+        selectedExerciseName,
+        finishedSessionSamples,
+        setLogsBySessionId,
+        refreshNonce
+    ) {
+        if (selectedExerciseName.isBlank()) {
+            emptyList()
+        } else {
+            finishedSessionSamples
+                .asSequence()
+                .mapNotNull { sample ->
+                    val logs = setLogsBySessionId[sample.sessionId]
+                        .orEmpty()
+                        .filter { log ->
+                            log.exerciseName.trim().ifBlank { "Exercise" } == selectedExerciseName
+                        }
+
+                    if (logs.isEmpty()) {
+                        null
+                    } else {
+                        WorkoutHistorySnapshot(
+                            epochDay = sample.epochDay,
+                            setEntries = buildSetEntryLines(logs)
+                        )
+                    }
+                }
+                .take(8)
+                .toList()
+        }
     }
 
     val insightsGradient = Brush.verticalGradient(
@@ -1008,79 +1329,288 @@ private fun InsightsScreen(
             .background(insightsGradient)
             .padding(16.dp)
     ) {
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Text(
-                        text = "Insights",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    OutlinedButton(
-                        onClick = {
-                            refreshNonce += 1
-                            scope.launch {
-                                isRefreshing = true
-                                delay(560)
-                                isRefreshing = false
-                            }
-                        },
-                        shape = RoundedCornerShape(999.dp),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Refresh,
-                            contentDescription = "Refresh Stats",
-                            modifier = Modifier.graphicsLayer(rotationZ = refreshRotation)
+                        Text(
+                            text = "Insights",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.SemiBold
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Refresh Stats")
+                        OutlinedButton(
+                            onClick = {
+                                refreshNonce += 1
+                                scope.launch {
+                                    isRefreshing = true
+                                    delay(560)
+                                    isRefreshing = false
+                                }
+                            },
+                            shape = RoundedCornerShape(999.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Refresh,
+                                contentDescription = "Refresh Stats",
+                                modifier = Modifier.graphicsLayer(rotationZ = refreshRotation)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Refresh Stats")
+                        }
+                    }
+
+                    HorizontalDivider()
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(18.dp)
+                    ) {
+                        Text(
+                            text = "$doneLast7/7",
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                            textAlign = TextAlign.Center
+                        )
+                        Text(
+                            text = "$doneThisMonth/$thisMonthWindowDays",
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+
+                    Text(
+                        text = "Finished sessions logged: ${finishedSessionSamples.size}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            WorkoutSpecificInsightsCard(
+                exerciseNames = trackedExerciseNames,
+                selectedExerciseName = selectedExerciseName,
+                onExerciseSelected = { exerciseName -> selectedExerciseName = exerciseName },
+                history = selectedExerciseHistory
+            )
+        }
+    }
+}
+
+@Composable
+private fun WorkoutSpecificInsightsCard(
+    workoutNames: List<String>,
+    selectedWorkoutName: String,
+    onWorkoutSelected: (String) -> Unit,
+    history: List<WorkoutHistorySnapshot>
+) {
+    val historyGridScroll = rememberScrollState()
+    var workoutSelectorExpanded by remember { mutableStateOf(false) }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = "Workout Insights",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = "Select a workout to review the last 4-8 same workouts before you start.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            if (workoutNames.isEmpty()) {
+                Text(
+                    text = "Finish some workouts to unlock workout-specific history.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    OutlinedButton(
+                        onClick = { workoutSelectorExpanded = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text(
+                            text = selectedWorkoutName,
+                            modifier = Modifier.weight(1f),
+                            textAlign = TextAlign.Start
+                        )
+                        Icon(
+                            imageVector = Icons.Rounded.ExpandMore,
+                            contentDescription = "Open workout selection"
+                        )
+                    }
+
+                    DropdownMenu(
+                        expanded = workoutSelectorExpanded,
+                        onDismissRequest = { workoutSelectorExpanded = false }
+                    ) {
+                        workoutNames.forEach { workoutName ->
+                            DropdownMenuItem(
+                                text = { Text(workoutName) },
+                                onClick = {
+                                    onWorkoutSelected(workoutName)
+                                    workoutSelectorExpanded = false
+                                }
+                            )
+                        }
                     }
                 }
 
-                HorizontalDivider()
+                if (history.isEmpty()) {
+                    Text(
+                        text = "No completed history for selected workout.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    Text(
+                        text = "Last ${history.size} sessions • ${selectedWorkoutName}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
 
-                Text(
-                    text = "Trailing 7 Day Ratio",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    text = "$doneLast7/7 • $ratioLast7Percent%",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
-                )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(historyGridScroll)
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            WorkoutHistoryHeaderRow(history = history)
+                            WorkoutHistoryMetricRow(
+                                label = "sets",
+                                values = history.map { item -> item.setsLogged.toString() }
+                            )
+                            WorkoutHistoryMetricRow(
+                                label = "ex",
+                                values = history.map { item -> item.exercisesLogged.toString() }
+                            )
+                            WorkoutHistoryMetricRow(
+                                label = "reps",
+                                values = history.map { item -> "${item.actualReps}/${item.plannedReps}" }
+                            )
+                        }
+                    }
 
-                HorizontalDivider()
-
-                Text(
-                    text = "This Month Ratio",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    text = "$doneThisMonth/$thisMonthWindowDays • $ratioThisMonthPercent%",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
-                )
+                    Text(
+                        text = "Columns are chronological dates (oldest to latest).",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun WorkoutHistoryHeaderRow(
+    history: List<WorkoutHistorySnapshot>
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Text(
+            text = "date",
+            modifier = Modifier.width(44.dp),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        history.forEach { item ->
+            WorkoutHistoryGridCell(
+                text = formatDateShort(item.epochDay),
+                emphasized = true
+            )
+        }
+    }
+}
+
+@Composable
+private fun WorkoutHistoryMetricRow(
+    label: String,
+    values: List<String>
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Text(
+            text = label,
+            modifier = Modifier.width(44.dp),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        values.forEach { value ->
+            WorkoutHistoryGridCell(
+                text = value,
+                emphasized = false
+            )
+        }
+    }
+}
+
+@Composable
+private fun WorkoutHistoryGridCell(
+    text: String,
+    emphasized: Boolean
+) {
+    val cellColor = if (emphasized) {
+        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.62f)
+    } else {
+        MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f)
+    }
+
+    Box(
+        modifier = Modifier
+            .width(86.dp)
+            .background(cellColor, RoundedCornerShape(8.dp))
+            .padding(horizontal = 6.dp, vertical = 6.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = if (emphasized) FontWeight.SemiBold else FontWeight.Medium,
+            textAlign = TextAlign.Center
+        )
     }
 }
 
@@ -1212,6 +1742,37 @@ private fun SettingsScreen(
                                 Icon(
                                     imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
                                     contentDescription = null
+                                )
+                            }
+                        }
+                    }
+
+                    Card(
+                        shape = RoundedCornerShape(18.dp),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "Page Command Names",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = "Use these stable names for quick commands.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            PAGE_COMMAND_NAMES.forEach { page ->
+                                Text(
+                                    text = "${page.command} -> ${page.description}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }
@@ -1695,7 +2256,10 @@ private fun ScheduleDayCard(
     isToday: Boolean,
     isCompleted: Boolean,
     onClick: () -> Unit,
-    supportingText: String? = null
+    supportingText: String? = null,
+    dateLabel: String? = null,
+    leadingDateLabel: String? = null,
+    dayLabelAlignEnd: Boolean = false
 ) {
     val cardHeight = when {
         isToday -> 132.dp
@@ -1735,20 +2299,81 @@ private fun ScheduleDayCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = dayLabel,
-                    style = MaterialTheme.typography.labelMedium
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = workoutName,
-                    style = if (isToday) {
-                        MaterialTheme.typography.headlineSmall
+                if (dateLabel.isNullOrBlank()) {
+                    if (leadingDateLabel.isNullOrBlank()) {
+                        Text(
+                            text = dayLabel,
+                            modifier = if (dayLabelAlignEnd) {
+                                Modifier.fillMaxWidth()
+                            } else {
+                                Modifier
+                            },
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = if (isToday) FontWeight.SemiBold else FontWeight.Medium,
+                            textAlign = if (dayLabelAlignEnd) TextAlign.End else TextAlign.Start
+                        )
                     } else {
-                        MaterialTheme.typography.titleMedium
-                    },
-                    fontWeight = FontWeight.Bold
-                )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = leadingDateLabel,
+                                modifier = Modifier.width(98.dp),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = dayLabel,
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = if (isToday) FontWeight.SemiBold else FontWeight.Medium,
+                                textAlign = TextAlign.End
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = workoutName,
+                        style = if (isToday) {
+                            MaterialTheme.typography.headlineSmall
+                        } else {
+                            MaterialTheme.typography.titleMedium
+                        },
+                        fontWeight = FontWeight.Bold
+                    )
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = workoutName,
+                            modifier = Modifier.weight(1f),
+                            style = if (isToday) {
+                                MaterialTheme.typography.headlineSmall
+                            } else {
+                                MaterialTheme.typography.titleMedium
+                            },
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = dateLabel,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = dayLabel,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
 
                 if (!exerciseCountText.isNullOrBlank()) {
                     Spacer(modifier = Modifier.height(6.dp))
@@ -1974,15 +2599,13 @@ private fun ScheduleScreen(
                                 itemsIndexed(orderedDays, key = { _, day -> day.dayNumber }) { _, day ->
                                     val isToday = day.dayNumber == highlightedTodayDayNumber
                                     ScheduleDayCard(
-                                        dayLabel = if (isToday) {
-                                            "Today • ${formatDateShort(day.plannedDateEpochDay)}"
-                                        } else {
-                                            "Day ${day.dayNumber} • ${formatDateShort(day.plannedDateEpochDay)}"
-                                        },
+                                        dayLabel = "Day ${day.dayNumber}",
                                         workoutName = day.workoutName,
-                                        exerciseCountText = if (isToday) "${day.exercises.size} exercises" else null,
+                                        exerciseCountText = null,
+                                        leadingDateLabel = formatDateShort(day.plannedDateEpochDay),
                                         isToday = isToday,
                                         isCompleted = day.isCompleted,
+                                        dayLabelAlignEnd = true,
                                         onClick = { onDaySelected(day.dayNumber) }
                                     )
                                 }
@@ -2024,14 +2647,11 @@ private fun ScheduleScreen(
                                         }
 
                                         ScheduleDayCard(
-                                            dayLabel = if (isToday) {
-                                                "Today • ${formatDateShort(virtualDateEpochDay)}"
-                                            } else {
-                                                "Day ${day.dayNumber} • ${formatDateShort(virtualDateEpochDay)}"
-                                            },
+                                            dayLabel = "Day ${day.dayNumber}",
                                             workoutName = day.workoutName,
-                                            exerciseCountText = "${day.exercises.size} exercises",
+                                            exerciseCountText = null,
                                             supportingText = cycleLabel,
+                                            dateLabel = formatDateShort(virtualDateEpochDay),
                                             isToday = isToday,
                                             isCompleted = isCompletedForVirtualDate,
                                             onClick = { onDaySelected(day.dayNumber) }
@@ -2040,7 +2660,7 @@ private fun ScheduleScreen(
                                 }
                             }
 
-                            OutlinedButton(
+                            Button(
                                 onClick = {
                                     scheduleScope.launch {
                                         infinityListState.animateScrollToItem(infinityTodayIndex)
@@ -2049,15 +2669,21 @@ private fun ScheduleScreen(
                                 enabled = dayCount > 0,
                                 modifier = Modifier
                                     .align(Alignment.BottomEnd)
-                                    .padding(end = 14.dp, bottom = 14.dp),
+                                    .padding(end = 14.dp, bottom = 14.dp)
+                                    .height(46.dp),
                                 shape = RoundedCornerShape(999.dp),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)),
-                                colors = ButtonDefaults.outlinedButtonColors(
-                                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)
+                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                                elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary,
+                                    contentColor = MaterialTheme.colorScheme.onPrimary
                                 )
                             ) {
-                                Text("Today")
+                                Text(
+                                    text = "Today",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
                             }
                         }
                     }
@@ -2076,7 +2702,9 @@ private fun WorkoutDayScreen(
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    val canToggleExerciseDone = day.plannedDateEpochDay <= currentDateEpochDay()
+    val viewedDateEpochDay = day.plannedDateEpochDay
+    val viewedDateIsCompleted = day.completedForDateEpochDay == viewedDateEpochDay
+    val canToggleExerciseDone = viewedDateEpochDay <= currentDateEpochDay()
 
     var editMode by remember(day.dayNumber) { mutableStateOf(false) }
     var workoutActive by remember(day.dayNumber) { mutableStateOf(false) }
@@ -2105,6 +2733,7 @@ private fun WorkoutDayScreen(
     var hasEditChangesPendingExport by remember(day.dayNumber) { mutableStateOf(false) }
     var quickEditExercise by remember(day.dayNumber) { mutableStateOf<ExerciseModel?>(null) }
     var quickEditField by remember(day.dayNumber) { mutableStateOf<QuickEditField?>(null) }
+    var quickEditSetIndex by remember(day.dayNumber) { mutableStateOf<Int?>(null) }
 
     val listState = rememberLazyListState()
     var draggingExerciseId by remember(day.dayNumber) { mutableLongStateOf(-1L) }
@@ -2152,24 +2781,26 @@ private fun WorkoutDayScreen(
         scope.launch {
             repository.setWorkoutDone(
                 dayNumber = day.dayNumber,
-                plannedDateEpochDay = day.plannedDateEpochDay,
-                isDone = !day.isCompleted
+                plannedDateEpochDay = viewedDateEpochDay,
+                isDone = !viewedDateIsCompleted
             )
         }
         hasEditChangesPendingExport = true
     }
 
-    fun openQuickEditDialog(exercise: ExerciseModel, field: QuickEditField) {
+    fun openQuickEditDialog(exercise: ExerciseModel, field: QuickEditField, setIndex: Int? = null) {
         if (!canEditTemplate) {
             return
         }
         quickEditExercise = exercise
         quickEditField = field
+        quickEditSetIndex = setIndex
     }
 
     fun dismissQuickEditDialog() {
         quickEditExercise = null
         quickEditField = null
+        quickEditSetIndex = null
     }
 
     fun updateExerciseQuick(
@@ -2259,7 +2890,7 @@ private fun WorkoutDayScreen(
         editMode = false
         focusedExerciseId = 0L
         selectedSetRepsByExerciseId = day.exercises.associate { exercise ->
-            exercise.id to List(exercise.sets) { exercise.reps }
+            exercise.id to exercise.plannedRepsBySet
         }
         editedSetIndexesByExerciseId = emptyMap()
         loggedExerciseIds = emptySet()
@@ -2269,7 +2900,7 @@ private fun WorkoutDayScreen(
 
     fun updateSetRepsSelection(exercise: ExerciseModel, setIndex: Int, selectedReps: Int) {
         val current = selectedSetRepsByExerciseId[exercise.id]
-            ?: List(exercise.sets) { exercise.reps }
+            ?: exercise.plannedRepsBySet
         if (setIndex !in current.indices) {
             return
         }
@@ -2291,7 +2922,7 @@ private fun WorkoutDayScreen(
         }
 
         val selectedReps = selectedSetRepsByExerciseId[focusedExercise.id]
-            ?: List(focusedExercise.sets) { focusedExercise.reps }
+            ?: focusedExercise.plannedRepsBySet
         val normalizedReps = if (selectedReps.size >= focusedExercise.sets) {
             selectedReps.take(focusedExercise.sets)
         } else {
@@ -2312,7 +2943,14 @@ private fun WorkoutDayScreen(
 
         val updatedLogged = loggedExerciseIds + focusedExercise.id
         loggedExerciseIds = updatedLogged
-        focusedExerciseId = 0L
+
+        val focusedIndex = day.exercises.indexOfFirst { exercise -> exercise.id == focusedExercise.id }
+        val nextUnloggedExercise = day.exercises
+            .drop((focusedIndex + 1).coerceAtLeast(0))
+            .firstOrNull { exercise -> exercise.id !in updatedLogged }
+            ?: day.exercises.firstOrNull { exercise -> exercise.id !in updatedLogged }
+
+        focusedExerciseId = nextUnloggedExercise?.id ?: 0L
         setPickerTarget = null
     }
 
@@ -2439,7 +3077,8 @@ private fun WorkoutDayScreen(
                     .padding(horizontal = 16.dp)
             ) {
                 Card(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth(),
                     shape = RoundedCornerShape(22.dp),
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.16f)),
                     elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
@@ -2466,11 +3105,11 @@ private fun WorkoutDayScreen(
                                             onClick = { openDatePicker() },
                                             contentPadding = PaddingValues(0.dp)
                                         ) {
-                                            Text(formatDateShort(day.plannedDateEpochDay))
+                                            Text(formatDateShort(viewedDateEpochDay))
                                         }
                                     } else {
                                         Text(
-                                            text = formatDateShort(day.plannedDateEpochDay),
+                                            text = formatDateShort(viewedDateEpochDay),
                                             style = MaterialTheme.typography.bodyMedium,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
@@ -2478,17 +3117,17 @@ private fun WorkoutDayScreen(
 
                                     IconButton(onClick = { toggleWorkoutDone() }) {
                                         Icon(
-                                            imageVector = if (day.isCompleted) {
+                                            imageVector = if (viewedDateIsCompleted) {
                                                 Icons.Rounded.CheckCircle
                                             } else {
                                                 Icons.Rounded.RadioButtonUnchecked
                                             },
-                                            contentDescription = if (day.isCompleted) {
+                                            contentDescription = if (viewedDateIsCompleted) {
                                                 "Mark workout not done"
                                             } else {
                                                 "Mark workout done"
                                             },
-                                            tint = if (day.isCompleted) {
+                                            tint = if (viewedDateIsCompleted) {
                                                 MaterialTheme.colorScheme.primary
                                             } else {
                                                 MaterialTheme.colorScheme.onSurfaceVariant
@@ -2498,6 +3137,12 @@ private fun WorkoutDayScreen(
                                 }
                             }
                         }
+
+                        Text(
+                            text = formatDateShort(viewedDateEpochDay),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
 
                         Spacer(modifier = Modifier.height(10.dp))
 
@@ -2581,10 +3226,10 @@ private fun WorkoutDayScreen(
                                                     }
                                                     scope.launch {
                                                         repository.setExerciseDone(exercise.id, toggledDone)
-                                                        if (allExercisesDoneAfterToggle && !day.isCompleted) {
+                                                        if (allExercisesDoneAfterToggle && !viewedDateIsCompleted) {
                                                             repository.setWorkoutDone(
                                                                 dayNumber = day.dayNumber,
-                                                                plannedDateEpochDay = day.plannedDateEpochDay,
+                                                                plannedDateEpochDay = viewedDateEpochDay,
                                                                 isDone = true
                                                             )
                                                             showAchievementPopup = true
@@ -2628,17 +3273,11 @@ private fun WorkoutDayScreen(
                                         onDrag = { deltaY -> onDrag(deltaY) },
                                         onDragEnd = { onDragEnd() },
                                         onEdit = { editExerciseTarget = exercise },
-                                        onQuickEditSets = {
-                                            openQuickEditDialog(exercise, QuickEditField.SETS)
+                                        onQuickEditRepsForSet = { setIndex ->
+                                            openQuickEditDialog(exercise, QuickEditField.REPS, setIndex)
                                         },
-                                        onQuickEditReps = {
-                                            openQuickEditDialog(exercise, QuickEditField.REPS)
-                                        },
-                                        onQuickEditWeight = {
-                                            openQuickEditDialog(exercise, QuickEditField.WEIGHT)
-                                        },
-                                        onQuickEditInterval = {
-                                            openQuickEditDialog(exercise, QuickEditField.INTERVAL)
+                                        onQuickEditWeightForSet = { setIndex ->
+                                            openQuickEditDialog(exercise, QuickEditField.WEIGHT, setIndex)
                                         },
                                         onDelete = {
                                             scope.launch {
@@ -2716,6 +3355,7 @@ private fun WorkoutDayScreen(
 
     val activeQuickEditExercise = quickEditExercise
     val activeQuickEditField = quickEditField
+    val activeQuickEditSetIndex = quickEditSetIndex
     if (activeQuickEditExercise != null && activeQuickEditField != null) {
         when (activeQuickEditField) {
             QuickEditField.SETS -> {
@@ -2733,36 +3373,60 @@ private fun WorkoutDayScreen(
             }
 
             QuickEditField.REPS -> {
+                val maxSetIndex = (activeQuickEditExercise.sets - 1).coerceAtLeast(0)
+                val targetSetIndex = activeQuickEditSetIndex
+                    ?.coerceIn(0, maxSetIndex)
+                    ?: 0
+                val currentValue = activeQuickEditExercise.plannedRepsBySet
+                    .getOrElse(targetSetIndex) { activeQuickEditExercise.reps }
+
                 NumberWheelDialog(
-                    title = "Reps",
-                    value = activeQuickEditExercise.reps,
+                    title = "Reps (Set ${targetSetIndex + 1})",
+                    value = currentValue,
                     range = 1..50,
                     valueText = { "$it" },
                     onDismiss = { dismissQuickEditDialog() },
                     onConfirm = { selected ->
-                        updateExerciseQuick(activeQuickEditExercise, reps = selected)
+                        hasEditChangesPendingExport = true
+                        scope.launch {
+                            repository.updateExerciseSetPlan(
+                                exercise = activeQuickEditExercise,
+                                setIndex = targetSetIndex,
+                                plannedReps = selected
+                            )
+                        }
                         dismissQuickEditDialog()
                     }
                 )
             }
 
             QuickEditField.WEIGHT -> {
-                val selectedHalfKg = ((parseWeightValue(activeQuickEditExercise.plannedWeight) ?: 20f) * 2f)
+                val maxSetIndex = (activeQuickEditExercise.sets - 1).coerceAtLeast(0)
+                val targetSetIndex = activeQuickEditSetIndex
+                    ?.coerceIn(0, maxSetIndex)
+                    ?: 0
+                val currentWeight = activeQuickEditExercise.plannedWeightBySet
+                    .getOrElse(targetSetIndex) { activeQuickEditExercise.plannedWeight }
+                val selectedHalfKg = ((parseWeightValue(currentWeight) ?: 20f) * 2f)
                     .roundToInt()
                     .coerceIn(0, 600)
 
                 NumberWheelDialog(
-                    title = "Weight",
+                    title = "Weight (Set ${targetSetIndex + 1})",
                     value = selectedHalfKg,
                     range = 0..600,
                     valueText = { halfKgStep -> "${formatHalfKgValue(halfKgStep)} kg" },
                     onDismiss = { dismissQuickEditDialog() },
                     onConfirm = { selectedHalfKgValue ->
                         val selectedKg = selectedHalfKgValue / 2f
-                        updateExerciseQuick(
-                            activeQuickEditExercise,
-                            plannedWeight = "${formatKgValue(selectedKg)} kg"
-                        )
+                        hasEditChangesPendingExport = true
+                        scope.launch {
+                            repository.updateExerciseSetPlan(
+                                exercise = activeQuickEditExercise,
+                                setIndex = targetSetIndex,
+                                plannedWeight = "${formatKgValue(selectedKg)} kg"
+                            )
+                        }
                         dismissQuickEditDialog()
                     }
                 )
@@ -2789,7 +3453,7 @@ private fun WorkoutDayScreen(
         val targetExercise = day.exercises.firstOrNull { exercise -> exercise.id == exerciseId }
         if (targetExercise != null) {
             val selectedForExercise = selectedSetRepsByExerciseId[exerciseId]
-                ?: List(targetExercise.sets) { targetExercise.reps }
+                ?: targetExercise.plannedRepsBySet
             val initialValue = selectedForExercise.getOrElse(setIndex) { targetExercise.reps }
             NumberWheelDialog(
                 title = "${targetExercise.name} - Set ${setIndex + 1}",
@@ -2950,9 +3614,22 @@ private fun WorkoutActivePage(
     onFinish: () -> Unit
 ) {
     val focusedExercise = day.exercises.firstOrNull { exercise -> exercise.id == focusedExerciseId }
+    val exerciseStripState = rememberLazyListState()
+    val focusedExerciseIndex = remember(day.exercises, focusedExerciseId) {
+        day.exercises.indexOfFirst { exercise -> exercise.id == focusedExerciseId }
+    }
+
+    LaunchedEffect(focusedExerciseIndex, day.dayNumber) {
+        if (focusedExerciseIndex >= 0) {
+            exerciseStripState.animateScrollToItem(focusedExerciseIndex)
+        }
+    }
+
     val canLogFocusedExercise =
         isSessionReady && focusedExercise != null && focusedExercise.id !in loggedExerciseIds
+    val loggedSummaryText = "${loggedExerciseIds.size}/${day.exercises.size} Done"
     var showSessionActions by remember(day.dayNumber) { mutableStateOf(false) }
+    var showFocusedExerciseRemark by remember(day.dayNumber) { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -2971,34 +3648,63 @@ private fun WorkoutActivePage(
                     .padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text(
-                    text = "Logged ${loggedExerciseIds.size}/${day.exercises.size} exercises",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    day.exercises.forEach { exercise ->
-                        val isFocused = focusedExerciseId == exercise.id
-                        val isLogged = exercise.id in loggedExerciseIds
-                        FilterChip(
-                            selected = isFocused,
-                            enabled = !isLogged,
-                            onClick = { onFocusExercise(exercise.id) },
-                            label = {
-                                Text(
-                                    if (isLogged) {
-                                        "${exercise.name} Done"
-                                    } else {
-                                        exercise.name
-                                    }
-                                )
-                            }
+                    Card(
+                        shape = RoundedCornerShape(999.dp),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.24f)),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f)
+                        )
+                    ) {
+                        Text(
+                            text = loggedSummaryText,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    }
+
+                    LazyRow(
+                        state = exerciseStripState,
+                        modifier = Modifier
+                            .weight(1f),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        itemsIndexed(day.exercises, key = { _, exercise -> exercise.id }) { _, exercise ->
+                            val isFocused = focusedExerciseId == exercise.id
+                            val isLogged = exercise.id in loggedExerciseIds
+                            FilterChip(
+                                selected = isFocused,
+                                enabled = !isLogged,
+                                onClick = { onFocusExercise(exercise.id) },
+                                label = {
+                                    Text(
+                                        if (isLogged) {
+                                            "${exercise.name} Done"
+                                        } else {
+                                            exercise.name
+                                        },
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                            )
+                        }
+                    }
+
+                    IconButton(
+                        onClick = { showFocusedExerciseRemark = true },
+                        enabled = focusedExercise != null
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Info,
+                            contentDescription = "View selected exercise remark"
                         )
                     }
                 }
@@ -3050,6 +3756,25 @@ private fun WorkoutActivePage(
                     }
                 }
             }
+        }
+
+        if (showFocusedExerciseRemark && focusedExercise != null) {
+            AlertDialog(
+                onDismissRequest = { showFocusedExerciseRemark = false },
+                title = { Text("${focusedExercise.name} remark") },
+                text = {
+                    Text(
+                        focusedExercise.remarks.ifBlank {
+                            "No remark added for this exercise."
+                        }
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = { showFocusedExerciseRemark = false }) {
+                        Text("Close")
+                    }
+                }
+            )
         }
 
         Spacer(modifier = Modifier.weight(1f, fill = true))
@@ -3229,10 +3954,8 @@ private fun ExerciseRow(
     onDrag: (Float) -> Unit,
     onDragEnd: () -> Unit,
     onEdit: () -> Unit,
-    onQuickEditSets: () -> Unit,
-    onQuickEditReps: () -> Unit,
-    onQuickEditWeight: () -> Unit,
-    onQuickEditInterval: () -> Unit,
+    onQuickEditRepsForSet: (Int) -> Unit,
+    onQuickEditWeightForSet: (Int) -> Unit,
     onDelete: () -> Unit
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
@@ -3357,47 +4080,18 @@ private fun ExerciseRow(
                 }
             }
 
-            Spacer(modifier = Modifier.height(6.dp))
-            ExerciseMetricStrip(
-                exercise = exercise,
-                canQuickEdit = canQuickEdit,
-                isCurrent = isCurrent,
-                currentSetNumber = currentSetNumber,
-                onQuickEditSets = onQuickEditSets,
-                onQuickEditReps = onQuickEditReps,
-                onQuickEditWeight = onQuickEditWeight,
-                onQuickEditInterval = onQuickEditInterval
-            )
-
             if (detailsExpanded) {
                 Spacer(modifier = Modifier.height(4.dp))
-                Column {
-                    ExerciseAttributeField(
-                        label = "set",
-                        value = "${exercise.sets}",
-                        enabled = canQuickEdit,
-                        onClick = onQuickEditSets
-                    )
-                    ExerciseAttributeField(
-                        label = "reps",
-                        value = "${exercise.reps}",
-                        enabled = canQuickEdit,
-                        onClick = onQuickEditReps
-                    )
-                    ExerciseAttributeField(
-                        label = "weight",
-                        value = if (exercise.plannedWeight.isBlank()) "-" else exercise.plannedWeight,
-                        enabled = canQuickEdit,
-                        onClick = onQuickEditWeight
-                    )
-                    ExerciseAttributeField(
-                        label = "interval",
-                        value = "${exercise.intervalSeconds} sec",
-                        enabled = canQuickEdit,
-                        onClick = onQuickEditInterval
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ExerciseSetTable(
+                        repsBySet = exercise.plannedRepsBySet,
+                        weightBySet = exercise.plannedWeightBySet,
+                        editable = canQuickEdit,
+                        onEditRepsAt = onQuickEditRepsForSet,
+                        onEditWeightAt = onQuickEditWeightForSet
                     )
 
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 2.dp))
                     Text(
                         text = "remarks",
                         style = MaterialTheme.typography.labelLarge,
@@ -3850,6 +4544,8 @@ private fun buildBackupJson(scheduleTitle: String, snapshot: BackupSnapshot): St
                             .put("reps", exercise.reps)
                             .put("intervalSeconds", exercise.intervalSeconds)
                             .put("plannedWeight", exercise.plannedWeight)
+                            .put("plannedRepsBySetJson", exercise.plannedRepsBySetJson)
+                            .put("plannedWeightBySetJson", exercise.plannedWeightBySetJson)
                             .put("remarks", exercise.remarks)
                             .put("position", exercise.position)
                             .put("isDone", exercise.isDone)
@@ -3950,15 +4646,25 @@ private fun JSONArray?.toExercises(): List<ExerciseEntity> {
     return buildList {
         for (index in 0 until length()) {
             val exercise = getJSONObject(index)
+            val sets = exercise.optInt("sets", 3)
+            val reps = exercise.optInt("reps", 12)
+            val plannedWeight = exercise.optString("plannedWeight", "")
+            val plannedRepsBySetJson = exercise.optString("plannedRepsBySetJson", "")
+                .ifBlank { buildRepsBySetJsonFallback(sets = sets, reps = reps) }
+            val plannedWeightBySetJson = exercise.optString("plannedWeightBySetJson", "")
+                .ifBlank { buildWeightBySetJsonFallback(sets = sets, plannedWeight = plannedWeight) }
+
             add(
                 ExerciseEntity(
                     id = exercise.optLong("id", 0L),
                     dayNumber = exercise.getInt("dayNumber"),
                     name = exercise.optString("name", "Exercise"),
-                    sets = exercise.optInt("sets", 3),
-                    reps = exercise.optInt("reps", 12),
+                    sets = sets,
+                    reps = reps,
                     intervalSeconds = exercise.optInt("intervalSeconds", 90),
-                    plannedWeight = exercise.optString("plannedWeight", ""),
+                    plannedWeight = plannedWeight,
+                    plannedRepsBySetJson = plannedRepsBySetJson,
+                    plannedWeightBySetJson = plannedWeightBySetJson,
                     remarks = exercise.optString("remarks", ""),
                     position = exercise.optInt("position", index + 1),
                     isDone = exercise.optBoolean("isDone", false)
@@ -3966,6 +4672,24 @@ private fun JSONArray?.toExercises(): List<ExerciseEntity> {
             )
         }
     }
+}
+
+private fun buildRepsBySetJsonFallback(sets: Int, reps: Int): String {
+    val safeSets = sets.coerceAtLeast(1)
+    return JSONArray().apply {
+        repeat(safeSets) {
+            put(reps)
+        }
+    }.toString()
+}
+
+private fun buildWeightBySetJsonFallback(sets: Int, plannedWeight: String): String {
+    val safeSets = sets.coerceAtLeast(1)
+    return JSONArray().apply {
+        repeat(safeSets) {
+            put(plannedWeight)
+        }
+    }.toString()
 }
 
 private fun JSONArray?.toSessions(): List<WorkoutSessionEntity> {

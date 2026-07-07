@@ -2,7 +2,7 @@
 
 These guidelines are mandatory for this project unless a documented exception is approved in code review.
 
-## 0. Always keep DESIGN.md in sync with latest changes and append latest changes as versioning in DESIGN_VERSIONS.md
+## 0. Always keep docs/DESIGN.md in sync with latest changes and append latest changes as versioning in docs/DESIGN_VERSIONS.md and keep updating page command names on settings page everytime some change is done over there.
 
 ## 1. Architecture and boundaries
 
@@ -93,7 +93,7 @@ viewModelScope.launch {
 - Keep DAO focused on persistence operations only.
 - Keep mapping logic in repository, not in UI.
 - Room schema changes must include migration strategy.
-- `fallbackToDestructiveMigration` is acceptable for debug prototypes, not for production releases.
+- Do not use `fallbackToDestructiveMigration` for production data paths; provide explicit migrations.
 - Keep transactions explicit for multi-step writes.
 - When a persisted field is added/changed, update backup export/import mapping in the same change.
 
@@ -162,7 +162,7 @@ Windows:
 - Tests updated/added for changed behavior.
 - Lint/build pass locally.
 - Docs updated when behavior or flow changes.
-- If UI/flow changed, append a new version in `DESIGN_VERSIONS.md`.
+- If UI/flow changed, append a new version in `docs/DESIGN_VERSIONS.md`.
 
 ## 12. Definition of done
 

@@ -4,7 +4,7 @@ Lean Android utility app for fast workout logging during training.
 
 Primary design source: see DESIGN_VERSIONS.md and append all future design updates as version increments.
 
-## Current Product Snapshot (v1.59)
+## Current Product Snapshot (v1.86)
 
 - Local-only Android app (no auth, no cloud sync).
 - 7-day repeating workout template, seeded on first launch.
@@ -49,6 +49,37 @@ Primary design source: see DESIGN_VERSIONS.md and append all future design updat
 - In active workout data rows, confirmed set edits keep highlighted styling without showing an explicit `Edited` text badge.
 - Focused exercise name is centered in the workout session set-info card.
 - Active workout no longer shows the Template Frozen/Unlocked lock control.
+- Schedule page cards now show date on the left and `Day N` text on the right.
+- Left schedule cards use a fixed-width date slot so varying date lengths do not shift layout.
+- Infinity page cards now show date as a side-aligned header value and hide exercise-count text.
+- Infinity card header alignment now keeps primary text and date on the same row to avoid split top/bottom visual drift.
+- Schedule and Infinity cards now always show default `Day N` labels instead of `Today` text.
+- Schedule page cards now also hide exercise-count text for a cleaner, consistent card stack.
+- Settings, Workout Day, and Workout Start flows now suppress duplicated parent top insets to remove residual empty top gaps.
+- Nested views inside Settings and Workout Day now align to their own app bars without extra leading top spacer.
+- Active workout progress now appears as compact `1/n Done` text pinned beside the exercise strip so it stays visible while chips scroll.
+- Pinned `1/n Done` strip now uses larger text for clearer readability during active workout.
+- Workout exercise-strip chip labels now also use larger text for easier readability while scrolling.
+- Infinity page `Today` quick-jump button now uses a higher-contrast filled style with larger presence for better visibility.
+- System back on Insights/Settings now first returns to Workout home (`Schedule`) instead of exiting immediately.
+- System back on Workout home now asks confirmation (`Do you want to exit?`) before closing the app.
+- Active workout strip now includes a fixed `i` action to open the currently selected exercise's associated remark on demand.
+- Insights now focuses on ratios plus workout-specific history by workout name.
+- Top `Trailing 7 Day Ratio` and `This Month Ratio` now show plain count format only (no percentage suffix).
+- Insights top ratio strip now displays only the two values (for example `2/7` and `10/31`) without metric label text.
+- Insights workout selection for history now uses a dropdown control instead of chips.
+- Insights lets users select a workout (for example Chest) and view the last 4-8 same workouts in a date-based history grid.
+- A one-time production reset now clears existing persisted workout/session data and reseeds template dates from today on first launch after this update.
+- Room destructive migration fallback has been removed so future schema upgrades must use explicit migrations to preserve data.
+- On `workout.day`, expanded reps/wgt table edits are now truly per-set and persisted independently (editing one set no longer changes all sets).
+- Exercise templates now persist per-set planned reps and per-set planned weight arrays, with set logging reading planned values by set number.
+- Backup export/import now includes per-set planned arrays and still imports older backups that only contain scalar reps/weight fields.
+- Number wheel dialogs now also accept double tap on the scroll value area as an immediate confirm action.
+- In active workout session, logging an exercise now auto-focuses and auto-scrolls to the next unfinished exercise chip.
+- Settings now includes a `Page Command Names` reference block with stable names for quick command-style targeting.
+- On `workout.day`, cycle swipe navigation has been dropped; header interactions now stay on the selected day's fixed date.
+- On `workout.day`, expanded exercise details now show a compact set-wise table with `reps` and `wgt` rows; interval is excluded from this expanded table.
+- On `workout.day`, exercise-card metric chips are removed from collapsed rows; reps/wgt table values are editable via wheel picker when expanded (in edit mode).
 
 ## Screen Map
 
@@ -112,12 +143,12 @@ Primary design source: see DESIGN_VERSIONS.md and append all future design updat
 
 - Exercise rows are collapsed by default.
 - Exercise status cards (current or done) use a shared turquoise status surface.
-- Each row always shows a compact metric strip (set, reps, weight, interval) for quick scanning.
-- Expand reveals detailed metric rows and deeper context.
-- Expanded exercise details now include a remarks section (remarks are not shown in metric chips).
+- Collapsed rows show exercise name and actions only (no metric chips).
+- Expand reveals a compact set-wise table (rows: reps and wgt; columns: sets) plus deeper context.
+- Expanded exercise details now include a remarks section.
 - In edit-capable context:
   - Long-press drag handle enables reorder.
-  - Metric chips and metric detail fields open wheel picker for direct numeric edits.
+  - Tapping reps/wgt table values opens wheel picker for direct numeric edits.
   - Delete/edit actions are available through row menu.
 - Outside edit mode:
   - Right swipe toggles done/undo for exercises.
@@ -126,7 +157,7 @@ Primary design source: see DESIGN_VERSIONS.md and append all future design updat
 
 ### 7) Quick Edit Wheel Dialog
 
-- Number wheel picker is centered in the dialog when editing chips/metrics.
+- Number wheel picker is centered in the dialog when editing expanded table values and quick-edit fields.
 - Interval wheel uses 15-second increments.
 - Weight wheel uses 0.5 kg increments.
 
@@ -155,7 +186,9 @@ Primary design source: see DESIGN_VERSIONS.md and append all future design updat
   - planned date
   - completion-for-date marker
 - Exercise includes:
-  - name, sets, reps, interval, planned weight
+  - name, sets, interval
+  - scalar compatibility fields: reps, planned weight
+  - per-set planned arrays: planned reps by set, planned weight by set
   - position
   - isDone
 - Session logging includes:

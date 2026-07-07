@@ -1470,6 +1470,147 @@ How to use:
 
 ---
 
+## Version 1.79 (2026-07-07)
+- Change summary:
+  - Removed left/right swipe cycle navigation from `workout.day` header.
+  - Removed cycle-view `Today` return button tied to that swipe navigation.
+  - Added a dropped-feature note file to keep deferred ideas documented.
+- Why changed:
+  - Simplify `workout.day` interactions and avoid accidental cycle navigation.
+- UX impact:
+  - `workout.day` now stays on the fixed selected date with no cycle hopping gestures.
+  - Users can revisit the removed idea later through `docs/DROPPED_FEATURES.md`.
+- Data/model impact:
+  - None.
+- Migration notes (if any):
+  - None.
+
+---
+
+## Version 1.80 (2026-07-07)
+- Change summary:
+  - Updated expanded exercise details on `workout.day` to a table format.
+  - Table uses two rows: `reps` and `wgt`, with each column representing one set.
+  - Removed interval from the expanded table presentation.
+- Why changed:
+  - Make expanded exercise details faster to scan and closer to set-by-set mental model.
+- UX impact:
+  - Users now see values as a compact matrix (`reps`/`wgt`) instead of line-by-line fields.
+  - Set count labels are no longer shown in expanded details because columns imply set order.
+- Data/model impact:
+  - None.
+- Migration notes (if any):
+  - None.
+
+---
+
+## Version 1.81 (2026-07-07)
+- Change summary:
+  - Removed compact metric chips from collapsed exercise cards on `workout.day`.
+  - Kept reps/wgt table visible only in expanded state.
+  - Made reps/wgt table values editable via the same wheel picker flow (in edit mode).
+- Why changed:
+  - Reduce card clutter in collapsed state and keep edits focused in one expanded UI.
+- UX impact:
+  - Collapsed exercise rows are cleaner and more scan-friendly.
+  - Users can tap reps/wgt cells in expanded table to open wheel picker and update values.
+- Data/model impact:
+  - None.
+- Migration notes (if any):
+  - None.
+
+---
+
+## Version 1.82 (2026-07-07)
+- Change summary:
+  - Removed the two extra Insights deep metrics (consistency trend and rep-adherence trend), keeping ratio metrics.
+  - Added workout-specific Insights history with workout selector chips.
+  - Added date-column history grid for selected workout showing last up to 8 same workouts.
+- Why changed:
+  - Make Insights actionable per workout before starting a session.
+  - Reduce noise by keeping only ratio summary + workout-specific history.
+- UX impact:
+  - Users can tap a workout name (for example Chest) and review recent same-workout performance by date.
+  - Insights now emphasizes "last 4-8 same workouts" context over generic global trends.
+- Data/model impact:
+  - None.
+- Migration notes (if any):
+  - None.
+
+---
+
+## Version 1.83 (2026-07-07)
+- Change summary:
+  - Added one-time production reset on first launch after update: clears persisted workout/session data and reseeds from today.
+  - Removed Room destructive migration fallback from database builder.
+- Why changed:
+  - Start with a clean production baseline from today's date.
+  - Prevent silent destructive data loss in future schema upgrades.
+- UX impact:
+  - First launch after update resets existing in-app workout/session data and starts schedule from today.
+  - Future updates will require explicit migrations instead of automatic destructive wipes.
+- Data/model impact:
+  - No schema shape change.
+  - Runtime startup behavior includes one-time data reset marker in preferences.
+- Migration notes (if any):
+  - Existing local data is intentionally reset once in this release.
+
+---
+
+## Version 1.84 (2026-07-07)
+- Change summary:
+  - Added true per-set persistence for workout-day template planning values.
+  - Reps/wgt expanded table edits now target the tapped set cell only.
+  - Extended exercise schema/model with per-set planned reps and per-set planned weight arrays.
+  - Updated set logging to read planned reps/weight from the matching set index.
+  - Updated backup export/import to include per-set arrays while preserving compatibility with older scalar-only backups.
+- Why changed:
+  - Previous workout-day table edits were coupled: changing one set value updated all sets.
+  - Users need each set's plan to be independently editable and safely persisted.
+- UX impact:
+  - Editing set 2 reps or weight no longer changes set 1 (or any other set).
+  - Expanded workout-day table now behaves like a true per-set planner.
+  - Existing backups still import; new backups preserve richer per-set template data.
+- Data/model impact:
+  - Room database version increased to 5 with migration adding per-set JSON columns for exercises.
+  - Exercise domain model now includes planned values per set and keeps scalar reps/weight as compatibility aliases.
+  - Set-log planned values now align with the exact set number instead of a single shared exercise value.
+- Migration notes (if any):
+  - Existing rows migrate with new columns and continue to resolve planned values through compatibility defaults until users edit per-set values.
+
+---
+
+## Version 1.85 (2026-07-07)
+- Change summary:
+  - Simplified Insights top ratio presentation to values only.
+  - Removed ratio label text from the two top metrics.
+- Why changed:
+  - Users asked for a cleaner ratio row showing only compact count values.
+- UX impact:
+  - Insights now shows top counts like `2/7    10/31` without extra labels.
+  - Ratio readability is faster with less text clutter.
+- Data/model impact:
+  - None.
+- Migration notes (if any):
+  - None.
+
+---
+
+## Version 1.86 (2026-07-07)
+- Change summary:
+  - Replaced Insights workout history selection chips with a dropdown selector.
+- Why changed:
+  - Keep the selector compact and less visually noisy while preserving the same filtering behavior.
+- UX impact:
+  - Users now choose workout history target from a dropdown list instead of horizontal chips.
+  - Selected workout remains visible in the control and updates the same 4-8 session history grid.
+- Data/model impact:
+  - None.
+- Migration notes (if any):
+  - None.
+
+---
+
 ## Versioning Rule
 - Every product/UI naming decision must be appended as a new version section.
 - Do not rewrite past version content; add only incremental deltas.

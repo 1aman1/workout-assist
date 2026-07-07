@@ -4,6 +4,7 @@ import java.util.Calendar
 import java.util.TimeZone
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import org.json.JSONArray
 
 private const val MIN_SETS = 1
 private const val MAX_SETS = 8
@@ -28,6 +29,8 @@ data class ExerciseModel(
     val reps: Int,
     val intervalSeconds: Int,
     val plannedWeight: String,
+    val plannedRepsBySet: List<Int>,
+    val plannedWeightBySet: List<String>,
     val remarks: String,
     val position: Int,
     val isDone: Boolean
@@ -71,10 +74,30 @@ class WorkoutRepository(private val dao: WorkoutDao) {
         return dao.observeSessions()
     }
 
+    fun observeSetLogs(): Flow<List<SetLogEntity>> {
+        return dao.observeSetLogs()
+    }
+
     suspend fun ensureSeedData() {
         if (dao.countDays() > 0) {
             return
         }
+
+        seedDefaultTemplateFromToday()
+    }
+
+    suspend fun resetAllDataAndSeedFromToday() {
+        dao.replaceAllData(
+            days = emptyList(),
+            exercises = emptyList(),
+            sessions = emptyList(),
+            logs = emptyList()
+        )
+
+        seedDefaultTemplateFromToday()
+    }
+
+    private suspend fun seedDefaultTemplateFromToday() {
 
         val firstPlannedDate = currentDateEpochDay()
         val seedDayNames = listOf(
@@ -141,6 +164,9 @@ class WorkoutRepository(private val dao: WorkoutDao) {
         val clean = draft.sanitized()
         val existing = dao.getExercisesForDay(dayNumber)
         val nextPosition = (existing.maxOfOrNull { it.position } ?: 0) + 1
+        val plannedRepsBySet = List(clean.sets) { clean.reps }
+        val plannedWeightBySet = List(clean.sets) { clean.plannedWeight }
+
         dao.insertExercise(
             ExerciseEntity(
                 dayNumber = dayNumber,
@@ -149,6 +175,8 @@ class WorkoutRepository(private val dao: WorkoutDao) {
                 reps = clean.reps,
                 intervalSeconds = clean.intervalSeconds,
                 plannedWeight = clean.plannedWeight,
+                plannedRepsBySetJson = encodeRepsBySetJson(plannedRepsBySet),
+                plannedWeightBySetJson = encodeWeightBySetJson(plannedWeightBySet),
                 remarks = clean.remarks,
                 position = nextPosition,
                 isDone = false
@@ -158,16 +186,76 @@ class WorkoutRepository(private val dao: WorkoutDao) {
 
     suspend fun updateExercise(exercise: ExerciseModel, draft: ExerciseDraft) {
         val clean = draft.sanitized()
+        val existingRepsBySet = exercise.plannedRepsBySet
+            .normalizeRepsBySet(expectedSets = exercise.sets, fallbackValue = exercise.reps)
+        val existingWeightBySet = exercise.plannedWeightBySet
+            .normalizeWeightBySet(expectedSets = exercise.sets, fallbackValue = exercise.plannedWeight)
+
+        val plannedRepsBySet = if (clean.reps != exercise.reps) {
+            List(clean.sets) { clean.reps }
+        } else {
+            existingRepsBySet.normalizeRepsBySet(expectedSets = clean.sets, fallbackValue = clean.reps)
+        }
+        val plannedWeightBySet = if (clean.plannedWeight != exercise.plannedWeight) {
+            List(clean.sets) { clean.plannedWeight }
+        } else {
+            existingWeightBySet.normalizeWeightBySet(expectedSets = clean.sets, fallbackValue = clean.plannedWeight)
+        }
+
         dao.updateExercise(
             ExerciseEntity(
                 id = exercise.id,
                 dayNumber = exercise.dayNumber,
                 name = clean.name,
                 sets = clean.sets,
-                reps = clean.reps,
+                reps = plannedRepsBySet.firstOrNull() ?: clean.reps,
                 intervalSeconds = clean.intervalSeconds,
-                plannedWeight = clean.plannedWeight,
+                plannedWeight = plannedWeightBySet.firstOrNull() ?: clean.plannedWeight,
+                plannedRepsBySetJson = encodeRepsBySetJson(plannedRepsBySet),
+                plannedWeightBySetJson = encodeWeightBySetJson(plannedWeightBySet),
                 remarks = clean.remarks,
+                position = exercise.position,
+                isDone = exercise.isDone
+            )
+        )
+    }
+
+    suspend fun updateExerciseSetPlan(
+        exercise: ExerciseModel,
+        setIndex: Int,
+        plannedReps: Int? = null,
+        plannedWeight: String? = null
+    ) {
+        if (setIndex !in 0 until exercise.sets) {
+            return
+        }
+
+        val updatedRepsBySet = exercise.plannedRepsBySet
+            .normalizeRepsBySet(expectedSets = exercise.sets, fallbackValue = exercise.reps)
+            .toMutableList()
+        val updatedWeightBySet = exercise.plannedWeightBySet
+            .normalizeWeightBySet(expectedSets = exercise.sets, fallbackValue = exercise.plannedWeight)
+            .toMutableList()
+
+        plannedReps?.let { value ->
+            updatedRepsBySet[setIndex] = value.coerceIn(MIN_REPS, MAX_REPS)
+        }
+        plannedWeight?.let { value ->
+            updatedWeightBySet[setIndex] = value.trim()
+        }
+
+        dao.updateExercise(
+            ExerciseEntity(
+                id = exercise.id,
+                dayNumber = exercise.dayNumber,
+                name = exercise.name,
+                sets = exercise.sets,
+                reps = updatedRepsBySet.firstOrNull() ?: exercise.reps,
+                intervalSeconds = exercise.intervalSeconds,
+                plannedWeight = updatedWeightBySet.firstOrNull() ?: exercise.plannedWeight,
+                plannedRepsBySetJson = encodeRepsBySetJson(updatedRepsBySet),
+                plannedWeightBySetJson = encodeWeightBySetJson(updatedWeightBySet),
+                remarks = exercise.remarks,
                 position = exercise.position,
                 isDone = exercise.isDone
             )
@@ -184,6 +272,14 @@ class WorkoutRepository(private val dao: WorkoutDao) {
                 reps = exercise.reps,
                 intervalSeconds = exercise.intervalSeconds,
                 plannedWeight = exercise.plannedWeight,
+                plannedRepsBySetJson = encodeRepsBySetJson(
+                    exercise.plannedRepsBySet
+                        .normalizeRepsBySet(expectedSets = exercise.sets, fallbackValue = exercise.reps)
+                ),
+                plannedWeightBySetJson = encodeWeightBySetJson(
+                    exercise.plannedWeightBySet
+                        .normalizeWeightBySet(expectedSets = exercise.sets, fallbackValue = exercise.plannedWeight)
+                ),
                 remarks = exercise.remarks,
                 position = exercise.position,
                 isDone = exercise.isDone
@@ -257,15 +353,22 @@ class WorkoutRepository(private val dao: WorkoutDao) {
         actualReps: Int,
         actualWeight: String
     ) {
+        val setIndex = (setNumber - 1).coerceAtLeast(0)
+        val plannedReps = exercise.plannedRepsBySet
+            .getOrElse(setIndex) { exercise.reps }
+            .coerceIn(MIN_REPS, MAX_REPS)
+        val plannedWeight = exercise.plannedWeightBySet
+            .getOrElse(setIndex) { exercise.plannedWeight }
+
         dao.insertSetLog(
             SetLogEntity(
                 sessionId = sessionId,
                 exerciseId = exercise.id,
                 exerciseName = exercise.name,
                 setNumber = setNumber,
-                plannedReps = exercise.reps,
+                plannedReps = plannedReps,
                 actualReps = actualReps.coerceIn(MIN_REPS, MAX_REPS),
-                plannedWeight = exercise.plannedWeight,
+                plannedWeight = plannedWeight,
                 actualWeight = actualWeight.trim(),
                 loggedAt = System.currentTimeMillis()
             )
@@ -304,14 +407,21 @@ class WorkoutRepository(private val dao: WorkoutDao) {
 }
 
 private fun ExerciseEntity.toModel(): ExerciseModel {
+    val normalizedRepsBySet = decodeRepsBySetJson(plannedRepsBySetJson)
+        .normalizeRepsBySet(expectedSets = sets, fallbackValue = reps)
+    val normalizedWeightBySet = decodeWeightBySetJson(plannedWeightBySetJson)
+        .normalizeWeightBySet(expectedSets = sets, fallbackValue = plannedWeight)
+
     return ExerciseModel(
         id = id,
         dayNumber = dayNumber,
         name = name,
         sets = sets,
-        reps = reps,
+        reps = normalizedRepsBySet.firstOrNull() ?: reps,
         intervalSeconds = intervalSeconds,
-        plannedWeight = plannedWeight,
+        plannedWeight = normalizedWeightBySet.firstOrNull() ?: plannedWeight,
+        plannedRepsBySet = normalizedRepsBySet,
+        plannedWeightBySet = normalizedWeightBySet,
         remarks = remarks,
         position = position,
         isDone = isDone
@@ -340,17 +450,79 @@ private fun seedExercise(
     plannedWeight: String = "",
     remarks: String = ""
 ): ExerciseEntity {
+    val normalizedSets = sets.coerceIn(MIN_SETS, MAX_SETS)
+    val normalizedReps = reps.coerceIn(MIN_REPS, MAX_REPS)
+    val normalizedWeight = plannedWeight.trim()
+
     return ExerciseEntity(
         dayNumber = dayNumber,
         name = name,
-        sets = sets.coerceIn(MIN_SETS, MAX_SETS),
-        reps = reps.coerceIn(MIN_REPS, MAX_REPS),
+        sets = normalizedSets,
+        reps = normalizedReps,
         intervalSeconds = intervalSeconds.coerceAtLeast(0),
-        plannedWeight = plannedWeight,
+        plannedWeight = normalizedWeight,
+        plannedRepsBySetJson = encodeRepsBySetJson(List(normalizedSets) { normalizedReps }),
+        plannedWeightBySetJson = encodeWeightBySetJson(List(normalizedSets) { normalizedWeight }),
         remarks = remarks,
         position = position,
         isDone = false
     )
+}
+
+private fun encodeRepsBySetJson(values: List<Int>): String {
+    return JSONArray(values.map { value -> value.coerceIn(MIN_REPS, MAX_REPS) }).toString()
+}
+
+private fun encodeWeightBySetJson(values: List<String>): String {
+    return JSONArray(values.map { value -> value.trim() }).toString()
+}
+
+private fun decodeRepsBySetJson(rawJson: String): List<Int> {
+    if (rawJson.isBlank()) {
+        return emptyList()
+    }
+
+    return runCatching {
+        val array = JSONArray(rawJson)
+        buildList {
+            for (index in 0 until array.length()) {
+                add(array.optInt(index, 0))
+            }
+        }
+    }.getOrDefault(emptyList())
+}
+
+private fun decodeWeightBySetJson(rawJson: String): List<String> {
+    if (rawJson.isBlank()) {
+        return emptyList()
+    }
+
+    return runCatching {
+        val array = JSONArray(rawJson)
+        buildList {
+            for (index in 0 until array.length()) {
+                add(array.optString(index, ""))
+            }
+        }
+    }.getOrDefault(emptyList())
+}
+
+private fun List<Int>.normalizeRepsBySet(expectedSets: Int, fallbackValue: Int): List<Int> {
+    val safeSetCount = expectedSets.coerceIn(MIN_SETS, MAX_SETS)
+    val fallback = fallbackValue.coerceIn(MIN_REPS, MAX_REPS)
+
+    return List(safeSetCount) { index ->
+        getOrNull(index)?.coerceIn(MIN_REPS, MAX_REPS) ?: fallback
+    }
+}
+
+private fun List<String>.normalizeWeightBySet(expectedSets: Int, fallbackValue: String): List<String> {
+    val safeSetCount = expectedSets.coerceIn(MIN_SETS, MAX_SETS)
+    val fallback = fallbackValue.trim()
+
+    return List(safeSetCount) { index ->
+        getOrNull(index)?.trim() ?: fallback
+    }
 }
 
 private fun currentDateEpochDay(): Long {

@@ -14,7 +14,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         WorkoutSessionEntity::class,
         SetLogEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class WorkoutDatabase : RoomDatabase() {
@@ -31,8 +31,7 @@ abstract class WorkoutDatabase : RoomDatabase() {
                     WorkoutDatabase::class.java,
                     "workout_assist.db"
                 )
-                    .addMigrations(MIGRATION_3_4)
-                    .fallbackToDestructiveMigration()
+                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5)
                     .build()
                     .also { INSTANCE = it }
             }
@@ -41,6 +40,13 @@ abstract class WorkoutDatabase : RoomDatabase() {
         private val MIGRATION_3_4 = object : Migration(3, 4) {
             override fun migrate(database: SupportSQLiteDatabase) {
                 database.execSQL("ALTER TABLE exercises ADD COLUMN remarks TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE exercises ADD COLUMN plannedRepsBySetJson TEXT NOT NULL DEFAULT ''")
+                database.execSQL("ALTER TABLE exercises ADD COLUMN plannedWeightBySetJson TEXT NOT NULL DEFAULT ''")
             }
         }
     }

@@ -18,6 +18,9 @@ interface WorkoutDao {
     @Query("SELECT * FROM workout_sessions ORDER BY id DESC")
     fun observeSessions(): Flow<List<WorkoutSessionEntity>>
 
+    @Query("SELECT * FROM set_logs ORDER BY id DESC")
+    fun observeSetLogs(): Flow<List<SetLogEntity>>
+
     @Query("SELECT COUNT(*) FROM template_days")
     suspend fun countDays(): Int
 

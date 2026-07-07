@@ -1,0 +1,15 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "compile-debug-kotlin",
+			"type": "shell",
+			"command": ".\\gradlew.bat",
+			"args": [
+				":app:compileDebugKotlin",
+				"--console=plain"
+			],
+			"isBackground": false
+		}
+	]
+}
