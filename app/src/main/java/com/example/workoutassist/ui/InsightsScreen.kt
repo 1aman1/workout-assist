@@ -539,6 +539,12 @@ private fun WorkoutSpecificInsightsCard(
                                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                                             ) {
                                                 Text(
+                                                    text = "Set ${setLog.setNumber}",
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                                Text(
                                                     text = formatSetLogEntry(setLog),
                                                     modifier = Modifier.weight(1f),
                                                     style = MaterialTheme.typography.bodyMedium,

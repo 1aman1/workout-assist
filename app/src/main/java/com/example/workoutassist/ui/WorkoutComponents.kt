@@ -65,9 +65,9 @@ internal fun ExerciseSetTable(
             modifier = Modifier
                 .fillMaxWidth()
                 .horizontalScroll(tableScroll)
-                .padding(horizontal = 10.dp, vertical = 8.dp)
+                .padding(horizontal = 12.dp, vertical = 10.dp)
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 ExerciseSetTableRow(
                     label = "reps",
                     values = repsValues,
@@ -94,11 +94,11 @@ private fun ExerciseSetTableRow(
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Text(
             text = label,
-            modifier = Modifier.width(40.dp),
+            modifier = Modifier.width(44.dp),
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -106,13 +106,13 @@ private fun ExerciseSetTableRow(
         values.forEachIndexed { index, value ->
             Box(
                 modifier = Modifier
-                    .width(58.dp)
+                    .width(72.dp)
                     .background(
                         color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
                         shape = RoundedCornerShape(8.dp)
                     )
                     .clickable(enabled = editable, onClick = { onValueClickAt(index) })
-                    .padding(vertical = 6.dp),
+                    .padding(vertical = 8.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Text(

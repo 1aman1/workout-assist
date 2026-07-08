@@ -2,6 +2,12 @@ package com.example.workoutassist.ui
 
 import android.app.DatePickerDialog
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -28,7 +34,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.DragHandle
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.rounded.Add
@@ -36,7 +41,6 @@ import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Edit
-import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.RadioButtonUnchecked
@@ -130,6 +134,10 @@ internal fun WorkoutDayScreen(
     }
     var loggedExerciseIds by remember(day.dayNumber) { mutableStateOf<Set<Long>>(emptySet()) }
     var setPickerTarget by remember(day.dayNumber) { mutableStateOf<Pair<Long, Int>?>(null) }
+    var selectedSetWeightByExerciseId by remember(day.dayNumber) {
+        mutableStateOf<Map<Long, List<String>>>(emptyMap())
+    }
+    var weightPickerTarget by remember(day.dayNumber) { mutableStateOf<Pair<Long, Int>?>(null) }
 
     var activeSessionId by remember(day.dayNumber) { mutableLongStateOf(0L) }
     var sessionStartMessage by remember(day.dayNumber) { mutableStateOf<String?>(null) }
@@ -153,7 +161,7 @@ internal fun WorkoutDayScreen(
         if (!workoutActive) {
             return@LaunchedEffect
         }
-        delay(3000)
+        delay(5000)
         if (sessionStartMessage == message) {
             sessionStartMessage = null
         }
@@ -300,9 +308,13 @@ internal fun WorkoutDayScreen(
         selectedSetRepsByExerciseId = day.exercises.associate { exercise ->
             exercise.id to exercise.plannedRepsBySet
         }
+        selectedSetWeightByExerciseId = day.exercises.associate { exercise ->
+            exercise.id to exercise.plannedWeightBySet
+        }
         editedSetIndexesByExerciseId = emptyMap()
         loggedExerciseIds = emptySet()
         setPickerTarget = null
+        weightPickerTarget = null
         sessionStartMessage = WORKOUT_SESSION_START_MESSAGES.random()
     }
 
@@ -315,6 +327,20 @@ internal fun WorkoutDayScreen(
         val updated = current.toMutableList()
         updated[setIndex] = selectedReps.coerceIn(1, 50)
         selectedSetRepsByExerciseId = selectedSetRepsByExerciseId + (exercise.id to updated.toList())
+
+        val editedSetIndexes = editedSetIndexesByExerciseId[exercise.id].orEmpty() + setIndex
+        editedSetIndexesByExerciseId = editedSetIndexesByExerciseId + (exercise.id to editedSetIndexes)
+    }
+
+    fun updateSetWeightSelection(exercise: ExerciseModel, setIndex: Int, selectedWeightText: String) {
+        val current = selectedSetWeightByExerciseId[exercise.id]
+            ?: exercise.plannedWeightBySet
+        if (setIndex !in current.indices) {
+            return
+        }
+        val updated = current.toMutableList()
+        updated[setIndex] = selectedWeightText
+        selectedSetWeightByExerciseId = selectedSetWeightByExerciseId + (exercise.id to updated.toList())
 
         val editedSetIndexes = editedSetIndexesByExerciseId[exercise.id].orEmpty() + setIndex
         editedSetIndexesByExerciseId = editedSetIndexesByExerciseId + (exercise.id to editedSetIndexes)
@@ -337,6 +363,14 @@ internal fun WorkoutDayScreen(
             selectedReps + List(focusedExercise.sets - selectedReps.size) { focusedExercise.reps }
         }
 
+        val selectedWeights = selectedSetWeightByExerciseId[focusedExercise.id]
+            ?: focusedExercise.plannedWeightBySet
+        val normalizedWeights = if (selectedWeights.size >= focusedExercise.sets) {
+            selectedWeights.take(focusedExercise.sets)
+        } else {
+            selectedWeights + List(focusedExercise.sets - selectedWeights.size) { focusedExercise.plannedWeight }
+        }
+
         scope.launch {
             normalizedReps.forEachIndexed { setIndex, reps ->
                 repository.logSet(
@@ -344,7 +378,7 @@ internal fun WorkoutDayScreen(
                     exercise = focusedExercise,
                     setNumber = setIndex + 1,
                     actualReps = reps,
-                    actualWeight = ""
+                    actualWeight = normalizedWeights.getOrElse(setIndex) { "" }
                 )
             }
         }
@@ -376,9 +410,11 @@ internal fun WorkoutDayScreen(
         editMode = false
         focusedExerciseId = 0L
         selectedSetRepsByExerciseId = emptyMap()
+        selectedSetWeightByExerciseId = emptyMap()
         editedSetIndexesByExerciseId = emptyMap()
         loggedExerciseIds = emptySet()
         setPickerTarget = null
+        weightPickerTarget = null
         sessionStartMessage = null
         activeSessionId = 0L
         showFinishConfirm = false
@@ -387,6 +423,13 @@ internal fun WorkoutDayScreen(
 
     fun finishWorkout() {
         finishActiveSessionIfAny()
+        scope.launch {
+            repository.setWorkoutDone(
+                dayNumber = day.dayNumber,
+                plannedDateEpochDay = viewedDateEpochDay,
+                isDone = true
+            )
+        }
         resetWorkoutModeState()
     }
 
@@ -436,31 +479,41 @@ internal fun WorkoutDayScreen(
                     }
                 },
                 actions = {
-                    IconButton(
-                        onClick = { showRenameWorkoutDialog = true },
-                        enabled = canEditTemplate
-                    ) {
-                        Icon(Icons.Rounded.Edit, contentDescription = "Rename Workout")
-                    }
+                    if (workoutActive) {
+                        Text(
+                            text = formatDateShort(viewedDateEpochDay),
+                            modifier = Modifier.padding(end = 14.dp),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        IconButton(
+                            onClick = { showRenameWorkoutDialog = true },
+                            enabled = canEditTemplate
+                        ) {
+                            Icon(Icons.Rounded.Edit, contentDescription = "Rename Workout")
+                        }
 
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Switch(
-                            checked = editMode,
-                            enabled = !workoutActive,
-                            onCheckedChange = { enabled ->
-                                if (enabled) {
-                                    editMode = true
-                                    editCollapseSignal += 1
-                                    hasEditChangesPendingExport = false
-                                    showExportAfterEditPrompt = false
-                                } else {
-                                    editMode = false
-                                    if (hasEditChangesPendingExport) {
-                                        showExportAfterEditPrompt = true
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Switch(
+                                checked = editMode,
+                                enabled = !workoutActive,
+                                onCheckedChange = { enabled ->
+                                    if (enabled) {
+                                        editMode = true
+                                        editCollapseSignal += 1
+                                        hasEditChangesPendingExport = false
+                                        showExportAfterEditPrompt = false
+                                    } else {
+                                        editMode = false
+                                        if (hasEditChangesPendingExport) {
+                                            showExportAfterEditPrompt = true
+                                        }
                                     }
                                 }
-                            }
-                        )
+                            )
+                        }
                     }
                 }
             )
@@ -546,15 +599,17 @@ internal fun WorkoutDayScreen(
                             }
                         }
 
-                        Text(
-                            text = formatDateShort(viewedDateEpochDay),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-
-                        Spacer(modifier = Modifier.height(10.dp))
+                        if (!workoutActive) {
+                            Text(
+                                text = formatDateShort(viewedDateEpochDay),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
 
                         if (!workoutActive) {
+                            Spacer(modifier = Modifier.height(10.dp))
+
                             Button(
                                 onClick = { startWorkout() },
                                 enabled = day.exercises.isNotEmpty() && !editMode,
@@ -574,12 +629,18 @@ internal fun WorkoutDayScreen(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                if (workoutActive && !sessionStartMessage.isNullOrBlank()) {
-                    WorkoutSessionStartMessageCard(
-                        message = sessionStartMessage.orEmpty(),
-                        onDismiss = { sessionStartMessage = null }
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
+                AnimatedVisibility(
+                    visible = workoutActive && !sessionStartMessage.isNullOrBlank(),
+                    enter = fadeIn() + scaleIn(initialScale = 0.8f) + expandVertically(),
+                    exit = fadeOut() + shrinkVertically()
+                ) {
+                    Column {
+                        WorkoutSessionStartMessageCard(
+                            message = sessionStartMessage.orEmpty(),
+                            onDismiss = { sessionStartMessage = null }
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
                 }
 
                 if (workoutActive) {
@@ -588,6 +649,7 @@ internal fun WorkoutDayScreen(
                         isSessionReady = activeSessionId != 0L,
                         focusedExerciseId = focusedExerciseId,
                         selectedSetRepsByExerciseId = selectedSetRepsByExerciseId,
+                        selectedSetWeightByExerciseId = selectedSetWeightByExerciseId,
                         editedSetIndexesByExerciseId = editedSetIndexesByExerciseId,
                         loggedExerciseIds = loggedExerciseIds,
                         onFocusExercise = { exerciseId ->
@@ -598,6 +660,11 @@ internal fun WorkoutDayScreen(
                         onSetTap = { exerciseId, setIndex ->
                             if (exerciseId !in loggedExerciseIds) {
                                 setPickerTarget = exerciseId to setIndex
+                            }
+                        },
+                        onWeightTap = { exerciseId, setIndex ->
+                            if (exerciseId !in loggedExerciseIds) {
+                                weightPickerTarget = exerciseId to setIndex
                             }
                         },
                         onLogFocusedExercise = { saveFocusedExerciseSets() },
@@ -883,6 +950,36 @@ internal fun WorkoutDayScreen(
         }
     }
 
+    weightPickerTarget?.let { (exerciseId, setIndex) ->
+        val targetExercise = day.exercises.firstOrNull { exercise -> exercise.id == exerciseId }
+        if (targetExercise != null) {
+            val selectedForExercise = selectedSetWeightByExerciseId[exerciseId]
+                ?: targetExercise.plannedWeightBySet
+            val currentWeight = selectedForExercise.getOrElse(setIndex) { targetExercise.plannedWeight }
+            val selectedHalfKg = ((parseWeightValue(currentWeight) ?: 20f) * 2f)
+                .roundToInt()
+                .coerceIn(0, 600)
+            NumberWheelDialog(
+                title = "${targetExercise.name} - Set ${setIndex + 1} weight",
+                value = selectedHalfKg,
+                range = 0..600,
+                valueText = { halfKgStep -> "${formatHalfKgValue(halfKgStep)} kg" },
+                onDismiss = { weightPickerTarget = null },
+                onConfirm = { selectedHalfKgValue ->
+                    val selectedKg = selectedHalfKgValue / 2f
+                    updateSetWeightSelection(
+                        exercise = targetExercise,
+                        setIndex = setIndex,
+                        selectedWeightText = "${formatKgValue(selectedKg)} kg"
+                    )
+                    weightPickerTarget = null
+                }
+            )
+        } else {
+            weightPickerTarget = null
+        }
+    }
+
     if (showAchievementPopup) {
         AlertDialog(
             onDismissRequest = { showAchievementPopup = false },
@@ -1014,10 +1111,12 @@ private fun WorkoutActivePage(
     isSessionReady: Boolean,
     focusedExerciseId: Long,
     selectedSetRepsByExerciseId: Map<Long, List<Int>>,
+    selectedSetWeightByExerciseId: Map<Long, List<String>>,
     editedSetIndexesByExerciseId: Map<Long, Set<Int>>,
     loggedExerciseIds: Set<Long>,
     onFocusExercise: (Long) -> Unit,
     onSetTap: (Long, Int) -> Unit,
+    onWeightTap: (Long, Int) -> Unit,
     onLogFocusedExercise: () -> Unit,
     onFinish: () -> Unit
 ) {
@@ -1129,12 +1228,7 @@ private fun WorkoutActivePage(
             )
         ) {
             Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (focusedExercise == null) {
-                    Text(
-                        text = "Select any exercise chip above to start logging reps.",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                } else {
+                if (focusedExercise != null) {
                     Text(
                         text = focusedExercise.name,
                         modifier = Modifier.fillMaxWidth(),
@@ -1150,16 +1244,22 @@ private fun WorkoutActivePage(
 
                     val selectedSetReps = selectedSetRepsByExerciseId[focusedExercise.id]
                         ?: List(focusedExercise.sets) { focusedExercise.reps }
+                    val selectedSetWeights = selectedSetWeightByExerciseId[focusedExercise.id]
+                        ?: focusedExercise.plannedWeightBySet
                     val editedSetIndexes = editedSetIndexesByExerciseId[focusedExercise.id].orEmpty()
 
                     repeat(focusedExercise.sets) { setIndex ->
                         val selectedValue = selectedSetReps.getOrElse(setIndex) { focusedExercise.reps }
-                        WorkoutDataRowEditable(
+                        val rawWeight = selectedSetWeights.getOrElse(setIndex) { focusedExercise.plannedWeight }
+                        val weightLabel = rawWeight.trim().ifBlank { "—" }
+                        WorkoutSetEditRow(
                             label = "Set ${setIndex + 1}",
-                            value = "$selectedValue reps",
+                            weightText = weightLabel,
+                            repsText = "$selectedValue reps",
                             isEdited = setIndex in editedSetIndexes,
                             enabled = focusedExercise.id !in loggedExerciseIds,
-                            onClick = { onSetTap(focusedExercise.id, setIndex) }
+                            onWeightClick = { onWeightTap(focusedExercise.id, setIndex) },
+                            onRepsClick = { onSetTap(focusedExercise.id, setIndex) }
                         )
                     }
                 }
@@ -1294,12 +1394,14 @@ private fun WorkoutDataRowReadOnly(
 }
 
 @Composable
-private fun WorkoutDataRowEditable(
+private fun WorkoutSetEditRow(
     label: String,
-    value: String,
+    weightText: String,
+    repsText: String,
     isEdited: Boolean,
     enabled: Boolean,
-    onClick: () -> Unit
+    onWeightClick: () -> Unit,
+    onRepsClick: () -> Unit
 ) {
     val borderColor = if (isEdited) {
         MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
@@ -1313,9 +1415,7 @@ private fun WorkoutDataRowEditable(
     }
 
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(enabled = enabled, onClick = onClick),
+        modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
         border = BorderStroke(1.dp, borderColor),
         colors = CardDefaults.cardColors(containerColor = containerColor)
@@ -1324,24 +1424,54 @@ private fun WorkoutDataRowEditable(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 12.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(
                 text = label,
+                modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.bodyMedium
             )
+            WorkoutSetValuePill(
+                value = weightText,
+                enabled = enabled,
+                onClick = onWeightClick
+            )
             Text(
-                text = value,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-                color = if (isEdited) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    MaterialTheme.colorScheme.onSurface
-                }
+                text = "×",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            WorkoutSetValuePill(
+                value = repsText,
+                enabled = enabled,
+                onClick = onRepsClick
             )
         }
+    }
+}
+
+@Composable
+private fun WorkoutSetValuePill(
+    value: String,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .background(
+                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f),
+                shape = RoundedCornerShape(10.dp)
+            )
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = value,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold
+        )
     }
 }
 
@@ -1433,7 +1563,9 @@ private fun ExerciseRow(
 
                 Text(
                     text = exercise.name,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { detailsExpanded = !detailsExpanded },
                     fontWeight = FontWeight.SemiBold
                 )
 
@@ -1464,27 +1596,7 @@ private fun ExerciseRow(
                                 }
                             )
                         }
-                        DropdownMenuItem(
-                            text = { Text("More options soon") },
-                            enabled = false,
-                            onClick = { menuExpanded = false }
-                        )
                     }
-                }
-
-                IconButton(onClick = { detailsExpanded = !detailsExpanded }) {
-                    Icon(
-                        imageVector = if (detailsExpanded) {
-                            Icons.Rounded.ExpandMore
-                        } else {
-                            Icons.AutoMirrored.Rounded.KeyboardArrowRight
-                        },
-                        contentDescription = if (detailsExpanded) {
-                            "Collapse exercise details"
-                        } else {
-                            "Expand exercise details"
-                        }
-                    )
                 }
             }
 
@@ -1497,6 +1609,18 @@ private fun ExerciseRow(
                         editable = canQuickEdit,
                         onEditRepsAt = onQuickEditRepsForSet,
                         onEditWeightAt = onQuickEditWeightForSet
+                    )
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 2.dp))
+                    Text(
+                        text = "interval",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "${exercise.intervalSeconds}s",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f)
                     )
 
                     HorizontalDivider(modifier = Modifier.padding(vertical = 2.dp))

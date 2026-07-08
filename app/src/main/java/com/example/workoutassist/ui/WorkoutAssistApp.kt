@@ -108,6 +108,7 @@ private const val KEY_THEME_BACKGROUND_CUSTOM_HEX = "theme_background_custom_hex
 private const val KEY_THEME_STATUS_CUSTOM_HEX = "theme_status_custom_hex"
 private const val KEY_THEME_DONE_CUSTOM_HEX = "theme_done_custom_hex"
 private const val KEY_PRODUCTION_RESET_20260707_DONE = "production_reset_20260707_done"
+private const val KEY_HISTORY_PREFILL_20260708_DONE = "history_prefill_20260708_done"
 private const val DEFAULT_PAGE_LABEL_SCHEDULE = "Schedule"
 private const val DEFAULT_PAGE_LABEL_INFINITY = "Infinity"
 private const val DEFAULT_TAB_LABEL_WORKOUT = "Workout"
@@ -248,6 +249,26 @@ fun WorkoutAssistApp() {
     }
 
     LaunchedEffect(Unit) {
+        val prefillAlreadyDone = prefs.getBoolean(KEY_HISTORY_PREFILL_20260708_DONE, false)
+        if (!prefillAlreadyDone) {
+            val prefillResult = runCatching {
+                importBackupFromAsset(
+                    context = context,
+                    repository = repository,
+                    assetName = "workout-history-prefill.json"
+                )
+            }
+            if (prefillResult.isSuccess) {
+                // One-time load succeeded; mark done so it never runs again and never
+                // overwrites entries the user makes later in the app.
+                prefs.edit()
+                    .putBoolean(KEY_HISTORY_PREFILL_20260708_DONE, true)
+                    .putBoolean(KEY_PRODUCTION_RESET_20260707_DONE, true)
+                    .apply()
+                return@LaunchedEffect
+            }
+        }
+
         val resetAlreadyDone = prefs.getBoolean(KEY_PRODUCTION_RESET_20260707_DONE, false)
         if (!resetAlreadyDone) {
             repository.resetAllDataAndSeedFromToday()

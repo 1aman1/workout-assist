@@ -67,6 +67,26 @@ internal suspend fun importBackupFromUri(
     return ImportedAppState(scheduleTitle = parsed.scheduleTitle)
 }
 
+internal suspend fun importBackupFromAsset(
+    context: Context,
+    repository: WorkoutRepository,
+    assetName: String
+): ImportedAppState {
+    val text = withContext(Dispatchers.IO) {
+        context.assets.open(assetName).bufferedReader().use { reader ->
+            reader.readText()
+        }
+    }
+
+    val parsed = parseBackupJson(text)
+    if (parsed.snapshot.days.isEmpty()) {
+        error("Prefill backup does not include workout days")
+    }
+
+    repository.importBackupSnapshot(parsed.snapshot)
+    return ImportedAppState(scheduleTitle = parsed.scheduleTitle)
+}
+
 private data class BackupPayload(
     val scheduleTitle: String,
     val snapshot: BackupSnapshot
