@@ -52,7 +52,8 @@ internal fun ExerciseSetTable(
     }
     val weightValues = remember(weightBySet, columnCount) {
         List(columnCount) { index ->
-            weightBySet.getOrNull(index)?.ifBlank { "-" } ?: "-"
+            val raw = weightBySet.getOrNull(index)?.ifBlank { "-" } ?: "-"
+            raw.removeSuffix(" kg").ifBlank { "-" }
         }
     }
 
@@ -75,7 +76,7 @@ internal fun ExerciseSetTable(
                     onValueClickAt = onEditRepsAt
                 )
                 ExerciseSetTableRow(
-                    label = "wgt",
+                    label = "wt(kg)",
                     values = weightValues,
                     editable = editable,
                     onValueClickAt = onEditWeightAt
@@ -98,7 +99,7 @@ private fun ExerciseSetTableRow(
     ) {
         Text(
             text = label,
-            modifier = Modifier.width(44.dp),
+            modifier = Modifier.width(52.dp),
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )

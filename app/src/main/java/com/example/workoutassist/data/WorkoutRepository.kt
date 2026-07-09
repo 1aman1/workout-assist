@@ -127,18 +127,21 @@ class WorkoutRepository(private val dao: WorkoutDao) {
                 seedExercise(1, 3, "Chest Dips (Lean Forward)", 3, 8, 120, "Bodyweight"),
                 seedExercise(1, 4, "Triceps (Skullcrusher or Rope Pulldown)", 3, 10, 90),
                 seedExercise(1, 5, "Finish Crunches", 3, 15, 45, "Bodyweight"),
+                seedExercise(1, 6, "Treadmill", 1, 1, 0, "10-15 min"),
 
                 seedExercise(2, 1, "Deadlift (Main Lift)", 3, 5, 180, "Technique focus"),
                 seedExercise(2, 2, "Barbell Row", 3, 6, 150, "45-55 kg"),
                 seedExercise(2, 3, "Pull-Ups or Lat Pulldown", 3, 8, 120),
                 seedExercise(2, 4, "Biceps Barbell Curl", 3, 8, 90, "20-30 kg"),
                 seedExercise(2, 5, "Finish Crunches", 3, 15, 45, "Bodyweight"),
+                seedExercise(2, 6, "Treadmill", 1, 1, 0, "10-15 min"),
 
                 seedExercise(4, 1, "Overhead Press", 3, 6, 150, "15-20 kg"),
                 seedExercise(4, 2, "Lateral Raises", 4, 12, 75, "7.5 kg"),
                 seedExercise(4, 3, "Rear Delt Raises", 3, 12, 75, "20-30 kg"),
                 seedExercise(4, 4, "Arms Superset (DB Curl + Triceps Pushdown)", 3, 12, 60),
                 seedExercise(4, 5, "Finish Crunches", 3, 15, 45, "Bodyweight"),
+                seedExercise(4, 6, "Treadmill", 1, 1, 0, "10-15 min"),
 
                 seedExercise(5, 1, "Incline Dumbbell Press (30 deg)", 3, 12, 90, "15-17.5 kg"),
                 seedExercise(5, 2, "Machine/Cable Chest Fly", 3, 12, 60, "35 kg"),
@@ -146,11 +149,13 @@ class WorkoutRepository(private val dao: WorkoutDao) {
                 seedExercise(5, 4, "Seated Cable Row", 3, 12, 90, "38-45 kg"),
                 seedExercise(5, 5, "Arm Superset (Biceps + Triceps)", 3, 12, 60),
                 seedExercise(5, 6, "Finish Crunches", 3, 15, 45, "Bodyweight"),
+                seedExercise(5, 7, "Treadmill", 1, 1, 0, "10-15 min"),
 
                 seedExercise(6, 1, "Barbell Squat", 3, 6, 150, "50-80 kg"),
                 seedExercise(6, 2, "Romanian Deadlift", 2, 8, 120),
                 seedExercise(6, 3, "Calf Raises", 3, 15, 60),
-                seedExercise(6, 4, "Finish Crunches", 3, 15, 45, "Bodyweight")
+                seedExercise(6, 4, "Finish Crunches", 3, 15, 45, "Bodyweight"),
+                seedExercise(6, 5, "Treadmill", 1, 1, 0, "10-15 min")
             )
         )
     }

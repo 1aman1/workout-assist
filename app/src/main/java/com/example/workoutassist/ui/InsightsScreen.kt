@@ -4,6 +4,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -21,6 +23,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -30,7 +33,6 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -264,7 +266,7 @@ internal fun InsightsScreen(
         ) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp),
+                shape = RoundedCornerShape(18.dp),
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
@@ -329,12 +331,6 @@ internal fun InsightsScreen(
                             textAlign = TextAlign.Center
                         )
                     }
-
-                    Text(
-                        text = "Finished sessions logged: ${finishedSessionSamples.size}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                 }
             }
 
@@ -400,7 +396,7 @@ private fun WorkoutSpecificInsightsCard(
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(18.dp),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
@@ -417,11 +413,21 @@ private fun WorkoutSpecificInsightsCard(
             )
 
             if (workoutNames.isEmpty()) {
-                Text(
-                    text = "Finish and log workouts to unlock workout history.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Info,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "Finish and log workouts to unlock workout history.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             } else {
                 Box(modifier = Modifier.fillMaxWidth()) {
                     OutlinedButton(
@@ -495,7 +501,7 @@ private fun WorkoutSpecificInsightsCard(
                             history.forEach { item ->
                                 Card(
                                     modifier = Modifier.fillMaxWidth(),
-                                    shape = RoundedCornerShape(14.dp),
+                                    shape = RoundedCornerShape(12.dp),
                                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
                                     colors = CardDefaults.cardColors(
                                         containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f)
@@ -530,11 +536,18 @@ private fun WorkoutSpecificInsightsCard(
                                             Row(
                                                 modifier = Modifier
                                                     .fillMaxWidth()
+                                                    .clickable {
+                                                        editSetTarget = setLog
+                                                        editRepsInput = setLog.actualReps.toString()
+                                                        editWeightInput = setLog.actualWeight
+                                                            .trim()
+                                                            .ifBlank { setLog.plannedWeight.trim() }
+                                                    }
                                                     .background(
                                                         color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f),
-                                                        shape = RoundedCornerShape(10.dp)
+                                                        shape = RoundedCornerShape(8.dp)
                                                     )
-                                                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                                                    .padding(start = 10.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
                                                 verticalAlignment = Alignment.CenterVertically,
                                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                                             ) {
@@ -552,25 +565,15 @@ private fun WorkoutSpecificInsightsCard(
                                                     fontWeight = FontWeight.Medium
                                                 )
 
-                                                TextButton(
-                                                    onClick = {
-                                                        editSetTarget = setLog
-                                                        editRepsInput = setLog.actualReps.toString()
-                                                        editWeightInput = setLog.actualWeight
-                                                            .trim()
-                                                            .ifBlank { setLog.plannedWeight.trim() }
-                                                    },
-                                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                                                ) {
-                                                    Text("Edit")
-                                                }
-
-                                                IconButton(onClick = { deleteSetTarget = setLog }) {
-                                                    Icon(
-                                                        imageVector = Icons.Rounded.Delete,
-                                                        contentDescription = "Delete set entry"
-                                                    )
-                                                }
+                                                Icon(
+                                                    imageVector = Icons.Rounded.Delete,
+                                                    contentDescription = "Delete set entry",
+                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    modifier = Modifier
+                                                        .clickable { deleteSetTarget = setLog }
+                                                        .padding(4.dp)
+                                                        .size(18.dp)
+                                                )
                                             }
                                         }
                                     }
@@ -579,7 +582,7 @@ private fun WorkoutSpecificInsightsCard(
                         }
 
                         Text(
-                            text = "Edit updates only the selected set. Delete Record removes only this date entry for selected workout and exercise.",
+                            text = "Tap a set to edit it. Delete Record removes only this date entry for selected workout and exercise.",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

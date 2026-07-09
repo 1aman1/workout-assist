@@ -124,6 +124,7 @@ internal fun WorkoutDayScreen(
     var showAddDialog by remember(day.dayNumber) { mutableStateOf(false) }
     var editExerciseTarget by remember(day.dayNumber) { mutableStateOf<ExerciseModel?>(null) }
     var showRenameWorkoutDialog by remember(day.dayNumber) { mutableStateOf(false) }
+    var showAddSessionExerciseDialog by remember(day.dayNumber) { mutableStateOf(false) }
 
     var focusedExerciseId by remember(day.dayNumber) { mutableLongStateOf(0L) }
     var selectedSetRepsByExerciseId by remember(day.dayNumber) {
@@ -396,6 +397,49 @@ internal fun WorkoutDayScreen(
         setPickerTarget = null
     }
 
+    fun skipFocusedExercise() {
+        val focusedExercise = day.exercises.firstOrNull { exercise -> exercise.id == focusedExerciseId } ?: return
+        if (focusedExercise.id in loggedExerciseIds) {
+            return
+        }
+
+        val updatedLogged = loggedExerciseIds + focusedExercise.id
+        loggedExerciseIds = updatedLogged
+
+        val focusedIndex = day.exercises.indexOfFirst { exercise -> exercise.id == focusedExercise.id }
+        val nextUnloggedExercise = day.exercises
+            .drop((focusedIndex + 1).coerceAtLeast(0))
+            .firstOrNull { exercise -> exercise.id !in updatedLogged }
+            ?: day.exercises.firstOrNull { exercise -> exercise.id !in updatedLogged }
+
+        focusedExerciseId = nextUnloggedExercise?.id ?: 0L
+        setPickerTarget = null
+    }
+
+    fun addSetToFocusedExercise() {
+        val focusedExercise = day.exercises.firstOrNull { exercise -> exercise.id == focusedExerciseId } ?: return
+        if (focusedExercise.id in loggedExerciseIds) {
+            return
+        }
+        val newSets = (focusedExercise.sets + 1).coerceAtMost(8)
+        if (newSets == focusedExercise.sets) {
+            return
+        }
+        scope.launch {
+            repository.updateExercise(
+                exercise = focusedExercise,
+                draft = ExerciseDraft(
+                    name = focusedExercise.name,
+                    sets = newSets,
+                    reps = focusedExercise.reps,
+                    intervalSeconds = focusedExercise.intervalSeconds,
+                    plannedWeight = focusedExercise.plannedWeight,
+                    remarks = focusedExercise.remarks
+                )
+            )
+        }
+    }
+
     fun finishActiveSessionIfAny() {
         if (activeSessionId != 0L) {
             val sessionId = activeSessionId
@@ -480,13 +524,24 @@ internal fun WorkoutDayScreen(
                 },
                 actions = {
                     if (workoutActive) {
-                        Text(
-                            text = formatDateShort(viewedDateEpochDay),
-                            modifier = Modifier.padding(end = 14.dp),
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.padding(end = 14.dp)
+                        ) {
+                            Text(
+                                text = "${loggedExerciseIds.size}/${day.exercises.size}",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = formatDateShort(viewedDateEpochDay),
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     } else {
                         IconButton(
                             onClick = { showRenameWorkoutDialog = true },
@@ -537,10 +592,11 @@ internal fun WorkoutDayScreen(
                     .fillMaxSize()
                     .padding(horizontal = 16.dp)
             ) {
+                if (!workoutActive) {
                 Card(
                     modifier = Modifier
                         .fillMaxWidth(),
-                    shape = RoundedCornerShape(22.dp),
+                    shape = RoundedCornerShape(18.dp),
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.16f)),
                     elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
@@ -626,6 +682,7 @@ internal fun WorkoutDayScreen(
                         }
                     }
                 }
+                }
 
                 Spacer(modifier = Modifier.height(12.dp))
 
@@ -668,6 +725,9 @@ internal fun WorkoutDayScreen(
                             }
                         },
                         onLogFocusedExercise = { saveFocusedExerciseSets() },
+                        onSkip = { skipFocusedExercise() },
+                        onAddSet = { addSetToFocusedExercise() },
+                        onAddExercise = { showAddSessionExerciseDialog = true },
                         onFinish = { showFinishConfirm = true }
                     )
                 } else {
@@ -824,6 +884,31 @@ internal fun WorkoutDayScreen(
                 }
                 hasEditChangesPendingExport = true
                 showRenameWorkoutDialog = false
+            }
+        )
+    }
+
+    if (showAddSessionExerciseDialog) {
+        RenameWorkoutDialog(
+            dialogTitle = "Add Exercise",
+            fieldLabel = "Exercise name",
+            initialName = "",
+            onDismiss = { showAddSessionExerciseDialog = false },
+            onConfirm = { newName ->
+                scope.launch {
+                    repository.addExercise(
+                        day.dayNumber,
+                        ExerciseDraft(
+                            name = newName,
+                            sets = 1,
+                            reps = 10,
+                            intervalSeconds = 60,
+                            plannedWeight = "",
+                            remarks = ""
+                        )
+                    )
+                }
+                showAddSessionExerciseDialog = false
             }
         )
     }
@@ -1118,6 +1203,9 @@ private fun WorkoutActivePage(
     onSetTap: (Long, Int) -> Unit,
     onWeightTap: (Long, Int) -> Unit,
     onLogFocusedExercise: () -> Unit,
+    onSkip: () -> Unit,
+    onAddSet: () -> Unit,
+    onAddExercise: () -> Unit,
     onFinish: () -> Unit
 ) {
     val focusedExercise = day.exercises.firstOrNull { exercise -> exercise.id == focusedExerciseId }
@@ -1134,7 +1222,6 @@ private fun WorkoutActivePage(
 
     val canLogFocusedExercise =
         isSessionReady && focusedExercise != null && focusedExercise.id !in loggedExerciseIds
-    val loggedSummaryText = "${loggedExerciseIds.size}/${day.exercises.size} Done"
     var showSessionActions by remember(day.dayNumber) { mutableStateOf(false) }
     var showFocusedExerciseRemark by remember(day.dayNumber) { mutableStateOf(false) }
 
@@ -1160,22 +1247,6 @@ private fun WorkoutActivePage(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Card(
-                        shape = RoundedCornerShape(999.dp),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.24f)),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f)
-                        )
-                    ) {
-                        Text(
-                            text = loggedSummaryText,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer
-                        )
-                    }
-
                     LazyRow(
                         state = exerciseStripState,
                         modifier = Modifier
@@ -1205,6 +1276,13 @@ private fun WorkoutActivePage(
                         }
                     }
 
+                    IconButton(onClick = onAddExercise) {
+                        Icon(
+                            imageVector = Icons.Rounded.Add,
+                            contentDescription = "Add exercise"
+                        )
+                    }
+
                     IconButton(
                         onClick = { showFocusedExerciseRemark = true },
                         enabled = focusedExercise != null
@@ -1220,7 +1298,7 @@ private fun WorkoutActivePage(
 
         Card(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
+            shape = RoundedCornerShape(18.dp),
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)),
             elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
             colors = CardDefaults.cardColors(
@@ -1261,6 +1339,15 @@ private fun WorkoutActivePage(
                             onWeightClick = { onWeightTap(focusedExercise.id, setIndex) },
                             onRepsClick = { onSetTap(focusedExercise.id, setIndex) }
                         )
+                    }
+
+                    if (focusedExercise.id !in loggedExerciseIds) {
+                        TextButton(
+                            onClick = onAddSet,
+                            modifier = Modifier.align(Alignment.CenterHorizontally)
+                        ) {
+                            Text("+ Add set")
+                        }
                     }
                 }
             }
@@ -1309,6 +1396,14 @@ private fun WorkoutActivePage(
                     elevation = ButtonDefaults.buttonElevation(defaultElevation = 3.dp)
                 ) {
                     Text(if (isSessionReady) "Log Exercise" else "Starting...")
+                }
+
+                TextButton(
+                    onClick = onSkip,
+                    enabled = focusedExercise != null && focusedExercise.id !in loggedExerciseIds,
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                ) {
+                    Text("Skip to next exercise")
                 }
 
                 TextButton(

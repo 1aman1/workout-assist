@@ -71,7 +71,7 @@ private fun ScheduleDayCard(
             .fillMaxWidth()
             .height(cardHeight)
             .clickable { onClick() },
-        shape = RoundedCornerShape(if (isToday) 24.dp else 18.dp),
+        shape = RoundedCornerShape(if (isToday) 20.dp else 18.dp),
         border = BorderStroke(
             width = if (isToday) 1.2.dp else 0.8.dp,
             color = if (isToday) {
@@ -81,7 +81,7 @@ private fun ScheduleDayCard(
             }
         ),
         elevation = CardDefaults.cardElevation(
-            defaultElevation = if (isToday) 8.dp else 2.dp
+            defaultElevation = if (isToday) 6.dp else 2.dp
         ),
         colors = CardDefaults.cardColors(
             containerColor = if (isToday) {
