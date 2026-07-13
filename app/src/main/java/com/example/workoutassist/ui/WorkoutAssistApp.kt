@@ -284,6 +284,12 @@ fun WorkoutAssistApp() {
     val days by repository.observeDays().collectAsState(initial = emptyList())
     val sessions by repository.observeSessions().collectAsState(initial = emptyList())
     val setLogs by repository.observeSetLogs().collectAsState(initial = emptyList())
+    val completedSessionEpochDays = remember(sessions) {
+        sessions.asSequence()
+            .mapNotNull { it.finishedAt }
+            .map { timestampMillisToEpochDay(it) }
+            .toSet()
+    }
     val todayDateEpochDay = currentDateEpochDay()
     val highlightedTodayDayNumber = days
         .firstOrNull { it.plannedDateEpochDay == todayDateEpochDay }
@@ -294,6 +300,8 @@ fun WorkoutAssistApp() {
     var selectedDayNumber by remember { mutableIntStateOf(0) }
     var currentScreen by remember { mutableStateOf(AppScreen.SCHEDULE) }
     var selectedTab by remember { mutableStateOf(RootTab.WORKOUT) }
+    var showGraphsPage by remember { mutableStateOf(false) }
+    var isWorkoutSessionActive by remember { mutableStateOf(false) }
     var showExitAppConfirm by remember { mutableStateOf(false) }
     var settingsFeedback by remember { mutableStateOf<SettingsFeedback?>(null) }
     var importResultFeedback by remember { mutableStateOf<SettingsFeedback?>(null) }
@@ -517,6 +525,10 @@ fun WorkoutAssistApp() {
             showExitAppConfirm = true
         }
 
+        BackHandler(enabled = showGraphsPage) {
+            showGraphsPage = false
+        }
+
         LaunchedEffect(days, todayDateEpochDay) {
             if (days.isEmpty()) {
                 return@LaunchedEffect
@@ -532,25 +544,27 @@ fun WorkoutAssistApp() {
         Scaffold(
             containerColor = MaterialTheme.colorScheme.background,
             bottomBar = {
-                NavigationBar {
-                    RootTab.entries.forEach { tab ->
-                        val tabLabel = when (tab) {
-                            RootTab.WORKOUT -> workoutTabLabel
-                            RootTab.INSIGHTS -> insightsTabLabel
-                            RootTab.SETTINGS -> settingsTabLabel
-                        }
+                if (!isWorkoutSessionActive) {
+                    NavigationBar {
+                        RootTab.entries.forEach { tab ->
+                            val tabLabel = when (tab) {
+                                RootTab.WORKOUT -> workoutTabLabel
+                                RootTab.INSIGHTS -> insightsTabLabel
+                                RootTab.SETTINGS -> settingsTabLabel
+                            }
 
-                        NavigationBarItem(
-                            selected = selectedTab == tab,
-                            onClick = { selectedTab = tab },
-                            icon = {
-                                Icon(
-                                    imageVector = tab.icon,
-                                    contentDescription = tabLabel
-                                )
-                            },
-                            label = { Text(tabLabel) }
-                        )
+                            NavigationBarItem(
+                                selected = selectedTab == tab,
+                                onClick = { selectedTab = tab },
+                                icon = {
+                                    Icon(
+                                        imageVector = tab.icon,
+                                        contentDescription = tabLabel
+                                    )
+                                },
+                                label = { Text(tabLabel) }
+                            )
+                        }
                     }
                 }
             }
@@ -582,6 +596,7 @@ fun WorkoutAssistApp() {
                                         schedulePageLabel = schedulePageLabel,
                                         infinityPageLabel = infinityPageLabel,
                                         highlightedTodayDayNumber = highlightedTodayDayNumber,
+                                        completedSessionEpochDays = completedSessionEpochDays,
                                         onDaySelected = { dayNumber ->
                                             selectedDayNumber = dayNumber
                                             currentScreen = AppScreen.DAY_DETAIL
@@ -597,7 +612,8 @@ fun WorkoutAssistApp() {
                                         day = selectedDay,
                                         repository = repository,
                                         onRequestExport = { requestBackupExport() },
-                                        onBack = { currentScreen = AppScreen.SCHEDULE }
+                                        onBack = { currentScreen = AppScreen.SCHEDULE },
+                                        onWorkoutActiveChange = { active -> isWorkoutSessionActive = active }
                                     )
                                 }
                             }
@@ -611,6 +627,7 @@ fun WorkoutAssistApp() {
                             InsightsScreen(
                                 sessions = sessions,
                                 setLogs = setLogs,
+                                days = days,
                                 repository = repository
                             )
                         }
@@ -697,6 +714,9 @@ fun WorkoutAssistApp() {
                             },
                             onImportBackup = {
                                 importBackupLauncher.launch(arrayOf("application/json", "text/plain"))
+                            },
+                            onOpenGraphs = {
+                                showGraphsPage = true
                             }
                         )
                     }
@@ -757,6 +777,14 @@ fun WorkoutAssistApp() {
                         Text("Close")
                     }
                 }
+            )
+        }
+
+        if (showGraphsPage) {
+            WorkoutGraphsScreen(
+                sessions = sessions,
+                setLogs = setLogs,
+                onBack = { showGraphsPage = false }
             )
         }
     }

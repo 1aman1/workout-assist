@@ -56,6 +56,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 
+@Composable
+private fun SettingsSectionHeader(title: String) {
+    Text(
+        text = title.uppercase(),
+        style = MaterialTheme.typography.labelMedium,
+        fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(start = 4.dp, top = 6.dp)
+    )
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun SettingsScreen(
@@ -83,7 +94,8 @@ internal fun SettingsScreen(
     settingsTabLabel: String,
     onLabelsSaved: (String, String, String, String, String) -> Unit,
     onExportBackup: () -> Unit,
-    onImportBackup: () -> Unit
+    onImportBackup: () -> Unit,
+    onOpenGraphs: () -> Unit
 ) {
     val context = LocalContext.current
     val appVersion = remember(context) { currentAppVersionName(context) }
@@ -152,6 +164,7 @@ internal fun SettingsScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 if (settingsView == SettingsView.ROOT) {
+                    SettingsSectionHeader("Appearance")
                     Card(
                         shape = RoundedCornerShape(18.dp),
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
@@ -225,6 +238,7 @@ internal fun SettingsScreen(
                         }
                     }
 
+                    SettingsSectionHeader("Data")
                     Card(
                         shape = RoundedCornerShape(18.dp),
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
@@ -263,6 +277,7 @@ internal fun SettingsScreen(
                         }
                     }
 
+                    SettingsSectionHeader("Advanced")
                     Card(
                         shape = RoundedCornerShape(18.dp),
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
@@ -299,6 +314,38 @@ internal fun SettingsScreen(
                             feedback = statusFeedback,
                             onDismiss = onDismissStatusFeedback
                         )
+                    }
+
+                    SettingsSectionHeader("Analytics")
+                    Card(
+                        shape = RoundedCornerShape(18.dp),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "Progress Graphs (Beta)",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = "Visualize your Insights data as charts — consistency, weekly frequency, and per-exercise trends.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Button(
+                                onClick = onOpenGraphs,
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Text("Open Progress Graphs")
+                            }
+                        }
                     }
                 } else {
                     when (settingsView) {

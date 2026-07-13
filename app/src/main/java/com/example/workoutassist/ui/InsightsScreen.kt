@@ -54,6 +54,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.workoutassist.data.SetLogEntity
+import com.example.workoutassist.data.WorkoutDayModel
 import com.example.workoutassist.data.WorkoutRepository
 import com.example.workoutassist.data.WorkoutSessionEntity
 import kotlinx.coroutines.delay
@@ -86,20 +87,13 @@ private fun formatSetLogEntry(log: SetLogEntity): String {
 internal fun InsightsScreen(
     sessions: List<WorkoutSessionEntity>,
     setLogs: List<SetLogEntity>,
+    days: List<WorkoutDayModel>,
     repository: WorkoutRepository
 ) {
     val scope = rememberCoroutineScope()
     val todayEpochDay = currentDateEpochDay()
-    var refreshNonce by remember { mutableIntStateOf(0) }
-    var isRefreshing by remember { mutableStateOf(false) }
 
-    val refreshRotation by animateFloatAsState(
-        targetValue = if (isRefreshing) 360f else 0f,
-        animationSpec = tween(durationMillis = 550),
-        label = "insightsRefreshRotation"
-    )
-
-    val finishedSessionSamples = remember(sessions, refreshNonce) {
+    val finishedSessionSamples = remember(sessions) {
         sessions
             .asSequence()
             .mapNotNull { session ->
@@ -119,39 +113,27 @@ internal fun InsightsScreen(
             .toList()
     }
 
-    val completedSessionEpochDays = remember(finishedSessionSamples, refreshNonce) {
+    val completedSessionEpochDays = remember(finishedSessionSamples) {
         finishedSessionSamples
             .asSequence()
             .map { sample -> sample.epochDay }
             .toSet()
     }
 
-    val (todayYear, todayMonth, _) = remember(todayEpochDay, refreshNonce) {
-        epochDayToYearMonthDay(todayEpochDay)
-    }
-    val monthStartEpochDay = remember(todayYear, todayMonth, refreshNonce) {
-        yearMonthDayToEpochDay(todayYear, todayMonth, 1)
-    }
-    val nextMonthStartEpochDay = remember(todayYear, todayMonth, refreshNonce) {
-        yearMonthDayToEpochDay(todayYear, todayMonth + 1, 1)
-    }
-
-    val doneLast7 = remember(completedSessionEpochDays, todayEpochDay, refreshNonce) {
+    val doneLast7 = remember(completedSessionEpochDays, todayEpochDay) {
         val startDay = todayEpochDay - 6L
         completedSessionEpochDays.count { day -> day in startDay..todayEpochDay }
     }
-    val doneThisMonth = remember(completedSessionEpochDays, monthStartEpochDay, todayEpochDay, refreshNonce) {
-        completedSessionEpochDays.count { day -> day in monthStartEpochDay..todayEpochDay }
-    }
-    val thisMonthWindowDays = remember(monthStartEpochDay, nextMonthStartEpochDay, refreshNonce) {
-        (nextMonthStartEpochDay - monthStartEpochDay).toInt().coerceAtLeast(1)
+    val doneLast30 = remember(completedSessionEpochDays, todayEpochDay) {
+        val startDay = todayEpochDay - 29L
+        completedSessionEpochDays.count { day -> day in startDay..todayEpochDay }
     }
 
-    val setLogsBySessionId = remember(setLogs, refreshNonce) {
+    val setLogsBySessionId = remember(setLogs) {
         setLogs.groupBy { log -> log.sessionId }
     }
 
-    val trackedWorkoutNames = remember(finishedSessionSamples, refreshNonce) {
+    val trackedWorkoutNames = remember(finishedSessionSamples) {
         finishedSessionSamples
             .map { sample -> sample.workoutName }
             .distinct()
@@ -170,12 +152,12 @@ internal fun InsightsScreen(
         selectedWorkoutName,
         finishedSessionSamples,
         setLogsBySessionId,
-        refreshNonce
+        days
     ) {
         if (selectedWorkoutName.isBlank()) {
             emptyList()
         } else {
-            val latestLoggedAtByExercise = mutableMapOf<String, Long>()
+            val earliestLoggedAtByExercise = mutableMapOf<String, Long>()
 
             finishedSessionSamples
                 .asSequence()
@@ -183,17 +165,28 @@ internal fun InsightsScreen(
                 .forEach { sample ->
                     setLogsBySessionId[sample.sessionId].orEmpty().forEach { log ->
                         val exerciseName = log.exerciseName.trim().ifBlank { "Exercise" }
-                        val existing = latestLoggedAtByExercise[exerciseName] ?: Long.MIN_VALUE
-                        if (log.loggedAt > existing) {
-                            latestLoggedAtByExercise[exerciseName] = log.loggedAt
+                        val existing = earliestLoggedAtByExercise[exerciseName] ?: Long.MAX_VALUE
+                        if (log.loggedAt < existing) {
+                            earliestLoggedAtByExercise[exerciseName] = log.loggedAt
                         }
                     }
                 }
 
-            latestLoggedAtByExercise
-                .entries
-                .sortedByDescending { it.value }
-                .map { it.key }
+            // Order by the workout's template exercise sequence (position); anything not
+            // in the current template falls back to first-logged time, then name.
+            val positionByExerciseName = days
+                .firstOrNull { it.workoutName == selectedWorkoutName }
+                ?.exercises
+                ?.associate { exercise -> exercise.name.trim() to exercise.position }
+                .orEmpty()
+
+            earliestLoggedAtByExercise.keys.sortedWith(
+                compareBy(
+                    { positionByExerciseName[it] ?: Int.MAX_VALUE },
+                    { earliestLoggedAtByExercise[it] ?: Long.MAX_VALUE },
+                    { it }
+                )
+            )
         }
     }
     var selectedExerciseName by remember { mutableStateOf("") }
@@ -210,8 +203,7 @@ internal fun InsightsScreen(
         selectedWorkoutName,
         selectedExerciseName,
         finishedSessionSamples,
-        setLogsBySessionId,
-        refreshNonce
+        setLogsBySessionId
     ) {
         if (selectedWorkoutName.isBlank() || selectedExerciseName.isBlank()) {
             emptyList()
@@ -276,37 +268,11 @@ internal fun InsightsScreen(
                         .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = "Insights",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        OutlinedButton(
-                            onClick = {
-                                refreshNonce += 1
-                                scope.launch {
-                                    isRefreshing = true
-                                    delay(560)
-                                    isRefreshing = false
-                                }
-                            },
-                            shape = RoundedCornerShape(999.dp),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.Refresh,
-                                contentDescription = "Refresh Stats",
-                                modifier = Modifier.graphicsLayer(rotationZ = refreshRotation)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Refresh Stats")
-                        }
-                    }
+                    Text(
+                        text = "Insights",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold
+                    )
 
                     HorizontalDivider()
 
@@ -323,7 +289,7 @@ internal fun InsightsScreen(
                             textAlign = TextAlign.Center
                         )
                         Text(
-                            text = "$doneThisMonth/$thisMonthWindowDays",
+                            text = "$doneLast30/30",
                             modifier = Modifier.weight(1f),
                             style = MaterialTheme.typography.headlineSmall,
                             fontWeight = FontWeight.Bold,
@@ -528,7 +494,7 @@ private fun WorkoutSpecificInsightsCard(
                                                 onClick = { deleteDateTarget = item },
                                                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                                             ) {
-                                                Text("Delete Record")
+                                                Text("Delete Set")
                                             }
                                         }
 
@@ -582,7 +548,7 @@ private fun WorkoutSpecificInsightsCard(
                         }
 
                         Text(
-                            text = "Tap a set to edit it. Delete Record removes only this date entry for selected workout and exercise.",
+                            text = "Tap a set to edit it. Delete Set removes this date's entry for the selected workout and exercise.",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

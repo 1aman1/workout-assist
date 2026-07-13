@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import org.json.JSONArray
 
-private const val MIN_SETS = 1
+private const val MIN_SETS = 0
 private const val MAX_SETS = 8
 private const val MIN_REPS = 1
 private const val MAX_REPS = 50
@@ -122,40 +122,40 @@ class WorkoutRepository(private val dao: WorkoutDao) {
 
         dao.insertExercises(
             listOf(
-                seedExercise(1, 1, "Barbell Bench Press (Main Lift)", 3, 6, 180, "60-65 kg"),
-                seedExercise(1, 2, "Incline Barbell Press", 3, 6, 150, "50-55 kg"),
-                seedExercise(1, 3, "Chest Dips (Lean Forward)", 3, 8, 120, "Bodyweight"),
+                seedExercise(1, 1, "Barbell Bench Press (Main Lift)", 3, 6, 180, "60"),
+                seedExercise(1, 2, "Incline Barbell Press", 3, 6, 150, "50"),
+                seedExercise(1, 3, "Chest Dips (Lean Forward)", 3, 8, 120),
                 seedExercise(1, 4, "Triceps (Skullcrusher or Rope Pulldown)", 3, 10, 90),
-                seedExercise(1, 5, "Finish Crunches", 3, 15, 45, "Bodyweight"),
-                seedExercise(1, 6, "Treadmill", 1, 1, 0, "10-15 min"),
+                seedExercise(1, 5, "Finish Crunches", 3, 15, 45),
+                seedExercise(1, 6, "Treadmill", 1, 1, 0, "", "10-15 min"),
 
-                seedExercise(2, 1, "Deadlift (Main Lift)", 3, 5, 180, "Technique focus"),
-                seedExercise(2, 2, "Barbell Row", 3, 6, 150, "45-55 kg"),
+                seedExercise(2, 1, "Deadlift (Main Lift)", 3, 5, 180),
+                seedExercise(2, 2, "Barbell Row", 3, 6, 150, "45"),
                 seedExercise(2, 3, "Pull-Ups or Lat Pulldown", 3, 8, 120),
-                seedExercise(2, 4, "Biceps Barbell Curl", 3, 8, 90, "20-30 kg"),
-                seedExercise(2, 5, "Finish Crunches", 3, 15, 45, "Bodyweight"),
-                seedExercise(2, 6, "Treadmill", 1, 1, 0, "10-15 min"),
+                seedExercise(2, 4, "Biceps Barbell Curl", 3, 8, 90, "20"),
+                seedExercise(2, 5, "Finish Crunches", 3, 15, 45),
+                seedExercise(2, 6, "Treadmill", 1, 1, 0, "", "10-15 min"),
 
-                seedExercise(4, 1, "Overhead Press", 3, 6, 150, "15-20 kg"),
-                seedExercise(4, 2, "Lateral Raises", 4, 12, 75, "7.5 kg"),
-                seedExercise(4, 3, "Rear Delt Raises", 3, 12, 75, "20-30 kg"),
+                seedExercise(4, 1, "Overhead Press", 3, 6, 150, "15"),
+                seedExercise(4, 2, "Lateral Raises", 4, 12, 75, "7.5"),
+                seedExercise(4, 3, "Rear Delt Raises", 3, 12, 75, "20"),
                 seedExercise(4, 4, "Arms Superset (DB Curl + Triceps Pushdown)", 3, 12, 60),
-                seedExercise(4, 5, "Finish Crunches", 3, 15, 45, "Bodyweight"),
-                seedExercise(4, 6, "Treadmill", 1, 1, 0, "10-15 min"),
+                seedExercise(4, 5, "Finish Crunches", 3, 15, 45),
+                seedExercise(4, 6, "Treadmill", 1, 1, 0, "", "10-15 min"),
 
-                seedExercise(5, 1, "Incline Dumbbell Press (30 deg)", 3, 12, 90, "15-17.5 kg"),
-                seedExercise(5, 2, "Machine/Cable Chest Fly", 3, 12, 60, "35 kg"),
-                seedExercise(5, 3, "Lat Pulldown", 3, 12, 90, "38-45 kg"),
-                seedExercise(5, 4, "Seated Cable Row", 3, 12, 90, "38-45 kg"),
+                seedExercise(5, 1, "Incline Dumbbell Press (30 deg)", 3, 12, 90, "15"),
+                seedExercise(5, 2, "Machine/Cable Chest Fly", 3, 12, 60, "35"),
+                seedExercise(5, 3, "Lat Pulldown", 3, 12, 90, "38"),
+                seedExercise(5, 4, "Seated Cable Row", 3, 12, 90, "38"),
                 seedExercise(5, 5, "Arm Superset (Biceps + Triceps)", 3, 12, 60),
-                seedExercise(5, 6, "Finish Crunches", 3, 15, 45, "Bodyweight"),
-                seedExercise(5, 7, "Treadmill", 1, 1, 0, "10-15 min"),
+                seedExercise(5, 6, "Finish Crunches", 3, 15, 45),
+                seedExercise(5, 7, "Treadmill", 1, 1, 0, "", "10-15 min"),
 
-                seedExercise(6, 1, "Barbell Squat", 3, 6, 150, "50-80 kg"),
+                seedExercise(6, 1, "Barbell Squat", 3, 6, 150, "50"),
                 seedExercise(6, 2, "Romanian Deadlift", 2, 8, 120),
                 seedExercise(6, 3, "Calf Raises", 3, 15, 60),
-                seedExercise(6, 4, "Finish Crunches", 3, 15, 45, "Bodyweight"),
-                seedExercise(6, 5, "Treadmill", 1, 1, 0, "10-15 min")
+                seedExercise(6, 4, "Finish Crunches", 3, 15, 45),
+                seedExercise(6, 5, "Treadmill", 1, 1, 0, "", "10-15 min")
             )
         )
     }
@@ -219,6 +219,41 @@ class WorkoutRepository(private val dao: WorkoutDao) {
                 plannedRepsBySetJson = encodeRepsBySetJson(plannedRepsBySet),
                 plannedWeightBySetJson = encodeWeightBySetJson(plannedWeightBySet),
                 remarks = clean.remarks,
+                position = exercise.position,
+                isDone = exercise.isDone
+            )
+        )
+    }
+
+    suspend fun removeExerciseSet(exercise: ExerciseModel, setIndex: Int) {
+        if (exercise.sets <= MIN_SETS) {
+            return
+        }
+        if (setIndex !in 0 until exercise.sets) {
+            return
+        }
+
+        val repsBySet = exercise.plannedRepsBySet
+            .normalizeRepsBySet(expectedSets = exercise.sets, fallbackValue = exercise.reps)
+            .toMutableList()
+        val weightBySet = exercise.plannedWeightBySet
+            .normalizeWeightBySet(expectedSets = exercise.sets, fallbackValue = exercise.plannedWeight)
+            .toMutableList()
+        repsBySet.removeAt(setIndex)
+        weightBySet.removeAt(setIndex)
+
+        dao.updateExercise(
+            ExerciseEntity(
+                id = exercise.id,
+                dayNumber = exercise.dayNumber,
+                name = exercise.name,
+                sets = exercise.sets - 1,
+                reps = repsBySet.firstOrNull() ?: exercise.reps,
+                intervalSeconds = exercise.intervalSeconds,
+                plannedWeight = weightBySet.firstOrNull() ?: exercise.plannedWeight,
+                plannedRepsBySetJson = encodeRepsBySetJson(repsBySet),
+                plannedWeightBySetJson = encodeWeightBySetJson(weightBySet),
+                remarks = exercise.remarks,
                 position = exercise.position,
                 isDone = exercise.isDone
             )
@@ -372,7 +407,7 @@ class WorkoutRepository(private val dao: WorkoutDao) {
                 exerciseName = exercise.name,
                 setNumber = setNumber,
                 plannedReps = plannedReps,
-                actualReps = actualReps.coerceIn(MIN_REPS, MAX_REPS),
+                actualReps = actualReps.coerceIn(0, MAX_REPS),
                 plannedWeight = plannedWeight,
                 actualWeight = actualWeight.trim(),
                 loggedAt = System.currentTimeMillis()
@@ -381,7 +416,19 @@ class WorkoutRepository(private val dao: WorkoutDao) {
     }
 
     suspend fun finishSession(sessionId: Long) {
-        dao.finishSession(sessionId, System.currentTimeMillis())
+        val finishedAt = System.currentTimeMillis()
+        dao.finishSession(sessionId, finishedAt)
+
+        // One workout per calendar day: the latest finished session overwrites any
+        // earlier finished session recorded for the same day (its set logs cascade away).
+        val finishedDay = timestampMillisToLocalEpochDay(finishedAt)
+        dao.getAllSessions()
+            .filter { other ->
+                other.id != sessionId &&
+                    other.finishedAt != null &&
+                    timestampMillisToLocalEpochDay(other.finishedAt) == finishedDay
+            }
+            .forEach { stale -> dao.deleteSessionById(stale.id) }
     }
 
     suspend fun updateSetLogEntry(logId: Long, actualReps: Int, actualWeight: String) {
@@ -393,16 +440,40 @@ class WorkoutRepository(private val dao: WorkoutDao) {
     }
 
     suspend fun deleteSetLogEntry(logId: Long, sessionId: Long) {
+        val session = dao.getSessionById(sessionId)
         dao.deleteSetLogEntry(logId)
         dao.deleteSessionIfNoLogs(sessionId)
+        clearWorkoutDoneIfSessionRemoved(session)
     }
 
     suspend fun deleteExerciseHistoryForSession(sessionId: Long, exerciseId: Long) {
+        val session = dao.getSessionById(sessionId)
         dao.deleteExerciseLogsForSession(
             sessionId = sessionId,
             exerciseId = exerciseId
         )
         dao.deleteSessionIfNoLogs(sessionId)
+        clearWorkoutDoneIfSessionRemoved(session)
+    }
+
+    // Removes an exercise's logs within an active session without touching the session
+    // itself — used to replace prior logs when re-logging or un-skipping.
+    suspend fun clearExerciseLogsForSession(sessionId: Long, exerciseId: Long) {
+        dao.deleteExerciseLogsForSession(
+            sessionId = sessionId,
+            exerciseId = exerciseId
+        )
+    }
+
+    private suspend fun clearWorkoutDoneIfSessionRemoved(session: WorkoutSessionEntity?) {
+        // When a finished session is fully removed, also clear the matching
+        // "workout done" mark on its template day so the green tick clears too.
+        val finishedAt = session?.finishedAt ?: return
+        if (dao.getSessionById(session.id) != null) {
+            return
+        }
+        val finishedDay = timestampMillisToLocalEpochDay(finishedAt)
+        dao.clearWorkoutDoneForDay(session.dayNumber, finishedDay)
     }
 
     suspend fun exportBackupSnapshot(): BackupSnapshot {
@@ -553,6 +624,22 @@ private fun List<String>.normalizeWeightBySet(expectedSets: Int, fallbackValue: 
 
 private fun currentDateEpochDay(): Long {
     val local = Calendar.getInstance()
+    val utc = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
+    utc.clear()
+    utc.set(
+        local.get(Calendar.YEAR),
+        local.get(Calendar.MONTH),
+        local.get(Calendar.DAY_OF_MONTH),
+        0,
+        0,
+        0
+    )
+    utc.set(Calendar.MILLISECOND, 0)
+    return utc.timeInMillis / MILLIS_PER_DAY
+}
+
+private fun timestampMillisToLocalEpochDay(timestampMillis: Long): Long {
+    val local = Calendar.getInstance().apply { timeInMillis = timestampMillis }
     val utc = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
     utc.clear()
     utc.set(

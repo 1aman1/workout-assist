@@ -14,6 +14,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -69,6 +71,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -110,7 +113,8 @@ internal fun WorkoutDayScreen(
     day: WorkoutDayModel,
     repository: WorkoutRepository,
     onRequestExport: () -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onWorkoutActiveChange: (Boolean) -> Unit = {}
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -139,6 +143,7 @@ internal fun WorkoutDayScreen(
         mutableStateOf<Map<Long, List<String>>>(emptyMap())
     }
     var weightPickerTarget by remember(day.dayNumber) { mutableStateOf<Pair<Long, Int>?>(null) }
+    var removeSetTarget by remember(day.dayNumber) { mutableStateOf<Int?>(null) }
 
     var activeSessionId by remember(day.dayNumber) { mutableLongStateOf(0L) }
     var sessionStartMessage by remember(day.dayNumber) { mutableStateOf<String?>(null) }
@@ -156,6 +161,15 @@ internal fun WorkoutDayScreen(
     var draggingExerciseId by remember(day.dayNumber) { mutableLongStateOf(-1L) }
     var dragOffsetY by remember(day.dayNumber) { mutableFloatStateOf(0f) }
     var editCollapseSignal by remember(day.dayNumber) { mutableIntStateOf(0) }
+
+    // Report active-session state up so the shell can hide the bottom nav during a
+    // workout (prevents accidental tab taps from abandoning the session).
+    LaunchedEffect(workoutActive) {
+        onWorkoutActiveChange(workoutActive)
+    }
+    DisposableEffect(Unit) {
+        onDispose { onWorkoutActiveChange(false) }
+    }
 
     LaunchedEffect(workoutActive, sessionStartMessage) {
         val message = sessionStartMessage ?: return@LaunchedEffect
@@ -373,6 +387,7 @@ internal fun WorkoutDayScreen(
         }
 
         scope.launch {
+            repository.clearExerciseLogsForSession(activeSessionId, focusedExercise.id)
             normalizedReps.forEachIndexed { setIndex, reps ->
                 repository.logSet(
                     sessionId = activeSessionId,
@@ -401,6 +416,29 @@ internal fun WorkoutDayScreen(
         val focusedExercise = day.exercises.firstOrNull { exercise -> exercise.id == focusedExerciseId } ?: return
         if (focusedExercise.id in loggedExerciseIds) {
             return
+        }
+
+        // Record the skip as a real save: log every set with 0 reps so it shows as
+        // logged and can be undone/redone within the session by re-selecting it.
+        val setCount = focusedExercise.sets
+        if (setCount > 0) {
+            selectedSetRepsByExerciseId = selectedSetRepsByExerciseId + (focusedExercise.id to List(setCount) { 0 })
+        }
+        if (activeSessionId != 0L) {
+            val sessionId = activeSessionId
+            val exerciseToSkip = focusedExercise
+            scope.launch {
+                repository.clearExerciseLogsForSession(sessionId, exerciseToSkip.id)
+                repeat(setCount) { setIndex ->
+                    repository.logSet(
+                        sessionId = sessionId,
+                        exercise = exerciseToSkip,
+                        setNumber = setIndex + 1,
+                        actualReps = 0,
+                        actualWeight = ""
+                    )
+                }
+            }
         }
 
         val updatedLogged = loggedExerciseIds + focusedExercise.id
@@ -437,6 +475,41 @@ internal fun WorkoutDayScreen(
                     remarks = focusedExercise.remarks
                 )
             )
+        }
+    }
+
+    fun removeSetFromFocusedExercise(setIndex: Int) {
+        val focusedExercise = day.exercises.firstOrNull { exercise -> exercise.id == focusedExerciseId } ?: return
+        if (focusedExercise.id in loggedExerciseIds) {
+            return
+        }
+        if (focusedExercise.sets <= 1 || setIndex !in 0 until focusedExercise.sets) {
+            return
+        }
+
+        // Keep the in-session selections aligned with the removed set.
+        val currentReps = selectedSetRepsByExerciseId[focusedExercise.id]
+            ?: List(focusedExercise.sets) { focusedExercise.reps }
+        val currentWeights = selectedSetWeightByExerciseId[focusedExercise.id]
+            ?: focusedExercise.plannedWeightBySet
+        selectedSetRepsByExerciseId = selectedSetRepsByExerciseId +
+            (focusedExercise.id to currentReps.filterIndexed { index, _ -> index != setIndex })
+        selectedSetWeightByExerciseId = selectedSetWeightByExerciseId +
+            (focusedExercise.id to currentWeights.filterIndexed { index, _ -> index != setIndex })
+        val edited = editedSetIndexesByExerciseId[focusedExercise.id].orEmpty()
+        editedSetIndexesByExerciseId = editedSetIndexesByExerciseId +
+            (
+                focusedExercise.id to edited.mapNotNull { idx ->
+                    when {
+                        idx == setIndex -> null
+                        idx > setIndex -> idx - 1
+                        else -> idx
+                    }
+                }.toSet()
+                )
+
+        scope.launch {
+            repository.removeExerciseSet(focusedExercise, setIndex)
         }
     }
 
@@ -710,9 +783,12 @@ internal fun WorkoutDayScreen(
                         editedSetIndexesByExerciseId = editedSetIndexesByExerciseId,
                         loggedExerciseIds = loggedExerciseIds,
                         onFocusExercise = { exerciseId ->
-                            if (exerciseId !in loggedExerciseIds) {
-                                focusedExerciseId = exerciseId
+                            // Re-selecting a logged/skipped exercise re-enables it for editing
+                            // (undo a skip or fix a log without leaving the session).
+                            if (exerciseId in loggedExerciseIds) {
+                                loggedExerciseIds = loggedExerciseIds - exerciseId
                             }
+                            focusedExerciseId = exerciseId
                         },
                         onSetTap = { exerciseId, setIndex ->
                             if (exerciseId !in loggedExerciseIds) {
@@ -727,6 +803,7 @@ internal fun WorkoutDayScreen(
                         onLogFocusedExercise = { saveFocusedExerciseSets() },
                         onSkip = { skipFocusedExercise() },
                         onAddSet = { addSetToFocusedExercise() },
+                        onRemoveSet = { setIndex -> removeSetTarget = setIndex },
                         onAddExercise = { showAddSessionExerciseDialog = true },
                         onFinish = { showFinishConfirm = true }
                     )
@@ -913,6 +990,30 @@ internal fun WorkoutDayScreen(
         )
     }
 
+    val activeRemoveSetIndex = removeSetTarget
+    if (activeRemoveSetIndex != null) {
+        AlertDialog(
+            onDismissRequest = { removeSetTarget = null },
+            title = { Text("Remove this set?") },
+            text = { Text("Set ${activeRemoveSetIndex + 1} will be removed from this exercise.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        removeSetFromFocusedExercise(activeRemoveSetIndex)
+                        removeSetTarget = null
+                    }
+                ) {
+                    Text("Remove")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { removeSetTarget = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
     val activeQuickEditExercise = quickEditExercise
     val activeQuickEditField = quickEditField
     val activeQuickEditSetIndex = quickEditSetIndex
@@ -922,7 +1023,7 @@ internal fun WorkoutDayScreen(
                 NumberWheelDialog(
                     title = "Sets",
                     value = activeQuickEditExercise.sets,
-                    range = 1..8,
+                    range = 0..8,
                     valueText = { "$it" },
                     onDismiss = { dismissQuickEditDialog() },
                     onConfirm = { selected ->
@@ -1205,6 +1306,7 @@ private fun WorkoutActivePage(
     onLogFocusedExercise: () -> Unit,
     onSkip: () -> Unit,
     onAddSet: () -> Unit,
+    onRemoveSet: (Int) -> Unit,
     onAddExercise: () -> Unit,
     onFinish: () -> Unit
 ) {
@@ -1259,7 +1361,7 @@ private fun WorkoutActivePage(
                             val isLogged = exercise.id in loggedExerciseIds
                             FilterChip(
                                 selected = isFocused,
-                                enabled = !isLogged,
+                                enabled = true,
                                 onClick = { onFocusExercise(exercise.id) },
                                 label = {
                                     Text(
@@ -1297,7 +1399,9 @@ private fun WorkoutActivePage(
         }
 
         Card(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
             shape = RoundedCornerShape(18.dp),
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)),
             elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
@@ -1305,7 +1409,13 @@ private fun WorkoutActivePage(
                 containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.78f)
             )
         ) {
-            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 if (focusedExercise != null) {
                     Text(
                         text = focusedExercise.name,
@@ -1315,10 +1425,23 @@ private fun WorkoutActivePage(
                         textAlign = TextAlign.Center
                     )
 
-                    WorkoutDataRowReadOnly(
-                        label = "Planned reps",
-                        value = "${focusedExercise.reps}"
-                    )
+                    val intervalLabel = focusedExercise.intervalSeconds.let { seconds ->
+                        when {
+                            seconds <= 0 -> ""
+                            seconds < 60 -> "${seconds}s"
+                            seconds % 60 == 0 -> "${seconds / 60}m"
+                            else -> "${seconds / 60}m ${seconds % 60}s"
+                        }
+                    }
+                    if (intervalLabel.isNotBlank()) {
+                        Text(
+                            text = "Rest $intervalLabel between sets",
+                            modifier = Modifier.fillMaxWidth(),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center
+                        )
+                    }
 
                     val selectedSetReps = selectedSetRepsByExerciseId[focusedExercise.id]
                         ?: List(focusedExercise.sets) { focusedExercise.reps }
@@ -1326,6 +1449,7 @@ private fun WorkoutActivePage(
                         ?: focusedExercise.plannedWeightBySet
                     val editedSetIndexes = editedSetIndexesByExerciseId[focusedExercise.id].orEmpty()
 
+                    val canRemoveSet = focusedExercise.id !in loggedExerciseIds && focusedExercise.sets > 1
                     repeat(focusedExercise.sets) { setIndex ->
                         val selectedValue = selectedSetReps.getOrElse(setIndex) { focusedExercise.reps }
                         val rawWeight = selectedSetWeights.getOrElse(setIndex) { focusedExercise.plannedWeight }
@@ -1337,7 +1461,8 @@ private fun WorkoutActivePage(
                             isEdited = setIndex in editedSetIndexes,
                             enabled = focusedExercise.id !in loggedExerciseIds,
                             onWeightClick = { onWeightTap(focusedExercise.id, setIndex) },
-                            onRepsClick = { onSetTap(focusedExercise.id, setIndex) }
+                            onRepsClick = { onSetTap(focusedExercise.id, setIndex) },
+                            onLongClick = { if (canRemoveSet) onRemoveSet(setIndex) }
                         )
                     }
 
@@ -1372,7 +1497,7 @@ private fun WorkoutActivePage(
             )
         }
 
-        Spacer(modifier = Modifier.weight(1f, fill = true))
+        Spacer(modifier = Modifier.height(4.dp))
 
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -1403,7 +1528,7 @@ private fun WorkoutActivePage(
                     enabled = focusedExercise != null && focusedExercise.id !in loggedExerciseIds,
                     modifier = Modifier.align(Alignment.CenterHorizontally)
                 ) {
-                    Text("Skip to next exercise")
+                    Text("Skip")
                 }
 
                 TextButton(
@@ -1496,7 +1621,8 @@ private fun WorkoutSetEditRow(
     isEdited: Boolean,
     enabled: Boolean,
     onWeightClick: () -> Unit,
-    onRepsClick: () -> Unit
+    onRepsClick: () -> Unit,
+    onLongClick: () -> Unit = {}
 ) {
     val borderColor = if (isEdited) {
         MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
@@ -1510,7 +1636,9 @@ private fun WorkoutSetEditRow(
     }
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(enabled = enabled, onClick = {}, onLongClick = onLongClick),
         shape = RoundedCornerShape(12.dp),
         border = BorderStroke(1.dp, borderColor),
         colors = CardDefaults.cardColors(containerColor = containerColor)

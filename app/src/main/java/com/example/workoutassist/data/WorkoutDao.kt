@@ -99,6 +99,15 @@ interface WorkoutDao {
     @Query("DELETE FROM workout_sessions WHERE id = :sessionId AND NOT EXISTS (SELECT 1 FROM set_logs WHERE sessionId = :sessionId)")
     suspend fun deleteSessionIfNoLogs(sessionId: Long): Int
 
+    @Query("DELETE FROM workout_sessions WHERE id = :sessionId")
+    suspend fun deleteSessionById(sessionId: Long): Int
+
+    @Query("SELECT * FROM workout_sessions WHERE id = :sessionId")
+    suspend fun getSessionById(sessionId: Long): WorkoutSessionEntity?
+
+    @Query("UPDATE template_days SET completedForDateEpochDay = null WHERE dayNumber = :dayNumber AND completedForDateEpochDay = :dateEpochDay")
+    suspend fun clearWorkoutDoneForDay(dayNumber: Int, dateEpochDay: Long): Int
+
     @Query("DELETE FROM set_logs")
     suspend fun deleteAllSetLogs()
 

@@ -143,6 +143,15 @@ private fun ScheduleDayCard(
                         fontWeight = FontWeight.Bold
                     )
                 } else {
+                    if (!supportingText.isNullOrBlank()) {
+                        Text(
+                            text = supportingText,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                    }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -179,15 +188,6 @@ private fun ScheduleDayCard(
                     Text(
                         text = exerciseCountText,
                         style = MaterialTheme.typography.bodyMedium
-                    )
-                }
-
-                if (!supportingText.isNullOrBlank()) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = supportingText,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
@@ -296,6 +296,7 @@ internal fun ScheduleScreen(
     schedulePageLabel: String,
     infinityPageLabel: String,
     highlightedTodayDayNumber: Int?,
+    completedSessionEpochDays: Set<Long>,
     onDaySelected: (Int) -> Unit
 ) {
     val orderedDays = remember(days) { days.sortedBy { it.dayNumber } }
@@ -403,7 +404,7 @@ internal fun ScheduleScreen(
                                         exerciseCountText = null,
                                         leadingDateLabel = formatDateShort(day.plannedDateEpochDay),
                                         isToday = isToday,
-                                        isCompleted = day.isCompleted,
+                                        isCompleted = day.plannedDateEpochDay in completedSessionEpochDays,
                                         dayLabelAlignEnd = true,
                                         onClick = { onDaySelected(day.dayNumber) }
                                     )
@@ -438,7 +439,7 @@ internal fun ScheduleScreen(
                                             (cycleOffset.toLong() * dayCount.toLong())
                                         val isToday = virtualDateEpochDay == todayEpochDay
                                         val isCompletedForVirtualDate =
-                                            day.completedForDateEpochDay == virtualDateEpochDay
+                                            virtualDateEpochDay in completedSessionEpochDays
                                         val cycleLabel = when {
                                             cycleOffset == 0 -> "Current cycle"
                                             cycleOffset > 0 -> "Cycle +$cycleOffset"
