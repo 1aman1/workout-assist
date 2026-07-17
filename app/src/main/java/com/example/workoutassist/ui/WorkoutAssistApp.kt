@@ -75,11 +75,6 @@ internal enum class SettingsView {
     LABEL_OPTIONS
 }
 
-internal enum class SchedulePage {
-    SCHEDULE,
-    INFINITY
-}
-
 internal enum class SettingsFeedbackKind {
     SUCCESS,
     FAILURE
@@ -96,7 +91,7 @@ internal data class AppPageCommand(
     val description: String
 )
 
-internal const val DEFAULT_SCHEDULE_TITLE = "Workout Schedule"
+internal const val DEFAULT_SCHEDULE_TITLE = "Your plan"
 private const val PREFS_NAME = "gudhealth_prefs"
 private const val KEY_SCHEDULE_TITLE = "schedule_title"
 private const val KEY_PAGE_LABEL_SCHEDULE = "page_label_schedule"
@@ -112,8 +107,8 @@ private const val KEY_THEME_STATUS_CUSTOM_HEX = "theme_status_custom_hex"
 private const val KEY_THEME_DONE_CUSTOM_HEX = "theme_done_custom_hex"
 private const val KEY_PRODUCTION_RESET_20260707_DONE = "production_reset_20260707_done"
 private const val KEY_HISTORY_PREFILL_20260708_DONE = "history_prefill_20260708_done"
-private const val DEFAULT_PAGE_LABEL_SCHEDULE = "Schedule"
-private const val DEFAULT_PAGE_LABEL_INFINITY = "Infinity"
+private const val DEFAULT_PAGE_LABEL_SCHEDULE = "Compact"
+private const val DEFAULT_PAGE_LABEL_INFINITY = "Calendar"
 private const val DEFAULT_TAB_LABEL_WORKOUT = "Workout"
 private const val DEFAULT_TAB_LABEL_INSIGHTS = "Insights"
 private const val DEFAULT_TAB_LABEL_SETTINGS = "Settings"
@@ -123,8 +118,8 @@ private const val DEFAULT_THEME_DONE_ID = "green"
 private const val DEFAULT_THEME_BACKGROUND_CUSTOM_HEX = "#FFFFFF"
 private const val DEFAULT_THEME_STATUS_CUSTOM_HEX = "#1CCBCB"
 private const val DEFAULT_THEME_DONE_CUSTOM_HEX = "#1E9E58"
-private const val CUSTOM_THEME_OPTION_ID = "custom"
-internal const val LATEST_DESIGN_VERSION = "1.89"
+internal const val CUSTOM_THEME_OPTION_ID = "custom"
+internal const val LATEST_DESIGN_VERSION = "1.93"
 
 internal val WORKOUT_SESSION_START_MESSAGES = listOf(
     "Lift weights and come back!",
@@ -154,17 +149,39 @@ private val DONE_THEME_OPTIONS = listOf(
 )
 
 internal val PAGE_COMMAND_NAMES = listOf(
-    AppPageCommand(command = "workout.schedule", description = "Workout tab schedule list"),
-    AppPageCommand(command = "workout.infinity", description = "Workout tab infinity list"),
+    AppPageCommand(command = "workout.schedule", description = "Workout tab merged plan/history view (compact default; Calendar toggle shows missed days)"),
     AppPageCommand(command = "workout.day", description = "Workout day detail"),
     AppPageCommand(command = "workout.session", description = "Active workout session"),
     AppPageCommand(command = "insights.home", description = "Insights tab"),
+    AppPageCommand(command = "graphs.progress", description = "Progress Graphs (beta) page"),
     AppPageCommand(command = "settings.home", description = "Settings root"),
     AppPageCommand(command = "settings.theme", description = "Settings theme options"),
     AppPageCommand(command = "settings.labels", description = "Settings label options")
 )
 
 internal val LATEST_VERSION_HIGHLIGHTS = listOf(
+    "Timeline cards now show the workout title in both Compact and Calendar (removed the Done/Upcoming text); today shows tap-to-start and done days keep the tick.",
+    "Single-tap a done workout to open it in the workout page; double-tap still removes it (confirm).",
+    "Backfill (tap a missed day in Calendar) now also offers the rest day (day 7).",
+    "Compact view shows missed days between two dates as tiny red domino pips (one per missed day); Calendar shows full red missed-day cards.",
+    "Compact/Calendar transition animates (~1.5s) and pivots on today; the toggle button labels are renamable in Settings > Labels.",
+    "Removed the top-left Today status on the Workout tab; on the workout day page removed the non-working date/mark-done edit controls and moved the rename pencil next to the title.",
+    "Schedule and Infinity are merged into one view: a single Day n - Date timeline showing the whole Day 1-7 cycle (past cycles included), skipping missed days by default.",
+    "The timeline always extends the current cycle through its last day (day 7) with projected upcoming dates; it never shows more than the current cycle ahead.",
+    "Top-right Calendar/Compact toggle: Calendar expands to show every day including missed days (red) and adds the workout name (Day n - Date - Workout).",
+    "Done days keep the tick and color coding; today stays highlighted; double-tap a done day to remove it; tap a missed day (Calendar) to backfill.",
+    "Adding a set mid-session now accepts wheel-picker input for the new set (previously ignored).",
+    "Infinity: a logged workout is removed by a deliberate double-tap + confirm (no more accidental removal by holding); single-tap does nothing.",
+    "Schedule Up next no longer skips rest days (after the last training day, the next day - even a rest day - is Up next).",
+    "Schedule shows a today indicator: workout done or not logged yet.",
+    "Schedule tab is a Day 1-7 plan/cycle view with position tracking (Up next, passed ticks); one-time gaps via long-press a day, removed by long-press a gap.",
+    "Infinity tab is a factual history calendar (oldest to today, today highlighted); tap a past day to backfill or remove a workout.",
+    "Done is unified: a finished session on a date drives Insights ratios, Progress Graphs, and Schedule/Infinity ticks.",
+    "Progress Graphs (Beta) page added under Settings > Analytics: consistency rings, weekly bars, per-exercise weight/reps line charts (native Canvas).",
+    "Settings grouped into Appearance, Data, Advanced, Analytics sections.",
+    "Insights: removed Refresh Stats, renamed Delete Record to Delete Set, monthly ratio now rolling last-30-days, exercise chips ordered by workout sequence.",
+    "Active session: Skip logs 0 reps and stays re-selectable to undo; rest interval shown; scrollable so Log/Skip stay reachable; long-press a set to remove; sets can be 0; bottom nav hidden (focus mode).",
+    "Workout-day table weight column shows wt(kg) with plain numbers; seed weights numeric only; Treadmill added to every training day.",
     "Insights selector is now workout-level first (day-style), then exercise-level inside that workout.",
     "Insights date-wise history now renders as stacked cards from newest to oldest for clearer scanability.",
     "Insights exercise history now supports pointed set edit and set delete actions.",
@@ -289,6 +306,24 @@ fun WorkoutAssistApp() {
             .mapNotNull { it.finishedAt }
             .map { timestampMillisToEpochDay(it) }
             .toSet()
+    }
+    val completedWorkoutByDate = remember(sessions) {
+        sessions.asSequence()
+            .filter { it.finishedAt != null }
+            .sortedBy { it.finishedAt }
+            .associate { timestampMillisToEpochDay(it.finishedAt!!) to it.workoutName }
+    }
+    val completedDayNumberByDate = remember(sessions) {
+        sessions.asSequence()
+            .filter { it.finishedAt != null }
+            .sortedBy { it.finishedAt }
+            .associate { timestampMillisToEpochDay(it.finishedAt!!) to it.dayNumber }
+    }
+    val lastCompletedDayNumber = remember(sessions) {
+        sessions.asSequence()
+            .filter { it.finishedAt != null }
+            .maxByOrNull { it.finishedAt!! }
+            ?.dayNumber
     }
     val todayDateEpochDay = currentDateEpochDay()
     val highlightedTodayDayNumber = days
@@ -593,10 +628,22 @@ fun WorkoutAssistApp() {
                                 AppScreen.SCHEDULE -> {
                                     ScheduleScreen(
                                         days = days,
+                                        planTitle = scheduleTitle,
                                         schedulePageLabel = schedulePageLabel,
                                         infinityPageLabel = infinityPageLabel,
-                                        highlightedTodayDayNumber = highlightedTodayDayNumber,
+                                        lastCompletedDayNumber = lastCompletedDayNumber,
                                         completedSessionEpochDays = completedSessionEpochDays,
+                                        completedWorkoutByDate = completedWorkoutByDate,
+                                        completedDayNumberByDate = completedDayNumberByDate,
+                                        onLogBackdatedWorkout = { dayNumber, epochDay ->
+                                            val day = days.firstOrNull { it.dayNumber == dayNumber }
+                                            if (day != null) {
+                                                scope.launch { repository.logBackdatedWorkout(day, epochDay) }
+                                            }
+                                        },
+                                        onRemoveWorkoutOnDate = { epochDay ->
+                                            scope.launch { repository.removeWorkoutOnDate(epochDay) }
+                                        },
                                         onDaySelected = { dayNumber ->
                                             selectedDayNumber = dayNumber
                                             currentScreen = AppScreen.DAY_DETAIL
@@ -685,23 +732,27 @@ fun WorkoutAssistApp() {
                                     .putString(KEY_THEME_DONE, CUSTOM_THEME_OPTION_ID)
                                     .apply()
                             },
+                            planTitle = scheduleTitle,
                             schedulePageLabel = schedulePageLabel,
                             infinityPageLabel = infinityPageLabel,
                             workoutTabLabel = workoutTabLabel,
                             insightsTabLabel = insightsTabLabel,
                             settingsTabLabel = settingsTabLabel,
-                            onLabelsSaved = { scheduleLabel, infinityLabel, workoutLabel, insightsLabel, settingsLabel ->
+                            onLabelsSaved = { planTitleValue, scheduleLabel, infinityLabel, workoutLabel, insightsLabel, settingsLabel ->
+                                val cleanPlanTitle = planTitleValue.trim().ifEmpty { DEFAULT_SCHEDULE_TITLE }
                                 val cleanSchedule = scheduleLabel.trim().ifEmpty { DEFAULT_PAGE_LABEL_SCHEDULE }
                                 val cleanInfinity = infinityLabel.trim().ifEmpty { DEFAULT_PAGE_LABEL_INFINITY }
                                 val cleanWorkoutTab = workoutLabel.trim().ifEmpty { DEFAULT_TAB_LABEL_WORKOUT }
                                 val cleanInsightsTab = insightsLabel.trim().ifEmpty { DEFAULT_TAB_LABEL_INSIGHTS }
                                 val cleanSettingsTab = settingsLabel.trim().ifEmpty { DEFAULT_TAB_LABEL_SETTINGS }
+                                scheduleTitle = cleanPlanTitle
                                 schedulePageLabel = cleanSchedule
                                 infinityPageLabel = cleanInfinity
                                 workoutTabLabel = cleanWorkoutTab
                                 insightsTabLabel = cleanInsightsTab
                                 settingsTabLabel = cleanSettingsTab
                                 prefs.edit()
+                                    .putString(KEY_SCHEDULE_TITLE, cleanPlanTitle)
                                     .putString(KEY_PAGE_LABEL_SCHEDULE, cleanSchedule)
                                     .putString(KEY_PAGE_LABEL_INFINITY, cleanInfinity)
                                     .putString(KEY_TAB_LABEL_WORKOUT, cleanWorkoutTab)

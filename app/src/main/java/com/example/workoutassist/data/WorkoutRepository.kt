@@ -328,18 +328,6 @@ class WorkoutRepository(private val dao: WorkoutDao) {
         normalizePositions(exercise.dayNumber)
     }
 
-    suspend fun updateDayDateAndPushForward(dayNumber: Int, newDateEpochDay: Long) {
-        val days = dao.getAllDays().sortedBy { it.dayNumber }
-        if (days.none { it.dayNumber == dayNumber }) {
-            return
-        }
-
-        for (day in days) {
-            val offset = day.dayNumber - dayNumber
-            dao.updatePlannedDate(day.dayNumber, newDateEpochDay + offset)
-        }
-    }
-
     suspend fun setExerciseDone(exerciseId: Long, isDone: Boolean) {
         dao.updateExerciseDone(exerciseId, isDone)
     }
@@ -429,6 +417,68 @@ class WorkoutRepository(private val dao: WorkoutDao) {
                     timestampMillisToLocalEpochDay(other.finishedAt) == finishedDay
             }
             .forEach { stale -> dao.deleteSessionById(stale.id) }
+    }
+
+    // Records a completed workout on a past (or any) date using its planned reps/weights.
+    // Enforces one workout per day by replacing anything already on that date.
+    suspend fun logBackdatedWorkout(day: WorkoutDayModel, dateEpochDay: Long) {
+        removeWorkoutOnDate(dateEpochDay)
+        val whenMillis = epochDayToLocalMiddayMillis(dateEpochDay)
+        val sessionId = dao.insertSession(
+            WorkoutSessionEntity(
+                dayNumber = day.dayNumber,
+                workoutName = day.workoutName,
+                startedAt = whenMillis,
+                finishedAt = whenMillis
+            )
+        )
+        day.exercises.forEach { exercise ->
+            val reps = exercise.plannedRepsBySet
+            val weights = exercise.plannedWeightBySet
+            for (setIndex in 0 until exercise.sets) {
+                dao.insertSetLog(
+                    SetLogEntity(
+                        sessionId = sessionId,
+                        exerciseId = exercise.id,
+                        exerciseName = exercise.name,
+                        setNumber = setIndex + 1,
+                        plannedReps = reps.getOrElse(setIndex) { exercise.reps },
+                        actualReps = reps.getOrElse(setIndex) { exercise.reps },
+                        plannedWeight = weights.getOrElse(setIndex) { exercise.plannedWeight },
+                        actualWeight = weights.getOrElse(setIndex) { exercise.plannedWeight },
+                        loggedAt = whenMillis + (setIndex + 1) * 1000L
+                    )
+                )
+            }
+        }
+    }
+
+    // Clears any completed workout recorded on the given date.
+    suspend fun removeWorkoutOnDate(dateEpochDay: Long) {
+        dao.getAllSessions()
+            .filter { session ->
+                val finishedAt = session.finishedAt
+                finishedAt != null && timestampMillisToLocalEpochDay(finishedAt) == dateEpochDay
+            }
+            .forEach { session -> dao.deleteSessionById(session.id) }
+        dao.clearWorkoutDoneForDate(dateEpochDay)
+    }
+
+    private fun epochDayToLocalMiddayMillis(dateEpochDay: Long): Long {
+        val utc = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
+        utc.timeInMillis = dateEpochDay * MILLIS_PER_DAY
+        val local = Calendar.getInstance()
+        local.clear()
+        local.set(
+            utc.get(Calendar.YEAR),
+            utc.get(Calendar.MONTH),
+            utc.get(Calendar.DAY_OF_MONTH),
+            12,
+            0,
+            0
+        )
+        local.set(Calendar.MILLISECOND, 0)
+        return local.timeInMillis
     }
 
     suspend fun updateSetLogEntry(logId: Long, actualReps: Int, actualWeight: String) {

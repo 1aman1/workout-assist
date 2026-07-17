@@ -69,9 +69,6 @@ interface WorkoutDao {
     @Query("UPDATE template_days SET workoutName = :workoutName WHERE dayNumber = :dayNumber")
     suspend fun updateWorkoutName(dayNumber: Int, workoutName: String): Int
 
-    @Query("UPDATE template_days SET plannedDateEpochDay = :plannedDateEpochDay WHERE dayNumber = :dayNumber")
-    suspend fun updatePlannedDate(dayNumber: Int, plannedDateEpochDay: Long): Int
-
     @Query("UPDATE template_days SET completedForDateEpochDay = :completedForDateEpochDay WHERE dayNumber = :dayNumber")
     suspend fun updateWorkoutDone(dayNumber: Int, completedForDateEpochDay: Long?): Int
 
@@ -107,6 +104,9 @@ interface WorkoutDao {
 
     @Query("UPDATE template_days SET completedForDateEpochDay = null WHERE dayNumber = :dayNumber AND completedForDateEpochDay = :dateEpochDay")
     suspend fun clearWorkoutDoneForDay(dayNumber: Int, dateEpochDay: Long): Int
+
+    @Query("UPDATE template_days SET completedForDateEpochDay = null WHERE completedForDateEpochDay = :dateEpochDay")
+    suspend fun clearWorkoutDoneForDate(dateEpochDay: Long): Int
 
     @Query("DELETE FROM set_logs")
     suspend fun deleteAllSetLogs()

@@ -4,6 +4,9 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,6 +16,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -23,7 +27,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -37,24 +43,30 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import kotlin.math.roundToInt
 
 @Composable
 private fun SettingsSectionHeader(title: String) {
@@ -87,12 +99,13 @@ internal fun SettingsScreen(
     onBackgroundCustomColorChanged: (Color) -> Unit,
     onStatusCustomColorChanged: (Color) -> Unit,
     onDoneCustomColorChanged: (Color) -> Unit,
+    planTitle: String,
     schedulePageLabel: String,
     infinityPageLabel: String,
     workoutTabLabel: String,
     insightsTabLabel: String,
     settingsTabLabel: String,
-    onLabelsSaved: (String, String, String, String, String) -> Unit,
+    onLabelsSaved: (String, String, String, String, String, String) -> Unit,
     onExportBackup: () -> Unit,
     onImportBackup: () -> Unit,
     onOpenGraphs: () -> Unit
@@ -101,7 +114,9 @@ internal fun SettingsScreen(
     val appVersion = remember(context) { currentAppVersionName(context) }
     var showVersionDetails by remember { mutableStateOf(false) }
     var settingsView by remember { mutableStateOf(SettingsView.ROOT) }
+    var selectedThemeRole by remember { mutableStateOf(ThemeRole.BACKGROUND) }
     val settingsScrollState = rememberScrollState()
+    var planTitleInput by remember(planTitle) { mutableStateOf(planTitle) }
     var scheduleLabelInput by remember(schedulePageLabel) { mutableStateOf(schedulePageLabel) }
     var infinityLabelInput by remember(infinityPageLabel) { mutableStateOf(infinityPageLabel) }
     var workoutTabLabelInput by remember(workoutTabLabel) { mutableStateOf(workoutTabLabel) }
@@ -182,7 +197,7 @@ internal fun SettingsScreen(
                                 fontWeight = FontWeight.SemiBold
                             )
                             Text(
-                                text = "Rename workout page and bottom tab labels.",
+                                text = "Rename the workout view toggle and bottom tabs.",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -367,46 +382,41 @@ internal fun SettingsScreen(
                                         fontWeight = FontWeight.SemiBold
                                     )
                                     Text(
-                                        text = "Choose color roles for background, status cards, and done/actions.",
+                                        text = "Pick a role, then tap a color. The last swatch opens a custom color picker.",
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
 
-                                    ThemeColorSelector(
-                                        title = "Background",
-                                        options = backgroundThemeOptions,
-                                        selectedOptionId = backgroundThemeOptionId,
-                                        onSelected = onBackgroundThemeOptionChanged
-                                    )
-                                    ThemeRgbColorPicker(
-                                        title = "Background custom",
-                                        color = backgroundCustomColor,
-                                        onColorChanged = onBackgroundCustomColorChanged
+                                    ThemeRoleSelector(
+                                        selectedRole = selectedThemeRole,
+                                        onRoleSelected = { selectedThemeRole = it }
                                     )
 
-                                    ThemeColorSelector(
-                                        title = "Status (Exercise cards)",
-                                        options = statusThemeOptions,
-                                        selectedOptionId = statusThemeOptionId,
-                                        onSelected = onStatusThemeOptionChanged
-                                    )
-                                    ThemeRgbColorPicker(
-                                        title = "Status custom",
-                                        color = statusCustomColor,
-                                        onColorChanged = onStatusCustomColorChanged
-                                    )
+                                    when (selectedThemeRole) {
+                                        ThemeRole.BACKGROUND -> ThemeSwatchPicker(
+                                            options = backgroundThemeOptions,
+                                            selectedOptionId = backgroundThemeOptionId,
+                                            customColor = backgroundCustomColor,
+                                            onOptionSelected = onBackgroundThemeOptionChanged,
+                                            onCustomColorChanged = onBackgroundCustomColorChanged
+                                        )
 
-                                    ThemeColorSelector(
-                                        title = "Done / Actions",
-                                        options = doneThemeOptions,
-                                        selectedOptionId = doneThemeOptionId,
-                                        onSelected = onDoneThemeOptionChanged
-                                    )
-                                    ThemeRgbColorPicker(
-                                        title = "Done / Actions custom",
-                                        color = doneCustomColor,
-                                        onColorChanged = onDoneCustomColorChanged
-                                    )
+                                        ThemeRole.STATUS -> ThemeSwatchPicker(
+                                            options = statusThemeOptions,
+                                            selectedOptionId = statusThemeOptionId,
+                                            customColor = statusCustomColor,
+                                            onOptionSelected = onStatusThemeOptionChanged,
+                                            onCustomColorChanged = onStatusCustomColorChanged
+                                        )
+
+                                        ThemeRole.DONE -> ThemeSwatchPicker(
+                                            options = doneThemeOptions,
+                                            selectedOptionId = doneThemeOptionId,
+                                            customColor = doneCustomColor,
+                                            onOptionSelected = onDoneThemeOptionChanged,
+                                            onCustomColorChanged = onDoneCustomColorChanged
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -429,22 +439,29 @@ internal fun SettingsScreen(
                                         fontWeight = FontWeight.SemiBold
                                     )
                                     Text(
-                                        text = "Rename page buttons and bottom tabs.",
+                                        text = "Rename the workout view toggle and bottom tabs.",
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
 
                                     OutlinedTextField(
+                                        value = planTitleInput,
+                                        onValueChange = { planTitleInput = it },
+                                        label = { Text("Plan title") },
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                    OutlinedTextField(
                                         value = scheduleLabelInput,
                                         onValueChange = { scheduleLabelInput = it },
-                                        label = { Text("Schedule button") },
+                                        label = { Text("Compact view button") },
                                         singleLine = true,
                                         modifier = Modifier.fillMaxWidth()
                                     )
                                     OutlinedTextField(
                                         value = infinityLabelInput,
                                         onValueChange = { infinityLabelInput = it },
-                                        label = { Text("Infinity button") },
+                                        label = { Text("Calendar view button") },
                                         singleLine = true,
                                         modifier = Modifier.fillMaxWidth()
                                     )
@@ -473,6 +490,7 @@ internal fun SettingsScreen(
                                     Button(
                                         onClick = {
                                             onLabelsSaved(
+                                                planTitleInput,
                                                 scheduleLabelInput,
                                                 infinityLabelInput,
                                                 workoutTabLabelInput,
@@ -480,7 +498,8 @@ internal fun SettingsScreen(
                                                 settingsTabLabelInput
                                             )
                                         },
-                                        enabled = scheduleLabelInput.isNotBlank() &&
+                                        enabled = planTitleInput.isNotBlank() &&
+                                            scheduleLabelInput.isNotBlank() &&
                                             infinityLabelInput.isNotBlank() &&
                                             workoutTabLabelInput.isNotBlank() &&
                                             insightsTabLabelInput.isNotBlank() &&
@@ -543,137 +562,260 @@ internal fun SettingsScreen(
     }
 }
 
+private enum class ThemeRole(val title: String) {
+    BACKGROUND("Background"),
+    STATUS("Status (Exercise cards)"),
+    DONE("Done / Actions")
+}
+
 @Composable
-private fun ThemeColorSelector(
-    title: String,
-    options: List<ThemeColorOption>,
-    selectedOptionId: String,
-    onSelected: (String) -> Unit
+private fun ThemeRoleSelector(
+    selectedRole: ThemeRole,
+    onRoleSelected: (ThemeRole) -> Unit
 ) {
     val rowScrollState = rememberScrollState()
-
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rowScrollState),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            options.forEach { option ->
-                FilterChip(
-                    selected = option.id == selectedOptionId,
-                    onClick = { onSelected(option.id) },
-                    label = { Text(option.label) },
-                    leadingIcon = {
-                        Box(
-                            modifier = Modifier
-                                .size(12.dp)
-                                .background(option.color, CircleShape)
-                                .border(
-                                    width = 1.dp,
-                                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f),
-                                    shape = CircleShape
-                                )
-                        )
-                    }
-                )
-            }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rowScrollState),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        ThemeRole.entries.forEach { role ->
+            FilterChip(
+                selected = role == selectedRole,
+                onClick = { onRoleSelected(role) },
+                label = { Text(role.title) }
+            )
         }
     }
 }
 
 @Composable
-private fun ThemeRgbColorPicker(
-    title: String,
+private fun ThemeSwatchPicker(
+    options: List<ThemeColorOption>,
+    selectedOptionId: String,
+    customColor: Color,
+    onOptionSelected: (String) -> Unit,
+    onCustomColorChanged: (Color) -> Unit
+) {
+    var showCustomDialog by remember { mutableStateOf(false) }
+    val rowScrollState = rememberScrollState()
+    val presets = options.filter { it.id != CUSTOM_THEME_OPTION_ID }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rowScrollState),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        presets.forEach { option ->
+            ThemeSwatch(
+                color = option.color,
+                selected = option.id == selectedOptionId,
+                onClick = { onOptionSelected(option.id) }
+            )
+        }
+        ThemeSwatch(
+            color = customColor,
+            selected = selectedOptionId == CUSTOM_THEME_OPTION_ID,
+            isCustom = true,
+            onClick = {
+                onOptionSelected(CUSTOM_THEME_OPTION_ID)
+                showCustomDialog = true
+            }
+        )
+    }
+
+    if (showCustomDialog) {
+        ThemeCustomColorDialog(
+            color = customColor,
+            onColorChanged = onCustomColorChanged,
+            onDismiss = { showCustomDialog = false }
+        )
+    }
+}
+
+@Composable
+private fun ThemeSwatch(
+    color: Color,
+    selected: Boolean,
+    onClick: () -> Unit,
+    isCustom: Boolean = false
+) {
+    val contrast = if (color.luminance() > 0.5f) Color.Black else Color.White
+    Box(
+        modifier = Modifier
+            .size(52.dp)
+            .clip(CircleShape)
+            .background(color)
+            .border(
+                width = if (selected) 3.dp else 1.dp,
+                color = if (selected) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+                },
+                shape = CircleShape
+            )
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        when {
+            isCustom -> Icon(
+                imageVector = Icons.Rounded.Edit,
+                contentDescription = "Custom color",
+                tint = contrast
+            )
+
+            selected -> Icon(
+                imageVector = Icons.Rounded.Check,
+                contentDescription = "Selected",
+                tint = contrast
+            )
+        }
+    }
+}
+
+@Composable
+private fun ThemeCustomColorDialog(
+    color: Color,
+    onColorChanged: (Color) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Custom color") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .background(color, CircleShape)
+                            .border(
+                                width = 1.dp,
+                                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f),
+                                shape = CircleShape
+                            )
+                    )
+                    Text(
+                        text = "Hex ${colorToHexRgb(color)}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                GradientColorPicker(
+                    color = color,
+                    onColorChanged = onColorChanged
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Done")
+            }
+        }
+    )
+}
+
+@Composable
+private fun GradientColorPicker(
     color: Color,
     onColorChanged: (Color) -> Unit
 ) {
-    val red = (color.red * 255f).roundToInt().coerceIn(0, 255)
-    val green = (color.green * 255f).roundToInt().coerceIn(0, 255)
-    val blue = (color.blue * 255f).roundToInt().coerceIn(0, 255)
+    val initialHsv = remember {
+        FloatArray(3).also { android.graphics.Color.colorToHSV(color.toArgb(), it) }
+    }
+    var hue by remember { mutableFloatStateOf(initialHsv[0]) }
+    var saturation by remember { mutableFloatStateOf(initialHsv[1]) }
+    var value by remember { mutableFloatStateOf(initialHsv[2]) }
 
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+    fun emit() {
+        onColorChanged(
+            Color.hsv(
+                hue = hue.coerceIn(0f, 360f),
+                saturation = saturation.coerceIn(0f, 1f),
+                value = value.coerceIn(0f, 1f)
+            )
+        )
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        // Saturation (x) / value (y) gradient box.
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(180.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .pointerInput(Unit) {
+                    detectTapGestures { offset ->
+                        saturation = (offset.x / size.width).coerceIn(0f, 1f)
+                        value = (1f - offset.y / size.height).coerceIn(0f, 1f)
+                        emit()
+                    }
+                }
+                .pointerInput(Unit) {
+                    detectDragGestures { change, _ ->
+                        saturation = (change.position.x / size.width).coerceIn(0f, 1f)
+                        value = (1f - change.position.y / size.height).coerceIn(0f, 1f)
+                        emit()
+                    }
+                }
+                .drawBehind {
+                    val hueColor = Color.hsv(hue.coerceIn(0f, 360f), 1f, 1f)
+                    drawRect(Brush.horizontalGradient(listOf(Color.White, hueColor)))
+                    drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color.Black)))
+                    val cx = saturation.coerceIn(0f, 1f) * size.width
+                    val cy = (1f - value.coerceIn(0f, 1f)) * size.height
+                    drawCircle(
+                        color = Color.Black,
+                        radius = 8.dp.toPx(),
+                        center = Offset(cx, cy),
+                        style = Stroke(width = 2.dp.toPx())
+                    )
+                    drawCircle(
+                        color = Color.White,
+                        radius = 6.dp.toPx(),
+                        center = Offset(cx, cy),
+                        style = Stroke(width = 2.dp.toPx())
+                    )
+                }
         )
 
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(18.dp)
-                    .background(color, CircleShape)
-                    .border(
-                        width = 1.dp,
-                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f),
-                        shape = CircleShape
+        // Hue strip.
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(22.dp)
+                .clip(RoundedCornerShape(11.dp))
+                .pointerInput(Unit) {
+                    detectTapGestures { offset ->
+                        hue = ((offset.x / size.width) * 360f).coerceIn(0f, 360f)
+                        emit()
+                    }
+                }
+                .pointerInput(Unit) {
+                    detectDragGestures { change, _ ->
+                        hue = ((change.position.x / size.width) * 360f).coerceIn(0f, 360f)
+                        emit()
+                    }
+                }
+                .drawBehind {
+                    val hueColors = listOf(0f, 60f, 120f, 180f, 240f, 300f, 360f)
+                        .map { Color.hsv(it, 1f, 1f) }
+                    drawRect(Brush.horizontalGradient(hueColors))
+                    val x = (hue.coerceIn(0f, 360f) / 360f) * size.width
+                    drawLine(
+                        color = Color.White,
+                        start = Offset(x, 0f),
+                        end = Offset(x, size.height),
+                        strokeWidth = 3.dp.toPx()
                     )
-            )
-            Text(
-                text = "Hex ${colorToHexRgb(color)}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Text(
-                text = "(Auto-uses Custom)",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-
-        Text(text = "R: $red", style = MaterialTheme.typography.bodySmall)
-        Slider(
-            value = red.toFloat(),
-            onValueChange = { nextRed ->
-                onColorChanged(
-                    colorFromRgb(
-                        red = nextRed.roundToInt().coerceIn(0, 255),
-                        green = green,
-                        blue = blue
-                    )
-                )
-            },
-            valueRange = 0f..255f
-        )
-
-        Text(text = "G: $green", style = MaterialTheme.typography.bodySmall)
-        Slider(
-            value = green.toFloat(),
-            onValueChange = { nextGreen ->
-                onColorChanged(
-                    colorFromRgb(
-                        red = red,
-                        green = nextGreen.roundToInt().coerceIn(0, 255),
-                        blue = blue
-                    )
-                )
-            },
-            valueRange = 0f..255f
-        )
-
-        Text(text = "B: $blue", style = MaterialTheme.typography.bodySmall)
-        Slider(
-            value = blue.toFloat(),
-            onValueChange = { nextBlue ->
-                onColorChanged(
-                    colorFromRgb(
-                        red = red,
-                        green = green,
-                        blue = nextBlue.roundToInt().coerceIn(0, 255)
-                    )
-                )
-            },
-            valueRange = 0f..255f
+                }
         )
     }
 }

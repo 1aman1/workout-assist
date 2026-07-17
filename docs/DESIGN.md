@@ -4,7 +4,47 @@ Lean Android utility app for fast workout logging during training.
 
 Primary design source: see DESIGN_VERSIONS.md and append all future design updates as version increments.
 
-## Current Product Snapshot (v1.89)
+## Current Product Snapshot (v1.93)
+
+> v1.93 is the authoritative current state for Schedule, Insights, active session, and Analytics. Older bullets below are historical and may be superseded by these v1.93 notes.
+
+### v1.93 current behavior
+- Every timeline card shows the workout title in both Compact and Calendar (the separate "Done/Upcoming" status text was removed); today's card still shows "Today · tap to start" and done days keep the tick.
+- Single-tap a done workout opens it in the workout page; double-tap still removes it (confirm).
+- The backfill dialog (tap a missed day in Calendar) now also lists the rest day (day 7) as a markable option.
+- Compact view collapses missed-day runs between two shown dates into a thin red "domino" strip (one pip per missed day); Calendar still shows full red missed-day cards.
+- The Compact/Calendar transition animates (fade + placement, ~1.5s) and pivots on today.
+- The Compact/Calendar toggle button labels are renamable in Settings > Labels (defaults "Compact"/"Calendar").
+- The Workout tab header title ("Your plan") is editable in Settings > Labels ("Plan title", backed by the persisted/backed-up `scheduleTitle`).
+- Settings > Theme redesigned: a horizontal role selector (Background / Status / Done) chooses which role to edit, and colors are picked by tapping circular swatches; the last (custom) swatch opens a color-picker dialog with a tap/drag HSV gradient box (saturation/value area + hue strip).
+- Compact/Calendar toggle uses a reveal-on-expand transition: switching to Calendar animate-scrolls up so the newly inserted red missed-day cards come into view; switching to Compact eases back to today.
+- Removed the top-left "Today: workout done / not logged" status on the Workout tab.
+- Workout day page: removed the non-working edit-mode date picker and mark-done toggle (done is session-based); the rename pencil now sits next to the workout title and only shows in edit mode.
+- Internal cleanup: removed the obsolete `SchedulePage` enum, the one-time "gap" mechanism, and the orphaned `updateDayDateAndPushForward`/`updatePlannedDate`.
+
+### v1.92 current behavior
+- The Workout tab has ONE view (Schedule and Infinity are merged). It is a single vertical timeline of `Day n - Date` cards spanning the whole Day 1-7 cycle and past cycles, chronological (oldest at top, today/upcoming toward the bottom, auto-scrolled to keep today in view).
+- Default (Compact) view skips missed days and hides the workout name; it always extends the current cycle forward through its last day (day 7) with projected upcoming dates, and never shows more than the current cycle ahead.
+- Top-right Calendar/Compact toggle: Calendar (expanded) view inserts every missed day as a red card and adds the workout name to each card (`Day n - Date - Workout`).
+- Color coding, today highlight, and done ticks are preserved. Interactions: tap today to start; tap a future day to open its plan; double-tap a done day to remove it (confirm); tap a missed day (Calendar) to backfill a workout.
+
+### v1.91 current behavior
+- Adding a set mid-session now accepts wheel-picker input for the newly added set (reps/weight selections pad the in-memory list instead of being dropped).
+- Infinity: a logged workout can no longer be removed by long-press/hold; removal requires a deliberate double-tap on a done day, which then shows a confirm dialog. A plain single-tap on a done day does nothing (prevents accidental deletions with the phone in pocket).
+- Schedule "Up next" no longer skips rest days: after the last training day, the immediate next day in the cycle (including a rest day) is shown as Up next.
+- Schedule header shows a today indicator: "Today: workout done" (highlighted) or "Today: not logged yet".
+
+### v1.90 current behavior
+- Schedule tab: Day 1-7 plan/cycle view with position tracking (Up next highlighted, passed days ticked, rest labelled) and a "N of M done this cycle" header; not week-bound. Long-press a day to add a one-time gap after it (visual spacing, auto-clears on completion); long-press a gap to remove.
+- Infinity tab: factual history calendar, chronological (oldest at top, today at bottom, auto-scrolled), today always highlighted; each date shows the workout done (tick) or "No workout" gap; tap a past day to backfill (mark a workout) or remove it.
+- Done is one definition everywhere: a finished session on a date drives Insights ratios, Progress Graphs, and Schedule/Infinity ticks; deleting a day's session clears its mark.
+- Insights: no Refresh button; "Delete Set" wording; rolling last-7-day (`n/7`) and rolling last-30-day (`n/30`) ratios; exercise chips ordered by the workout's template sequence.
+- Progress Graphs (Beta): opened from Settings > Analytics; consistency rings, weekly-frequency bars, per-exercise weight/reps line charts (native Compose Canvas).
+- Settings grouped into sections: Appearance, Data, Advanced, Analytics.
+- Active session: Skip logs 0 reps and stays re-selectable to undo; rest interval shown under the focused exercise; content scrolls so Log/Skip stay reachable; long-press a set to remove; sets can be 0; add/remove exercise and sets mid-session; k/n moved to app bar and title hidden; bottom nav hidden (focus mode) so only Back → confirm exits; 3s motivational banner.
+- Weights are plain numbers (`wt(kg)` table column); seed template weights are numeric only; Treadmill ends every training day.
+
+### Historical snapshot notes (pre-1.90)
 
 - Local-only Android app (no auth, no cloud sync).
 - 7-day repeating workout template, seeded on first launch.

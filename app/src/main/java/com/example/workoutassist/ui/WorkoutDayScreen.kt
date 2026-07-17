@@ -1,6 +1,5 @@
 package com.example.workoutassist.ui
 
-import android.app.DatePickerDialog
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
@@ -45,7 +44,6 @@ import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -86,7 +84,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
@@ -117,7 +114,6 @@ internal fun WorkoutDayScreen(
     onWorkoutActiveChange: (Boolean) -> Unit = {}
 ) {
     val scope = rememberCoroutineScope()
-    val context = LocalContext.current
     val viewedDateEpochDay = day.plannedDateEpochDay
     val viewedDateIsCompleted = day.completedForDateEpochDay == viewedDateEpochDay
     val canToggleExerciseDone = viewedDateEpochDay <= currentDateEpochDay()
@@ -190,34 +186,6 @@ internal fun WorkoutDayScreen(
             MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.18f)
         )
     )
-
-    fun openDatePicker() {
-        val (year, month, dayOfMonth) = epochDayToYearMonthDay(day.plannedDateEpochDay)
-        DatePickerDialog(
-            context,
-            { _, selectedYear, selectedMonth, selectedDay ->
-                val newDate = yearMonthDayToEpochDay(selectedYear, selectedMonth, selectedDay)
-                scope.launch {
-                    repository.updateDayDateAndPushForward(day.dayNumber, newDate)
-                }
-                hasEditChangesPendingExport = true
-            },
-            year,
-            month,
-            dayOfMonth
-        ).show()
-    }
-
-    fun toggleWorkoutDone() {
-        scope.launch {
-            repository.setWorkoutDone(
-                dayNumber = day.dayNumber,
-                plannedDateEpochDay = viewedDateEpochDay,
-                isDone = !viewedDateIsCompleted
-            )
-        }
-        hasEditChangesPendingExport = true
-    }
 
     fun openQuickEditDialog(exercise: ExerciseModel, field: QuickEditField, setIndex: Int? = null) {
         if (!canEditTemplate) {
@@ -334,28 +302,30 @@ internal fun WorkoutDayScreen(
     }
 
     fun updateSetRepsSelection(exercise: ExerciseModel, setIndex: Int, selectedReps: Int) {
-        val current = selectedSetRepsByExerciseId[exercise.id]
-            ?: exercise.plannedRepsBySet
-        if (setIndex !in current.indices) {
+        if (setIndex < 0) {
             return
         }
-        val updated = current.toMutableList()
-        updated[setIndex] = selectedReps.coerceIn(1, 50)
-        selectedSetRepsByExerciseId = selectedSetRepsByExerciseId + (exercise.id to updated.toList())
+        val current = (selectedSetRepsByExerciseId[exercise.id] ?: exercise.plannedRepsBySet).toMutableList()
+        while (current.size <= setIndex) {
+            current.add(exercise.reps)
+        }
+        current[setIndex] = selectedReps.coerceIn(1, 50)
+        selectedSetRepsByExerciseId = selectedSetRepsByExerciseId + (exercise.id to current.toList())
 
         val editedSetIndexes = editedSetIndexesByExerciseId[exercise.id].orEmpty() + setIndex
         editedSetIndexesByExerciseId = editedSetIndexesByExerciseId + (exercise.id to editedSetIndexes)
     }
 
     fun updateSetWeightSelection(exercise: ExerciseModel, setIndex: Int, selectedWeightText: String) {
-        val current = selectedSetWeightByExerciseId[exercise.id]
-            ?: exercise.plannedWeightBySet
-        if (setIndex !in current.indices) {
+        if (setIndex < 0) {
             return
         }
-        val updated = current.toMutableList()
-        updated[setIndex] = selectedWeightText
-        selectedSetWeightByExerciseId = selectedSetWeightByExerciseId + (exercise.id to updated.toList())
+        val current = (selectedSetWeightByExerciseId[exercise.id] ?: exercise.plannedWeightBySet).toMutableList()
+        while (current.size <= setIndex) {
+            current.add(exercise.plannedWeight)
+        }
+        current[setIndex] = selectedWeightText
+        selectedSetWeightByExerciseId = selectedSetWeightByExerciseId + (exercise.id to current.toList())
 
         val editedSetIndexes = editedSetIndexesByExerciseId[exercise.id].orEmpty() + setIndex
         editedSetIndexesByExerciseId = editedSetIndexesByExerciseId + (exercise.id to editedSetIndexes)
@@ -616,13 +586,6 @@ internal fun WorkoutDayScreen(
                             )
                         }
                     } else {
-                        IconButton(
-                            onClick = { showRenameWorkoutDialog = true },
-                            enabled = canEditTemplate
-                        ) {
-                            Icon(Icons.Rounded.Edit, contentDescription = "Rename Workout")
-                        }
-
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Switch(
                                 checked = editMode,
@@ -685,45 +648,13 @@ internal fun WorkoutDayScreen(
                                 style = MaterialTheme.typography.headlineSmall,
                                 fontWeight = FontWeight.Bold
                             )
-                            if (editMode) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    if (!workoutActive) {
-                                        TextButton(
-                                            onClick = { openDatePicker() },
-                                            contentPadding = PaddingValues(0.dp)
-                                        ) {
-                                            Text(formatDateShort(viewedDateEpochDay))
-                                        }
-                                    } else {
-                                        Text(
-                                            text = formatDateShort(viewedDateEpochDay),
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-
-                                    IconButton(onClick = { toggleWorkoutDone() }) {
-                                        Icon(
-                                            imageVector = if (viewedDateIsCompleted) {
-                                                Icons.Rounded.CheckCircle
-                                            } else {
-                                                Icons.Rounded.RadioButtonUnchecked
-                                            },
-                                            contentDescription = if (viewedDateIsCompleted) {
-                                                "Mark workout not done"
-                                            } else {
-                                                "Mark workout done"
-                                            },
-                                            tint = if (viewedDateIsCompleted) {
-                                                MaterialTheme.colorScheme.primary
-                                            } else {
-                                                MaterialTheme.colorScheme.onSurfaceVariant
-                                            }
-                                        )
-                                    }
+                            if (canEditTemplate) {
+                                IconButton(onClick = { showRenameWorkoutDialog = true }) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Edit,
+                                        contentDescription = "Rename Workout",
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
                                 }
                             }
                         }
