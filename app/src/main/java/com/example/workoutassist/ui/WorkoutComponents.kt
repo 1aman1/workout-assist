@@ -76,7 +76,7 @@ internal fun ExerciseSetTable(
                     onValueClickAt = onEditRepsAt
                 )
                 ExerciseSetTableRow(
-                    label = "wt(kg)",
+                    label = "wgt",
                     values = weightValues,
                     editable = editable,
                     onValueClickAt = onEditWeightAt

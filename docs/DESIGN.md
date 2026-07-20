@@ -13,7 +13,7 @@ Primary design source: see DESIGN_VERSIONS.md and append all future design updat
 - Single-tap a done workout opens it in the workout page; double-tap still removes it (confirm).
 - The backfill dialog (tap a missed day in Calendar) now also lists the rest day (day 7) as a markable option.
 - Compact view collapses missed-day runs between two shown dates into a thin red "domino" strip (one pip per missed day); Calendar still shows full red missed-day cards.
-- The Compact/Calendar transition animates (fade + placement, ~1.5s) and pivots on today.
+- The Compact/Calendar toggle animates cards with the default item fade-in/placement animations (item exit fade is disabled so removed red missed-day cards/pips don't linger behind the stack), plus a reveal-on-expand scroll (below).
 - The Compact/Calendar toggle button labels are renamable in Settings > Labels (defaults "Compact"/"Calendar").
 - The Workout tab header title ("Your plan") is editable in Settings > Labels ("Plan title", backed by the persisted/backed-up `scheduleTitle`).
 - Settings > Theme redesigned: a horizontal role selector (Background / Status / Done) chooses which role to edit, and colors are picked by tapping circular swatches; the last (custom) swatch opens a color-picker dialog with a tap/drag HSV gradient box (saturation/value area + hue strip).
@@ -27,6 +27,7 @@ Primary design source: see DESIGN_VERSIONS.md and append all future design updat
 - Default (Compact) view skips missed days and hides the workout name; it always extends the current cycle forward through its last day (day 7) with projected upcoming dates, and never shows more than the current cycle ahead.
 - Top-right Calendar/Compact toggle: Calendar (expanded) view inserts every missed day as a red card and adds the workout name to each card (`Day n - Date - Workout`).
 - Color coding, today highlight, and done ticks are preserved. Interactions: tap today to start; tap a future day to open its plan; double-tap a done day to remove it (confirm); tap a missed day (Calendar) to backfill a workout.
+- Rest days are completable and self-advancing: when a rest day is "up next" you can tap it to mark it done (logs an empty rest session), and if a rest day's date passes without action the cycle auto-advances (an empty rest session is logged for it) so a rest day is never stuck as up-next or shown as "missed".
 
 ### v1.91 current behavior
 - Adding a set mid-session now accepts wheel-picker input for the newly added set (reps/weight selections pad the in-memory list instead of being dropped).

@@ -1489,11 +1489,12 @@ How to use:
   - Single-tap a done workout opens it in the workout page; double-tap still removes it (confirm).
   - Backfill dialog now includes the rest day (day 7) as a markable option (logs a session with no set logs).
   - Compact view shows missed-day runs between two dates as a thin red "domino" strip (one pip per missed day); Calendar keeps full red missed-day cards.
-  - Compact/Calendar transition animates (fade + placement `tween` ~1500ms) and pivots on today by re-anchoring today's on-screen offset.
+  - Compact/Calendar transition uses the default `animateItem()` fade-in/placement animations with the exit fade disabled (`fadeOutSpec = null`) so removed red missed-day cards/pips are dropped immediately instead of lingering behind the stack; an earlier custom 1.5s timing and the today-pivot re-anchor were reverted in favor of reveal-on-expand (below).
   - The two page labels were repurposed as the Compact/Calendar toggle button text and are renamable in Settings > Labels (defaults "Compact"/"Calendar").
   - The Workout tab header title is now editable in Settings > Labels as "Plan title" (backed by the existing persisted/backed-up `scheduleTitle`; default changed to "Your plan").
   - Settings > Theme redesigned: replaced the three stacked option-lists + always-visible RGB sliders with a horizontal role selector (Background / Status / Done) plus tappable circular color swatches; the custom swatch opens a color-picker dialog with a tap/drag HSV gradient box (a saturation/value gradient area plus a hue strip, drawn with Canvas). `CUSTOM_THEME_OPTION_ID` is now `internal`.
   - Compact/Calendar transition switched to reveal-on-expand: on expand it animate-scrolls up to reveal the inserted missed-day cards; on collapse it eases back toward today (replaces the today-pivot re-anchor, which left the change off-screen at the default position).
+  - Rest-day handling: a rest day that is "up next" (DUE) can be tapped to mark it done (logs an empty rest session, advancing the cycle to Day 1), and if a rest day's scheduled date passes without action the app auto-logs an empty rest session for it (WorkoutAssistApp LaunchedEffect) so the cycle rolls forward instead of the rest day staying stuck as up-next or being rendered as "missed".
   - Removed the top-left "Today: workout done / not logged" status on the Workout tab.
   - Workout day page: removed the non-working edit-mode date picker and mark-done toggle; moved the rename pencil next to the workout title (shown only in edit mode).
 - Why changed:

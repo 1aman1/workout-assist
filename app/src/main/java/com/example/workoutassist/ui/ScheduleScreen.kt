@@ -1,6 +1,5 @@
 package com.example.workoutassist.ui
 
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -166,6 +165,7 @@ private fun ScheduleEntryCard(
     entry: ScheduleEntry,
     isToday: Boolean,
     modifier: Modifier = Modifier,
+    isRestDay: Boolean = false,
     onClick: () -> Unit,
     onDoubleClick: (() -> Unit)? = null
 ) {
@@ -243,7 +243,7 @@ private fun ScheduleEntryCard(
                 }
                 if (entry.status == DayStatus.DUE) {
                     Text(
-                        text = "Today · tap to start",
+                        text = if (isRestDay) "Rest day · tap to mark done" else "Today · tap to start",
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.primary
@@ -502,37 +502,33 @@ internal fun ScheduleScreen(
                             when (row) {
                                 is ScheduleRow.Gap -> GapDominoStrip(
                                     count = row.count,
-                                    modifier = Modifier.animateItem(
-                                        fadeInSpec = tween(durationMillis = 1500),
-                                        placementSpec = tween(durationMillis = 1500),
-                                        fadeOutSpec = tween(durationMillis = 1500)
-                                    )
+                                    modifier = Modifier.animateItem(fadeOutSpec = null)
                                 )
 
                                 is ScheduleRow.Entry -> {
                                     val entry = row.entry
+                                    val entryIsRest = orderedDays
+                                        .firstOrNull { it.dayNumber == entry.dayNumber }
+                                        ?.exercises?.isEmpty() == true
                                     when (entry.status) {
                                         DayStatus.MISSED -> MissedDayCard(
                                             entry = entry,
-                                            modifier = Modifier.animateItem(
-                                                fadeInSpec = tween(durationMillis = 1500),
-                                                placementSpec = tween(durationMillis = 1500),
-                                                fadeOutSpec = tween(durationMillis = 1500)
-                                            ),
+                                            modifier = Modifier.animateItem(fadeOutSpec = null),
                                             onClick = { editDateTarget = entry.epochDay }
                                         )
 
                                         else -> ScheduleEntryCard(
                                             entry = entry,
                                             isToday = entry.epochDay == todayEpochDay,
-                                            modifier = Modifier.animateItem(
-                                                fadeInSpec = tween(durationMillis = 1500),
-                                                placementSpec = tween(durationMillis = 1500),
-                                                fadeOutSpec = tween(durationMillis = 1500)
-                                            ),
+                                            isRestDay = entryIsRest,
+                                            modifier = Modifier.animateItem(fadeOutSpec = null),
                                             onClick = {
                                                 when (entry.status) {
-                                                    DayStatus.DUE -> onDaySelected(entry.dayNumber)
+                                                    DayStatus.DUE -> if (entryIsRest) {
+                                                        onLogBackdatedWorkout(entry.dayNumber, todayEpochDay)
+                                                    } else {
+                                                        onDaySelected(entry.dayNumber)
+                                                    }
                                                     DayStatus.DONE -> if (entry.dayNumber > 0) onDaySelected(entry.dayNumber)
                                                     DayStatus.FUTURE -> if (entry.dayNumber > 0) onDaySelected(entry.dayNumber)
                                                     else -> Unit

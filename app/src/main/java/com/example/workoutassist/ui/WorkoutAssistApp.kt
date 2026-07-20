@@ -325,7 +325,32 @@ fun WorkoutAssistApp() {
             .maxByOrNull { it.finishedAt!! }
             ?.dayNumber
     }
+    val lastCompletedEpochDay = remember(completedSessionEpochDays) {
+        completedSessionEpochDays.maxOrNull()
+    }
     val todayDateEpochDay = currentDateEpochDay()
+
+    // Auto-advance past a skipped rest day: if the next due day is a rest day and its
+    // scheduled date has already passed, log an (empty) rest session for it so the
+    // cycle rolls forward instead of the rest day showing as "missed" indefinitely.
+    LaunchedEffect(days, lastCompletedDayNumber, lastCompletedEpochDay, todayDateEpochDay) {
+        if (days.isEmpty()) return@LaunchedEffect
+        val lastDate = lastCompletedEpochDay ?: return@LaunchedEffect
+        val cycle = days.sortedBy { it.dayNumber }
+        val startIndex = lastCompletedDayNumber
+            ?.let { dayNumber -> cycle.indexOfFirst { it.dayNumber == dayNumber } }
+            ?: return@LaunchedEffect
+        if (startIndex < 0) return@LaunchedEffect
+        val n = cycle.size
+        val nextDue = cycle[(((startIndex + 1) % n) + n) % n]
+        val restDueDate = lastDate + 1L
+        if (nextDue.exercises.isEmpty() &&
+            todayDateEpochDay > restDueDate &&
+            restDueDate !in completedSessionEpochDays
+        ) {
+            repository.logBackdatedWorkout(nextDue, restDueDate)
+        }
+    }
     val highlightedTodayDayNumber = days
         .firstOrNull { it.plannedDateEpochDay == todayDateEpochDay }
         ?.dayNumber
