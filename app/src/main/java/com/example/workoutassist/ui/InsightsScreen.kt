@@ -367,6 +367,28 @@ internal fun InsightsScreen(
                         HorizontalDivider()
 
                         RatioBatteryBar(
+                            label = routineTitle,
+                            filled = routineStreak,
+                            total = cycleLength
+                        )
+                        if (onRoutine) {
+                            Text(
+                                text = onRoutineText,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        } else {
+                            RatioBatteryBar(
+                                label = daysToRoutineText,
+                                filled = daysToRoutine,
+                                total = cycleLength
+                            )
+                        }
+
+                        HorizontalDivider()
+
+                        RatioBatteryBar(
                             label = "Last 7 days",
                             filled = doneLast7,
                             total = 7
@@ -376,49 +398,6 @@ internal fun InsightsScreen(
                             filled = doneLast30,
                             total = 30
                         )
-
-                        HorizontalDivider()
-
-                        Text(
-                            text = routineTitle,
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        if (onRoutine) {
-                            Text(
-                                text = onRoutineText,
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            Text(
-                                text = "$routineStreak-day streak",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        } else {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Text(
-                                    text = "$daysToRoutine",
-                                    style = MaterialTheme.typography.headlineSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                Text(
-                                    text = daysToRoutineText,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                            Text(
-                                text = "$routineStreak-day streak (target $cycleLength)",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
                     }
                 }
 

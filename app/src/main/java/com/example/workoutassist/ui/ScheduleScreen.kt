@@ -1,5 +1,11 @@
 package com.example.workoutassist.ui
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -23,6 +29,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Bedtime
+import androidx.compose.material.icons.rounded.LocalFireDepartment
 import androidx.compose.material.icons.rounded.MilitaryTech
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -41,6 +48,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
@@ -258,7 +266,7 @@ private fun ScheduleEntryCard(
                 if (entry.status == DayStatus.DUE) {
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = if (isRestDay) "Rest day · tap to mark done" else "Today · tap to start",
+                        text = if (isRestDay) "Rest day · tap to mark done" else "Today",
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.primary
@@ -291,6 +299,35 @@ private fun ScheduleEntryCard(
                             modifier = Modifier.size(20.dp)
                         )
                     }
+                }
+            } else if (entry.status == DayStatus.DUE && !isRestDay) {
+                val pushColor = Color(0xFFFF6D00)
+                val duePulse = rememberInfiniteTransition(label = "duePulse")
+                val pulseScale by duePulse.animateFloat(
+                    initialValue = 0.84f,
+                    targetValue = 1.1f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(durationMillis = 720, easing = FastOutSlowInEasing),
+                        repeatMode = RepeatMode.Reverse
+                    ),
+                    label = "duePulseScale"
+                )
+                Box(
+                    modifier = Modifier
+                        .size(30.dp)
+                        .scale(pulseScale)
+                        .background(
+                            color = pushColor.copy(alpha = 0.16f),
+                            shape = CircleShape
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.LocalFireDepartment,
+                        contentDescription = "Workout due today",
+                        tint = pushColor,
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
             }
         }

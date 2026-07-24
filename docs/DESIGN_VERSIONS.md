@@ -1488,6 +1488,7 @@ How to use:
   - The bottom "Hold to Finish Workout" button (in Session Actions) now finishes via a press-and-hold fill animation on the button itself (an `Animatable` progress fill over ~1.2s, matching the exit hold) and calls finish directly when complete. The separate "Finish day workout?" confirm dialog was removed, along with its `showFinishConfirm` state. Releasing early cancels.
   - Schedule `ScheduleEntryCard` body is a single line: Day (fixed 52dp width) | Date (fixed 64dp width) | workout name (`weight(1f)`), all vertically centered in one `Row`. The fixed Day/Date widths keep every workout name left-aligned to the same column for view consistency. The DUE tap-hint sits just below this line.
   - Removed the date from the active-workout top bar (the `actions` slot), so during a session the top bar shows only the two stopwatches; the edit-mode `Switch` still shows when not in a session.
+  - The two stopwatches now differentiate by icon instead of text labels: `TopBarStopwatch` dropped the "Total"/"Rest" caption and shows a leading icon (`Icons.Rounded.Timer` for total, tinted `onSurfaceVariant`; `Icons.Rounded.RestartAlt` for the resetting rest timer, tinted `primary`) beside a larger `headlineSmall` monospace time. Layout changed from a `Column` (label over time) to a single centered `Row` (icon + time). Rest still flashes on reset.
 - Why changed:
   - Consistency: finishing and exiting are both session-ending, so they now share the deliberate hold gesture; the aligned card columns make the schedule easier to scan.
 - UX impact:

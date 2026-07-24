@@ -11,7 +11,7 @@ Primary design source: see DESIGN_VERSIONS.md and append all future design updat
 ### v1.102 current behavior
 - Finishing a workout uses a press-and-hold on the bottom "Hold to Finish Workout" button (Session Actions): it fills as you hold (like exit) and finishes when full — there is no separate confirm dialog, so a stray tap can't end the session.
 - Schedule cards show Day, Date, and workout name on one line: Day (fixed 52dp) and Date (fixed 64dp) have fixed widths so every workout name starts at the same column; the DUE tap-hint sits just below.
-- The active-workout top bar shows only the two stopwatches (Total | Rest); the date was removed from the top-right.
+- The active-workout top bar shows only the two stopwatches; the date was removed from the top-right. The two timers are told apart by a leading icon rather than text labels — a clock (`Timer`) for the total and a reset icon (`RestartAlt`, primary-tinted) for the rest timer — with a larger monospace time; the rest timer flashes on reset.
 
 ### v1.101 current behavior
 - Active workout top bar shows two stopwatches in a 50/50 split: "Total" (whole session, starts when the workout starts) and "Rest" (interval since the last set log). "Rest" resets to 0:00 and briefly flashes whenever a set's reps or weight is saved. Both are `m:ss`, monospace, and not persisted. The old `logged/total` count ("2/8") was removed from the top bar; the date stays on the right.

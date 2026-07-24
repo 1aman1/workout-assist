@@ -212,6 +212,7 @@ internal val PAGE_COMMAND_NAMES = listOf(
 )
 
 internal val LATEST_VERSION_HIGHLIGHTS = listOf(
+    "The two workout timers now tell themselves apart by icon (a clock for total, a reset icon for the rest timer) instead of 'Total'/'Rest' labels, leaving room for a bigger, easier-to-read time.",
     "The active-workout top bar is now just the two stopwatches (Total and Rest) — the session date was removed from the top-right for a cleaner header.",
     "Finishing a workout now uses a press-and-hold on the bottom 'Hold to Finish Workout' button itself (it fills as you hold, like exit) and finishes when full — no confirm dialog, and a stray tap no longer ends the session.",
     "Schedule cards now show Day, Date, and workout name on a single line, with Day and Date at fixed widths so the workout names all start at the same spot for a cleaner, aligned list.",
