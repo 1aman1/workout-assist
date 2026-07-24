@@ -38,15 +38,15 @@ abstract class WorkoutDatabase : RoomDatabase() {
         }
 
         private val MIGRATION_3_4 = object : Migration(3, 4) {
-            override fun migrate(database: SupportSQLiteDatabase) {
-                database.execSQL("ALTER TABLE exercises ADD COLUMN remarks TEXT NOT NULL DEFAULT ''")
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE exercises ADD COLUMN remarks TEXT NOT NULL DEFAULT ''")
             }
         }
 
         private val MIGRATION_4_5 = object : Migration(4, 5) {
-            override fun migrate(database: SupportSQLiteDatabase) {
-                database.execSQL("ALTER TABLE exercises ADD COLUMN plannedRepsBySetJson TEXT NOT NULL DEFAULT ''")
-                database.execSQL("ALTER TABLE exercises ADD COLUMN plannedWeightBySetJson TEXT NOT NULL DEFAULT ''")
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE exercises ADD COLUMN plannedRepsBySetJson TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE exercises ADD COLUMN plannedWeightBySetJson TEXT NOT NULL DEFAULT ''")
             }
         }
     }

@@ -48,6 +48,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -87,25 +88,25 @@ internal fun SettingsScreen(
     backgroundThemeOptionId: String,
     statusThemeOptionId: String,
     doneThemeOptionId: String,
+    bannerThemeOptionId: String,
     onBackgroundThemeOptionChanged: (String) -> Unit,
     onStatusThemeOptionChanged: (String) -> Unit,
     onDoneThemeOptionChanged: (String) -> Unit,
+    onBannerThemeOptionChanged: (String) -> Unit,
     backgroundThemeOptions: List<ThemeColorOption>,
     statusThemeOptions: List<ThemeColorOption>,
     doneThemeOptions: List<ThemeColorOption>,
+    bannerThemeOptions: List<ThemeColorOption>,
     backgroundCustomColor: Color,
     statusCustomColor: Color,
     doneCustomColor: Color,
+    bannerCustomColor: Color,
     onBackgroundCustomColorChanged: (Color) -> Unit,
     onStatusCustomColorChanged: (Color) -> Unit,
     onDoneCustomColorChanged: (Color) -> Unit,
-    planTitle: String,
-    schedulePageLabel: String,
-    infinityPageLabel: String,
-    workoutTabLabel: String,
-    insightsTabLabel: String,
-    settingsTabLabel: String,
-    onLabelsSaved: (String, String, String, String, String, String) -> Unit,
+    onBannerCustomColorChanged: (Color) -> Unit,
+    labels: AppLabels,
+    onLabelsSaved: (AppLabels) -> Unit,
     onExportBackup: () -> Unit,
     onImportBackup: () -> Unit,
     onOpenGraphs: () -> Unit
@@ -116,12 +117,27 @@ internal fun SettingsScreen(
     var settingsView by remember { mutableStateOf(SettingsView.ROOT) }
     var selectedThemeRole by remember { mutableStateOf(ThemeRole.BACKGROUND) }
     val settingsScrollState = rememberScrollState()
-    var planTitleInput by remember(planTitle) { mutableStateOf(planTitle) }
-    var scheduleLabelInput by remember(schedulePageLabel) { mutableStateOf(schedulePageLabel) }
-    var infinityLabelInput by remember(infinityPageLabel) { mutableStateOf(infinityPageLabel) }
-    var workoutTabLabelInput by remember(workoutTabLabel) { mutableStateOf(workoutTabLabel) }
-    var insightsTabLabelInput by remember(insightsTabLabel) { mutableStateOf(insightsTabLabel) }
-    var settingsTabLabelInput by remember(settingsTabLabel) { mutableStateOf(settingsTabLabel) }
+    LaunchedEffect(statusFeedback) {
+        if (statusFeedback != null) {
+            settingsScrollState.animateScrollTo(0)
+        }
+    }
+    var planTitleInput by remember(labels) { mutableStateOf(labels.planTitle) }
+    var scheduleLabelInput by remember(labels) { mutableStateOf(labels.compactButton) }
+    var infinityLabelInput by remember(labels) { mutableStateOf(labels.calendarButton) }
+    var workoutTabLabelInput by remember(labels) { mutableStateOf(labels.workoutTab) }
+    var insightsTabLabelInput by remember(labels) { mutableStateOf(labels.insightsTab) }
+    var settingsTabLabelInput by remember(labels) { mutableStateOf(labels.settingsTab) }
+    var insightsTitleInput by remember(labels) { mutableStateOf(labels.insightsTitle) }
+    var workoutInsightsTitleInput by remember(labels) { mutableStateOf(labels.workoutInsightsTitle) }
+    var graphsTitleInput by remember(labels) { mutableStateOf(labels.graphsTitle) }
+    var themeTitleInput by remember(labels) { mutableStateOf(labels.themeTitle) }
+    var labelsTitleInput by remember(labels) { mutableStateOf(labels.labelsTitle) }
+    var pageCommandsTitleInput by remember(labels) { mutableStateOf(labels.pageCommandsTitle) }
+    var missedBannerTextInput by remember(labels) { mutableStateOf(labels.missedBannerText) }
+    var routineTitleInput by remember(labels) { mutableStateOf(labels.routineTitle) }
+    var daysToRoutineTextInput by remember(labels) { mutableStateOf(labels.daysToRoutineText) }
+    var onRoutineTextInput by remember(labels) { mutableStateOf(labels.onRoutineText) }
 
     BackHandler(enabled = settingsView != SettingsView.ROOT) {
         settingsView = SettingsView.ROOT
@@ -145,9 +161,10 @@ internal fun SettingsScreen(
                 title = {
                     Text(
                         text = when (settingsView) {
-                            SettingsView.ROOT -> "Settings"
-                            SettingsView.THEME_OPTIONS -> "Theme"
-                            SettingsView.LABEL_OPTIONS -> "Labels"
+                            SettingsView.ROOT -> labels.settingsTab
+                            SettingsView.THEME_OPTIONS -> labels.themeTitle
+                            SettingsView.LABEL_OPTIONS -> labels.labelsTitle
+                            SettingsView.PAGE_COMMANDS -> labels.pageCommandsTitle
                         },
                         fontWeight = FontWeight.SemiBold
                     )
@@ -179,6 +196,13 @@ internal fun SettingsScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 if (settingsView == SettingsView.ROOT) {
+                    if (statusFeedback != null) {
+                        SettingsFeedbackCard(
+                            feedback = statusFeedback,
+                            onDismiss = onDismissStatusFeedback
+                        )
+                    }
+
                     SettingsSectionHeader("Appearance")
                     Card(
                         shape = RoundedCornerShape(18.dp),
@@ -314,21 +338,19 @@ internal fun SettingsScreen(
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                            PAGE_COMMAND_NAMES.forEach { page ->
-                                Text(
-                                    text = "${page.command} -> ${page.description}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                            OutlinedButton(
+                                onClick = { settingsView = SettingsView.PAGE_COMMANDS },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Text("Options")
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                                    contentDescription = null
                                 )
                             }
                         }
-                    }
-
-                    if (statusFeedback != null) {
-                        SettingsFeedbackCard(
-                            feedback = statusFeedback,
-                            onDismiss = onDismissStatusFeedback
-                        )
                     }
 
                     SettingsSectionHeader("Analytics")
@@ -416,6 +438,14 @@ internal fun SettingsScreen(
                                             onOptionSelected = onDoneThemeOptionChanged,
                                             onCustomColorChanged = onDoneCustomColorChanged
                                         )
+
+                                        ThemeRole.BANNER -> ThemeSwatchPicker(
+                                            options = bannerThemeOptions,
+                                            selectedOptionId = bannerThemeOptionId,
+                                            customColor = bannerCustomColor,
+                                            onOptionSelected = onBannerThemeOptionChanged,
+                                            onCustomColorChanged = onBannerCustomColorChanged
+                                        )
                                     }
                                 }
                             }
@@ -439,7 +469,7 @@ internal fun SettingsScreen(
                                         fontWeight = FontWeight.SemiBold
                                     )
                                     Text(
-                                        text = "Rename the workout view toggle and bottom tabs.",
+                                        text = "Rename page and subpage titles, the workout view toggle, and bottom tabs.",
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -486,16 +516,98 @@ internal fun SettingsScreen(
                                         singleLine = true,
                                         modifier = Modifier.fillMaxWidth()
                                     )
+                                    OutlinedTextField(
+                                        value = insightsTitleInput,
+                                        onValueChange = { insightsTitleInput = it },
+                                        label = { Text("Insights title") },
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                    OutlinedTextField(
+                                        value = workoutInsightsTitleInput,
+                                        onValueChange = { workoutInsightsTitleInput = it },
+                                        label = { Text("Workout Insights title") },
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                    OutlinedTextField(
+                                        value = graphsTitleInput,
+                                        onValueChange = { graphsTitleInput = it },
+                                        label = { Text("Progress Graphs title") },
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                    OutlinedTextField(
+                                        value = themeTitleInput,
+                                        onValueChange = { themeTitleInput = it },
+                                        label = { Text("Theme title") },
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                    OutlinedTextField(
+                                        value = labelsTitleInput,
+                                        onValueChange = { labelsTitleInput = it },
+                                        label = { Text("Labels title") },
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                    OutlinedTextField(
+                                        value = pageCommandsTitleInput,
+                                        onValueChange = { pageCommandsTitleInput = it },
+                                        label = { Text("Page Commands title") },
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                    OutlinedTextField(
+                                        value = missedBannerTextInput,
+                                        onValueChange = { missedBannerTextInput = it },
+                                        label = { Text("Missed banner text") },
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                    OutlinedTextField(
+                                        value = routineTitleInput,
+                                        onValueChange = { routineTitleInput = it },
+                                        label = { Text("Routine stat title") },
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                    OutlinedTextField(
+                                        value = daysToRoutineTextInput,
+                                        onValueChange = { daysToRoutineTextInput = it },
+                                        label = { Text("Days-to-routine text") },
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                    OutlinedTextField(
+                                        value = onRoutineTextInput,
+                                        onValueChange = { onRoutineTextInput = it },
+                                        label = { Text("On-routine text") },
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
 
                                     Button(
                                         onClick = {
                                             onLabelsSaved(
-                                                planTitleInput,
-                                                scheduleLabelInput,
-                                                infinityLabelInput,
-                                                workoutTabLabelInput,
-                                                insightsTabLabelInput,
-                                                settingsTabLabelInput
+                                                AppLabels(
+                                                    planTitle = planTitleInput,
+                                                    compactButton = scheduleLabelInput,
+                                                    calendarButton = infinityLabelInput,
+                                                    workoutTab = workoutTabLabelInput,
+                                                    insightsTab = insightsTabLabelInput,
+                                                    settingsTab = settingsTabLabelInput,
+                                                    insightsTitle = insightsTitleInput,
+                                                    workoutInsightsTitle = workoutInsightsTitleInput,
+                                                    graphsTitle = graphsTitleInput,
+                                                    themeTitle = themeTitleInput,
+                                                    labelsTitle = labelsTitleInput,
+                                                    pageCommandsTitle = pageCommandsTitleInput,
+                                                    missedBannerText = missedBannerTextInput,
+                                                    routineTitle = routineTitleInput,
+                                                    daysToRoutineText = daysToRoutineTextInput,
+                                                    onRoutineText = onRoutineTextInput
+                                                )
                                             )
                                         },
                                         enabled = planTitleInput.isNotBlank() &&
@@ -503,11 +615,54 @@ internal fun SettingsScreen(
                                             infinityLabelInput.isNotBlank() &&
                                             workoutTabLabelInput.isNotBlank() &&
                                             insightsTabLabelInput.isNotBlank() &&
-                                            settingsTabLabelInput.isNotBlank(),
+                                            settingsTabLabelInput.isNotBlank() &&
+                                            insightsTitleInput.isNotBlank() &&
+                                            workoutInsightsTitleInput.isNotBlank() &&
+                                            graphsTitleInput.isNotBlank() &&
+                                            themeTitleInput.isNotBlank() &&
+                                            labelsTitleInput.isNotBlank() &&
+                                            pageCommandsTitleInput.isNotBlank() &&
+                                            missedBannerTextInput.isNotBlank() &&
+                                            routineTitleInput.isNotBlank() &&
+                                            daysToRoutineTextInput.isNotBlank() &&
+                                            onRoutineTextInput.isNotBlank(),
                                         modifier = Modifier.fillMaxWidth(),
                                         shape = RoundedCornerShape(12.dp)
                                     ) {
                                         Text("Save labels")
+                                    }
+                                }
+                            }
+                        }
+
+                        SettingsView.PAGE_COMMANDS -> {
+                            Card(
+                                shape = RoundedCornerShape(18.dp),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Text(
+                                        text = "Page Command Names",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Text(
+                                        text = "Use these stable names for quick commands.",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    PAGE_COMMAND_NAMES.forEach { page ->
+                                        Text(
+                                            text = "${page.command} -> ${page.description}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
                                     }
                                 }
                             }
@@ -565,7 +720,8 @@ internal fun SettingsScreen(
 private enum class ThemeRole(val title: String) {
     BACKGROUND("Background"),
     STATUS("Status (Exercise cards)"),
-    DONE("Done / Actions")
+    DONE("Done / Actions"),
+    BANNER("Missed banner")
 }
 
 @Composable

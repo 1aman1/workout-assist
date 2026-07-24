@@ -7,7 +7,6 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -70,6 +69,7 @@ private fun formatValue(value: Float): String =
 internal fun WorkoutGraphsScreen(
     sessions: List<WorkoutSessionEntity>,
     setLogs: List<SetLogEntity>,
+    title: String = "Progress Graphs",
     onBack: () -> Unit
 ) {
     val todayEpochDay = currentDateEpochDay()
@@ -171,7 +171,7 @@ internal fun WorkoutGraphsScreen(
                 },
                 title = {
                     Text(
-                        text = "Progress Graphs",
+                        text = title,
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.SemiBold
                     )

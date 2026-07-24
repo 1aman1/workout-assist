@@ -25,6 +25,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
@@ -150,9 +151,14 @@ internal fun NumberWheelDialog(
     var selectedIndex by remember(value, range.first, range.last, stepSize) {
         mutableIntStateOf(initialIndex)
     }
+    // Hold a reference to the underlying NumberPicker so Save reads the wheel's actual
+    // current value even if the change listener didn't fire for the final position
+    // (e.g. tapping Save right after a fling / on a freshly added set).
+    var pickerHolder by remember { mutableStateOf<NumberPicker?>(null) }
     val latestOnConfirm by rememberUpdatedState(onConfirm)
     val confirmSelected: () -> Unit = {
-        latestOnConfirm(wheelValues[selectedIndex.coerceIn(0, wheelValues.lastIndex)])
+        val committedIndex = (pickerHolder?.value ?: selectedIndex).coerceIn(0, wheelValues.lastIndex)
+        latestOnConfirm(wheelValues[committedIndex])
     }
 
     AlertDialog(
@@ -192,7 +198,7 @@ internal fun NumberWheelDialog(
                             setOnValueChangedListener { _, _, newValue ->
                                 selectedIndex = newValue
                             }
-                        }
+                        }.also { picker -> pickerHolder = picker }
                     },
                     update = { picker ->
                         picker.displayedValues = null

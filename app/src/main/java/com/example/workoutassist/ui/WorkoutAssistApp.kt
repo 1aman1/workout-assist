@@ -72,7 +72,8 @@ internal data class ThemeColorOption(
 internal enum class SettingsView {
     ROOT,
     THEME_OPTIONS,
-    LABEL_OPTIONS
+    LABEL_OPTIONS,
+    PAGE_COMMANDS
 }
 
 internal enum class SettingsFeedbackKind {
@@ -91,6 +92,25 @@ internal data class AppPageCommand(
     val description: String
 )
 
+internal data class AppLabels(
+    val planTitle: String,
+    val compactButton: String,
+    val calendarButton: String,
+    val workoutTab: String,
+    val insightsTab: String,
+    val settingsTab: String,
+    val insightsTitle: String,
+    val workoutInsightsTitle: String,
+    val graphsTitle: String,
+    val themeTitle: String,
+    val labelsTitle: String,
+    val pageCommandsTitle: String,
+    val missedBannerText: String,
+    val routineTitle: String,
+    val daysToRoutineText: String,
+    val onRoutineText: String
+)
+
 internal const val DEFAULT_SCHEDULE_TITLE = "Your plan"
 private const val PREFS_NAME = "gudhealth_prefs"
 private const val KEY_SCHEDULE_TITLE = "schedule_title"
@@ -105,6 +125,8 @@ private const val KEY_THEME_DONE = "theme_done"
 private const val KEY_THEME_BACKGROUND_CUSTOM_HEX = "theme_background_custom_hex"
 private const val KEY_THEME_STATUS_CUSTOM_HEX = "theme_status_custom_hex"
 private const val KEY_THEME_DONE_CUSTOM_HEX = "theme_done_custom_hex"
+private const val KEY_THEME_BANNER = "theme_banner"
+private const val KEY_THEME_BANNER_CUSTOM_HEX = "theme_banner_custom_hex"
 private const val KEY_PRODUCTION_RESET_20260707_DONE = "production_reset_20260707_done"
 private const val KEY_HISTORY_PREFILL_20260708_DONE = "history_prefill_20260708_done"
 private const val DEFAULT_PAGE_LABEL_SCHEDULE = "Compact"
@@ -112,14 +134,36 @@ private const val DEFAULT_PAGE_LABEL_INFINITY = "Calendar"
 private const val DEFAULT_TAB_LABEL_WORKOUT = "Workout"
 private const val DEFAULT_TAB_LABEL_INSIGHTS = "Insights"
 private const val DEFAULT_TAB_LABEL_SETTINGS = "Settings"
+private const val KEY_TITLE_INSIGHTS = "title_insights"
+private const val KEY_TITLE_WORKOUT_INSIGHTS = "title_workout_insights"
+private const val KEY_TITLE_GRAPHS = "title_graphs"
+private const val KEY_TITLE_THEME = "title_theme"
+private const val KEY_TITLE_LABELS = "title_labels"
+private const val KEY_TITLE_PAGE_COMMANDS = "title_page_commands"
+private const val DEFAULT_TITLE_INSIGHTS = "Insights"
+private const val DEFAULT_TITLE_WORKOUT_INSIGHTS = "Workout Insights"
+private const val DEFAULT_TITLE_GRAPHS = "Progress Graphs"
+private const val DEFAULT_TITLE_THEME = "Theme"
+private const val DEFAULT_TITLE_LABELS = "Labels"
+private const val DEFAULT_TITLE_PAGE_COMMANDS = "Page Commands"
+private const val KEY_TITLE_MISSED_BANNER = "title_missed_banner"
+private const val DEFAULT_TITLE_MISSED_BANNER = "Missed · tap to add"
+private const val KEY_TITLE_ROUTINE = "title_routine"
+private const val DEFAULT_TITLE_ROUTINE = "Back to routine"
+private const val KEY_TEXT_DAYS_TO_ROUTINE = "text_days_to_routine"
+private const val DEFAULT_TEXT_DAYS_TO_ROUTINE = "days to get back on routine"
+private const val KEY_TEXT_ON_ROUTINE = "text_on_routine"
+private const val DEFAULT_TEXT_ON_ROUTINE = "You're on routine"
 private const val DEFAULT_THEME_BACKGROUND_ID = "white"
 private const val DEFAULT_THEME_STATUS_ID = "turquoise"
 private const val DEFAULT_THEME_DONE_ID = "green"
 private const val DEFAULT_THEME_BACKGROUND_CUSTOM_HEX = "#FFFFFF"
 private const val DEFAULT_THEME_STATUS_CUSTOM_HEX = "#1CCBCB"
 private const val DEFAULT_THEME_DONE_CUSTOM_HEX = "#1E9E58"
+private const val DEFAULT_THEME_BANNER_ID = "flame"
+private const val DEFAULT_THEME_BANNER_CUSTOM_HEX = "#BF360C"
 internal const val CUSTOM_THEME_OPTION_ID = "custom"
-internal const val LATEST_DESIGN_VERSION = "1.93"
+internal const val LATEST_DESIGN_VERSION = "1.102"
 
 internal val WORKOUT_SESSION_START_MESSAGES = listOf(
     "Lift weights and come back!",
@@ -148,19 +192,44 @@ private val DONE_THEME_OPTIONS = listOf(
     ThemeColorOption(id = "blue", label = "Blue", color = Color(0xFF1F7AE0))
 )
 
+private val BANNER_THEME_OPTIONS = listOf(
+    ThemeColorOption(id = "flame", label = "Flame", color = Color(0xFFBF360C)),
+    ThemeColorOption(id = "crimson", label = "Crimson", color = Color(0xFFC62828)),
+    ThemeColorOption(id = "amber", label = "Amber", color = Color(0xFFEF6C00))
+)
+
 internal val PAGE_COMMAND_NAMES = listOf(
-    AppPageCommand(command = "workout.schedule", description = "Workout tab merged plan/history view (compact default; Calendar toggle shows missed days)"),
-    AppPageCommand(command = "workout.day", description = "Workout day detail"),
-    AppPageCommand(command = "workout.session", description = "Active workout session"),
-    AppPageCommand(command = "insights.home", description = "Insights tab"),
-    AppPageCommand(command = "graphs.progress", description = "Progress Graphs (beta) page"),
+    AppPageCommand(command = "workout.schedule", description = "Workout tab: merged plan/history (Compact default, Calendar toggle)"),
+    AppPageCommand(command = "workout.day", description = "Workout day detail (start/edit a day)"),
+    AppPageCommand(command = "workout.session", description = "Active workout session (focus mode)"),
+    AppPageCommand(command = "insights.home", description = "Insights tab (ratios + open Workout Insights)"),
+    AppPageCommand(command = "insights.workout", description = "Insights > Workout Insights (per-workout exercise history)"),
+    AppPageCommand(command = "graphs.progress", description = "Progress Graphs (beta)"),
     AppPageCommand(command = "settings.home", description = "Settings root"),
-    AppPageCommand(command = "settings.theme", description = "Settings theme options"),
-    AppPageCommand(command = "settings.labels", description = "Settings label options")
+    AppPageCommand(command = "settings.theme", description = "Settings > Theme (colors + custom picker)"),
+    AppPageCommand(command = "settings.labels", description = "Settings > Labels (plan title, toggle, tabs)"),
+    AppPageCommand(command = "settings.pagecommands", description = "Settings > Page command names")
 )
 
 internal val LATEST_VERSION_HIGHLIGHTS = listOf(
-    "Timeline cards now show the workout title in both Compact and Calendar (removed the Done/Upcoming text); today shows tap-to-start and done days keep the tick.",
+    "The active-workout top bar is now just the two stopwatches (Total and Rest) — the session date was removed from the top-right for a cleaner header.",
+    "Finishing a workout now uses a press-and-hold on the bottom 'Hold to Finish Workout' button itself (it fills as you hold, like exit) and finishes when full — no confirm dialog, and a stray tap no longer ends the session.",
+    "Schedule cards now show Day, Date, and workout name on a single line, with Day and Date at fixed widths so the workout names all start at the same spot for a cleaner, aligned list.",
+    "An active workout now shows two stopwatches in the top bar (50/50 split): 'Total' counts the whole session, and 'Rest' counts the interval since your last set log and resets (with a brief flash) each time you save a set's reps or weight. Neither is saved.",
+    "Completed workouts now show a gold medal badge (instead of a plain tick) for an achievement feel; auto-logged rest days show a calm muted moon so the medal stays meaningful.",
+    "Exiting a workout mid-session now requires a deliberate press-and-hold (a filling 'Hold to exit' button) instead of a tap, so a stray/pocket touch can't end your session; Back opens the same hold confirm.",
+    "The Back-to-routine texts are now editable in Settings > Labels: the stat title, the 'days to get back on routine' text, and the 'You're on routine' text.",
+    "Insights adds a Back-to-routine stat: an on-plan streak (consecutive days with a session) toward one cycle; shows days left to get back on routine, or 'You're on routine' once the streak reaches a full cycle.",
+    "The missed-day banner text (\"Missed - tap to add\") is now editable in Settings > Labels.",
+    "Theme has a 4th role, Banner: it sets the color of the missed-day cards and domino pips (with the same swatch + custom picker).",
+    "Workout Insights is now its own page: the Insights tab shows ratios plus an Open button that navigates to the per-workout history (with back).",
+    "Settings > Labels now edits all page/subpage titles too: Insights, Workout Insights, Progress Graphs, Theme, Labels, and Page Commands (plus the existing plan title, toggle, and tabs).",
+    "Export/Import feedback now shows at the top of Settings and auto-scrolls into view (was appearing far down the page).",
+    "Insights ratios are shown as horizontal battery-style step bars (7 steps for last-7 days, 30 for last-30).",
+    "Workout Insights dropdown now prefixes each workout with its day number (Day N - Name).",
+    "Removed the right-swipe-to-mark-done gesture on the workout day page (and its now-dead code).",
+    "Removed the date shown on the workout day page header (where exercise cards and Start Workout are).",
+    "Page Command Names moved behind an Options button in Settings > Advanced (new Page Commands view); list refreshed.",
     "Single-tap a done workout to open it in the workout page; double-tap still removes it (confirm).",
     "Backfill (tap a missed day in Calendar) now also offers the rest day (day 7).",
     "Compact view shows missed days between two dates as tiny red domino pips (one per missed day); Calendar shows full red missed-day cards.",
@@ -390,6 +459,36 @@ fun WorkoutAssistApp() {
             prefs.getString(KEY_TAB_LABEL_SETTINGS, DEFAULT_TAB_LABEL_SETTINGS) ?: DEFAULT_TAB_LABEL_SETTINGS
         )
     }
+    var insightsTitleLabel by remember {
+        mutableStateOf(prefs.getString(KEY_TITLE_INSIGHTS, DEFAULT_TITLE_INSIGHTS) ?: DEFAULT_TITLE_INSIGHTS)
+    }
+    var workoutInsightsTitleLabel by remember {
+        mutableStateOf(prefs.getString(KEY_TITLE_WORKOUT_INSIGHTS, DEFAULT_TITLE_WORKOUT_INSIGHTS) ?: DEFAULT_TITLE_WORKOUT_INSIGHTS)
+    }
+    var graphsTitleLabel by remember {
+        mutableStateOf(prefs.getString(KEY_TITLE_GRAPHS, DEFAULT_TITLE_GRAPHS) ?: DEFAULT_TITLE_GRAPHS)
+    }
+    var themeTitleLabel by remember {
+        mutableStateOf(prefs.getString(KEY_TITLE_THEME, DEFAULT_TITLE_THEME) ?: DEFAULT_TITLE_THEME)
+    }
+    var labelsTitleLabel by remember {
+        mutableStateOf(prefs.getString(KEY_TITLE_LABELS, DEFAULT_TITLE_LABELS) ?: DEFAULT_TITLE_LABELS)
+    }
+    var pageCommandsTitleLabel by remember {
+        mutableStateOf(prefs.getString(KEY_TITLE_PAGE_COMMANDS, DEFAULT_TITLE_PAGE_COMMANDS) ?: DEFAULT_TITLE_PAGE_COMMANDS)
+    }
+    var missedBannerTextLabel by remember {
+        mutableStateOf(prefs.getString(KEY_TITLE_MISSED_BANNER, DEFAULT_TITLE_MISSED_BANNER) ?: DEFAULT_TITLE_MISSED_BANNER)
+    }
+    var routineTitleLabel by remember {
+        mutableStateOf(prefs.getString(KEY_TITLE_ROUTINE, DEFAULT_TITLE_ROUTINE) ?: DEFAULT_TITLE_ROUTINE)
+    }
+    var daysToRoutineTextLabel by remember {
+        mutableStateOf(prefs.getString(KEY_TEXT_DAYS_TO_ROUTINE, DEFAULT_TEXT_DAYS_TO_ROUTINE) ?: DEFAULT_TEXT_DAYS_TO_ROUTINE)
+    }
+    var onRoutineTextLabel by remember {
+        mutableStateOf(prefs.getString(KEY_TEXT_ON_ROUTINE, DEFAULT_TEXT_ON_ROUTINE) ?: DEFAULT_TEXT_ON_ROUTINE)
+    }
     var backgroundThemeOptionId by remember {
         mutableStateOf(
             prefs.getString(KEY_THEME_BACKGROUND, DEFAULT_THEME_BACKGROUND_ID) ?: DEFAULT_THEME_BACKGROUND_ID
@@ -403,6 +502,11 @@ fun WorkoutAssistApp() {
     var doneThemeOptionId by remember {
         mutableStateOf(
             prefs.getString(KEY_THEME_DONE, DEFAULT_THEME_DONE_ID) ?: DEFAULT_THEME_DONE_ID
+        )
+    }
+    var bannerThemeOptionId by remember {
+        mutableStateOf(
+            prefs.getString(KEY_THEME_BANNER, DEFAULT_THEME_BANNER_ID) ?: DEFAULT_THEME_BANNER_ID
         )
     }
     var backgroundThemeCustomHex by remember {
@@ -421,6 +525,12 @@ fun WorkoutAssistApp() {
         mutableStateOf(
             prefs.getString(KEY_THEME_DONE_CUSTOM_HEX, DEFAULT_THEME_DONE_CUSTOM_HEX)
                 ?: DEFAULT_THEME_DONE_CUSTOM_HEX
+        )
+    }
+    var bannerThemeCustomHex by remember {
+        mutableStateOf(
+            prefs.getString(KEY_THEME_BANNER_CUSTOM_HEX, DEFAULT_THEME_BANNER_CUSTOM_HEX)
+                ?: DEFAULT_THEME_BANNER_CUSTOM_HEX
         )
     }
 
@@ -515,6 +625,10 @@ fun WorkoutAssistApp() {
         hexValue = doneThemeCustomHex,
         fallback = Color(0xFF1E9E58)
     )
+    val bannerThemeCustomColor = parseThemeHexColorOrDefault(
+        hexValue = bannerThemeCustomHex,
+        fallback = Color(0xFFBF360C)
+    )
     val backgroundThemeOptions = remember(backgroundThemeCustomColor) {
         BACKGROUND_THEME_OPTIONS + ThemeColorOption(
             id = CUSTOM_THEME_OPTION_ID,
@@ -536,6 +650,13 @@ fun WorkoutAssistApp() {
             color = doneThemeCustomColor
         )
     }
+    val bannerThemeOptions = remember(bannerThemeCustomColor) {
+        BANNER_THEME_OPTIONS + ThemeColorOption(
+            id = CUSTOM_THEME_OPTION_ID,
+            label = "Custom",
+            color = bannerThemeCustomColor
+        )
+    }
     val backgroundThemeColor = resolveThemeColorOption(
         options = backgroundThemeOptions,
         selectedId = backgroundThemeOptionId,
@@ -550,6 +671,11 @@ fun WorkoutAssistApp() {
         options = doneThemeOptions,
         selectedId = doneThemeOptionId,
         fallbackId = DEFAULT_THEME_DONE_ID
+    ).color
+    val bannerThemeColor = resolveThemeColorOption(
+        options = bannerThemeOptions,
+        selectedId = bannerThemeOptionId,
+        fallbackId = DEFAULT_THEME_BANNER_ID
     ).color
 
     val secondaryContainerColor = mixWithWhite(statusThemeColor, 0.72f)
@@ -656,6 +782,8 @@ fun WorkoutAssistApp() {
                                         planTitle = scheduleTitle,
                                         schedulePageLabel = schedulePageLabel,
                                         infinityPageLabel = infinityPageLabel,
+                                        missedBannerText = missedBannerTextLabel,
+                                        bannerColor = bannerThemeColor,
                                         lastCompletedDayNumber = lastCompletedDayNumber,
                                         completedSessionEpochDays = completedSessionEpochDays,
                                         completedWorkoutByDate = completedWorkoutByDate,
@@ -700,7 +828,12 @@ fun WorkoutAssistApp() {
                                 sessions = sessions,
                                 setLogs = setLogs,
                                 days = days,
-                                repository = repository
+                                repository = repository,
+                                insightsTitle = insightsTitleLabel,
+                                workoutInsightsTitle = workoutInsightsTitleLabel,
+                                routineTitle = routineTitleLabel,
+                                daysToRoutineText = daysToRoutineTextLabel,
+                                onRoutineText = onRoutineTextLabel
                             )
                         }
                     }
@@ -712,6 +845,7 @@ fun WorkoutAssistApp() {
                             backgroundThemeOptionId = backgroundThemeOptionId,
                             statusThemeOptionId = statusThemeOptionId,
                             doneThemeOptionId = doneThemeOptionId,
+                            bannerThemeOptionId = bannerThemeOptionId,
                             onBackgroundThemeOptionChanged = { selectedId ->
                                 backgroundThemeOptionId = selectedId
                                 prefs.edit().putString(KEY_THEME_BACKGROUND, selectedId).apply()
@@ -724,12 +858,18 @@ fun WorkoutAssistApp() {
                                 doneThemeOptionId = selectedId
                                 prefs.edit().putString(KEY_THEME_DONE, selectedId).apply()
                             },
+                            onBannerThemeOptionChanged = { selectedId ->
+                                bannerThemeOptionId = selectedId
+                                prefs.edit().putString(KEY_THEME_BANNER, selectedId).apply()
+                            },
                             backgroundThemeOptions = backgroundThemeOptions,
                             statusThemeOptions = statusThemeOptions,
                             doneThemeOptions = doneThemeOptions,
+                            bannerThemeOptions = bannerThemeOptions,
                             backgroundCustomColor = backgroundThemeCustomColor,
                             statusCustomColor = statusThemeCustomColor,
                             doneCustomColor = doneThemeCustomColor,
+                            bannerCustomColor = bannerThemeCustomColor,
                             onBackgroundCustomColorChanged = { selectedColor ->
                                 val hex = colorToHexRgb(selectedColor)
                                 backgroundThemeCustomHex = hex
@@ -757,25 +897,66 @@ fun WorkoutAssistApp() {
                                     .putString(KEY_THEME_DONE, CUSTOM_THEME_OPTION_ID)
                                     .apply()
                             },
-                            planTitle = scheduleTitle,
-                            schedulePageLabel = schedulePageLabel,
-                            infinityPageLabel = infinityPageLabel,
-                            workoutTabLabel = workoutTabLabel,
-                            insightsTabLabel = insightsTabLabel,
-                            settingsTabLabel = settingsTabLabel,
-                            onLabelsSaved = { planTitleValue, scheduleLabel, infinityLabel, workoutLabel, insightsLabel, settingsLabel ->
-                                val cleanPlanTitle = planTitleValue.trim().ifEmpty { DEFAULT_SCHEDULE_TITLE }
-                                val cleanSchedule = scheduleLabel.trim().ifEmpty { DEFAULT_PAGE_LABEL_SCHEDULE }
-                                val cleanInfinity = infinityLabel.trim().ifEmpty { DEFAULT_PAGE_LABEL_INFINITY }
-                                val cleanWorkoutTab = workoutLabel.trim().ifEmpty { DEFAULT_TAB_LABEL_WORKOUT }
-                                val cleanInsightsTab = insightsLabel.trim().ifEmpty { DEFAULT_TAB_LABEL_INSIGHTS }
-                                val cleanSettingsTab = settingsLabel.trim().ifEmpty { DEFAULT_TAB_LABEL_SETTINGS }
+                            onBannerCustomColorChanged = { selectedColor ->
+                                val hex = colorToHexRgb(selectedColor)
+                                bannerThemeCustomHex = hex
+                                bannerThemeOptionId = CUSTOM_THEME_OPTION_ID
+                                prefs.edit()
+                                    .putString(KEY_THEME_BANNER_CUSTOM_HEX, hex)
+                                    .putString(KEY_THEME_BANNER, CUSTOM_THEME_OPTION_ID)
+                                    .apply()
+                            },
+                            labels = AppLabels(
+                                planTitle = scheduleTitle,
+                                compactButton = schedulePageLabel,
+                                calendarButton = infinityPageLabel,
+                                workoutTab = workoutTabLabel,
+                                insightsTab = insightsTabLabel,
+                                settingsTab = settingsTabLabel,
+                                insightsTitle = insightsTitleLabel,
+                                workoutInsightsTitle = workoutInsightsTitleLabel,
+                                graphsTitle = graphsTitleLabel,
+                                themeTitle = themeTitleLabel,
+                                labelsTitle = labelsTitleLabel,
+                                pageCommandsTitle = pageCommandsTitleLabel,
+                                missedBannerText = missedBannerTextLabel,
+                                routineTitle = routineTitleLabel,
+                                daysToRoutineText = daysToRoutineTextLabel,
+                                onRoutineText = onRoutineTextLabel
+                            ),
+                            onLabelsSaved = { updated ->
+                                val cleanPlanTitle = updated.planTitle.trim().ifEmpty { DEFAULT_SCHEDULE_TITLE }
+                                val cleanSchedule = updated.compactButton.trim().ifEmpty { DEFAULT_PAGE_LABEL_SCHEDULE }
+                                val cleanInfinity = updated.calendarButton.trim().ifEmpty { DEFAULT_PAGE_LABEL_INFINITY }
+                                val cleanWorkoutTab = updated.workoutTab.trim().ifEmpty { DEFAULT_TAB_LABEL_WORKOUT }
+                                val cleanInsightsTab = updated.insightsTab.trim().ifEmpty { DEFAULT_TAB_LABEL_INSIGHTS }
+                                val cleanSettingsTab = updated.settingsTab.trim().ifEmpty { DEFAULT_TAB_LABEL_SETTINGS }
+                                val cleanInsightsTitle = updated.insightsTitle.trim().ifEmpty { DEFAULT_TITLE_INSIGHTS }
+                                val cleanWorkoutInsightsTitle = updated.workoutInsightsTitle.trim().ifEmpty { DEFAULT_TITLE_WORKOUT_INSIGHTS }
+                                val cleanGraphsTitle = updated.graphsTitle.trim().ifEmpty { DEFAULT_TITLE_GRAPHS }
+                                val cleanThemeTitle = updated.themeTitle.trim().ifEmpty { DEFAULT_TITLE_THEME }
+                                val cleanLabelsTitle = updated.labelsTitle.trim().ifEmpty { DEFAULT_TITLE_LABELS }
+                                val cleanPageCommandsTitle = updated.pageCommandsTitle.trim().ifEmpty { DEFAULT_TITLE_PAGE_COMMANDS }
+                                val cleanMissedBanner = updated.missedBannerText.trim().ifEmpty { DEFAULT_TITLE_MISSED_BANNER }
+                                val cleanRoutineTitle = updated.routineTitle.trim().ifEmpty { DEFAULT_TITLE_ROUTINE }
+                                val cleanDaysToRoutine = updated.daysToRoutineText.trim().ifEmpty { DEFAULT_TEXT_DAYS_TO_ROUTINE }
+                                val cleanOnRoutine = updated.onRoutineText.trim().ifEmpty { DEFAULT_TEXT_ON_ROUTINE }
                                 scheduleTitle = cleanPlanTitle
                                 schedulePageLabel = cleanSchedule
                                 infinityPageLabel = cleanInfinity
                                 workoutTabLabel = cleanWorkoutTab
                                 insightsTabLabel = cleanInsightsTab
                                 settingsTabLabel = cleanSettingsTab
+                                insightsTitleLabel = cleanInsightsTitle
+                                workoutInsightsTitleLabel = cleanWorkoutInsightsTitle
+                                graphsTitleLabel = cleanGraphsTitle
+                                themeTitleLabel = cleanThemeTitle
+                                labelsTitleLabel = cleanLabelsTitle
+                                pageCommandsTitleLabel = cleanPageCommandsTitle
+                                missedBannerTextLabel = cleanMissedBanner
+                                routineTitleLabel = cleanRoutineTitle
+                                daysToRoutineTextLabel = cleanDaysToRoutine
+                                onRoutineTextLabel = cleanOnRoutine
                                 prefs.edit()
                                     .putString(KEY_SCHEDULE_TITLE, cleanPlanTitle)
                                     .putString(KEY_PAGE_LABEL_SCHEDULE, cleanSchedule)
@@ -783,6 +964,16 @@ fun WorkoutAssistApp() {
                                     .putString(KEY_TAB_LABEL_WORKOUT, cleanWorkoutTab)
                                     .putString(KEY_TAB_LABEL_INSIGHTS, cleanInsightsTab)
                                     .putString(KEY_TAB_LABEL_SETTINGS, cleanSettingsTab)
+                                    .putString(KEY_TITLE_INSIGHTS, cleanInsightsTitle)
+                                    .putString(KEY_TITLE_WORKOUT_INSIGHTS, cleanWorkoutInsightsTitle)
+                                    .putString(KEY_TITLE_GRAPHS, cleanGraphsTitle)
+                                    .putString(KEY_TITLE_THEME, cleanThemeTitle)
+                                    .putString(KEY_TITLE_LABELS, cleanLabelsTitle)
+                                    .putString(KEY_TITLE_PAGE_COMMANDS, cleanPageCommandsTitle)
+                                    .putString(KEY_TITLE_MISSED_BANNER, cleanMissedBanner)
+                                    .putString(KEY_TITLE_ROUTINE, cleanRoutineTitle)
+                                    .putString(KEY_TEXT_DAYS_TO_ROUTINE, cleanDaysToRoutine)
+                                    .putString(KEY_TEXT_ON_ROUTINE, cleanOnRoutine)
                                     .apply()
                             },
                             onExportBackup = {
@@ -860,6 +1051,7 @@ fun WorkoutAssistApp() {
             WorkoutGraphsScreen(
                 sessions = sessions,
                 setLogs = setLogs,
+                title = graphsTitleLabel,
                 onBack = { showGraphsPage = false }
             )
         }

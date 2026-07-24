@@ -328,10 +328,6 @@ class WorkoutRepository(private val dao: WorkoutDao) {
         normalizePositions(exercise.dayNumber)
     }
 
-    suspend fun setExerciseDone(exerciseId: Long, isDone: Boolean) {
-        dao.updateExerciseDone(exerciseId, isDone)
-    }
-
     suspend fun setWorkoutDone(dayNumber: Int, plannedDateEpochDay: Long, isDone: Boolean) {
         dao.updateWorkoutDone(
             dayNumber = dayNumber,

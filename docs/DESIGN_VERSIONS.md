@@ -1483,6 +1483,149 @@ How to use:
 
 ---
 
+## Version 1.102 (2026-07-23)
+- Change summary:
+  - The bottom "Hold to Finish Workout" button (in Session Actions) now finishes via a press-and-hold fill animation on the button itself (an `Animatable` progress fill over ~1.2s, matching the exit hold) and calls finish directly when complete. The separate "Finish day workout?" confirm dialog was removed, along with its `showFinishConfirm` state. Releasing early cancels.
+  - Schedule `ScheduleEntryCard` body is a single line: Day (fixed 52dp width) | Date (fixed 64dp width) | workout name (`weight(1f)`), all vertically centered in one `Row`. The fixed Day/Date widths keep every workout name left-aligned to the same column for view consistency. The DUE tap-hint sits just below this line.
+  - Removed the date from the active-workout top bar (the `actions` slot), so during a session the top bar shows only the two stopwatches; the edit-mode `Switch` still shows when not in a session.
+- Why changed:
+  - Consistency: finishing and exiting are both session-ending, so they now share the deliberate hold gesture; the aligned card columns make the schedule easier to scan.
+- UX impact:
+  - Finish requires a short hold; schedule rows read as neat aligned columns.
+- Data/model impact:
+  - None.
+- Migration notes (if any):
+  - None.
+
+---
+
+## Version 1.101 (2026-07-23)
+- Change summary:
+  - Added two in-session stopwatches to the workout day top bar, laid out as a 50/50 split (`TopBarStopwatch` blocks separated by a `VerticalDivider`):
+    - "Total": counts from the moment the workout starts (set when `workoutActive` becomes true).
+    - "Rest": counts the interval since the last set log; resets to 0:00 whenever a set's reps or weight is saved (`updateSetRepsSelection` / `updateSetWeightSelection`), and briefly flashes (a ~250ms primary-tinted background pulse via `intervalResetSignal` -> `intervalFlash`) on each reset.
+  - Both are `m:ss`, monospace, and are NOT persisted (a `LaunchedEffect(workoutActive)` ticks `nowMillis` every 500ms; elapsed seconds derived from `System.currentTimeMillis()` deltas). New helper `formatStopwatch(totalSeconds)`.
+  - Dropped the `logged/total` count (e.g. "2/8") from the active-workout top bar; the date remains on the right (actions slot).
+- Why changed:
+  - Users wanted a session timer and a rest/interval timer at a glance without leaving the workout; the empty title slot was the natural home.
+- UX impact:
+  - Two glanceable clocks during a workout; the Rest timer's flash confirms a set was logged.
+- Data/model impact:
+  - None (timers are ephemeral, in-memory only).
+- Migration notes (if any):
+  - None.
+
+---
+
+## Version 1.100 (2026-07-23)
+- Change summary:
+  - Replaced the schedule done-tick (`CheckCircle`) with an achievement marker: completed training days show a medal (`MilitaryTech`) tinted with the Done/Actions theme color (green by default) on a soft circular badge; auto-logged rest days show a muted moon (`Bedtime`). Uses the existing `isRestDay` flag on `ScheduleEntryCard`.
+- Why changed:
+  - A tick reads as a checklist; a medal gives an earned/achievement feel, while a calmer rest marker keeps the medal meaningful.
+- UX impact:
+  - More rewarding "done" state in Compact and Calendar.
+- Data/model impact:
+  - None.
+- Migration notes (if any):
+  - None.
+
+---
+
+## Version 1.99 (2026-07-23)
+- Change summary:
+  - The exit-active-session confirmation now uses a press-and-hold gesture instead of a tap. Added a `HoldToConfirmButton` (a filling progress button using `Animatable` + `detectTapGestures` onPress/tryAwaitRelease); the "Exit workout mode?" dialog's confirm is "Hold to exit" (~1.2s to complete). Back and the top-bar back still open this dialog; "Stay"/scrim dismiss keep the session.
+- Why changed:
+  - Users reported sessions ending unexpectedly (stray or pocket touch). A deliberate hold can't be triggered accidentally.
+- UX impact:
+  - Safer mid-session exit; intentional action required.
+- Data/model impact:
+  - None.
+- Migration notes (if any):
+  - None.
+
+---
+
+## Version 1.98 (2026-07-23)
+- Change summary:
+  - Made the Back-to-routine stat text editable in Settings > Labels: added `routineTitle`, `daysToRoutineText`, and `onRoutineText` to `AppLabels` (defaults "Back to routine", "days to get back on routine", "You're on routine"), persisted in SharedPreferences and threaded to `InsightsScreen`.
+  - Dropped the number's singular/plural special-case (the suffix is now a single user-defined label).
+- Why changed:
+  - Consistency with the app's fully-editable label system; lets users phrase the routine nudge themselves.
+- UX impact:
+  - Customizable routine wording.
+- Data/model impact:
+  - No schema change; three new title/text preferences.
+- Migration notes (if any):
+  - None.
+
+---
+
+## Version 1.97 (2026-07-23)
+- Change summary:
+  - Added a "Back to routine" stat to the Insights home card. It is an on-plan streak: the number of consecutive most-recent days that each have a logged session, measured up to today (or yesterday while today is still unlogged, so the in-progress day isn't penalized). Because rest days auto-log, the streak only breaks when a scheduled workout day is missed.
+  - Shows `daysToRoutine = max(0, cycleLength - streak)` as "N day(s) to get back on routine" plus the current streak, or "You're on routine" once the streak reaches one full cycle (cycleLength = number of template days, default 7).
+- Why changed:
+  - Chose a metric that rewards showing up now (the old rolling-missed-days idea only shrank as misses aged out, not with effort). The streak is action-responsive, deterministic ("do N more days"), dynamic (a miss resets it), and maps to the Day 1-7 cycle.
+- UX impact:
+  - A clear, motivating recovery target after a gap.
+- Data/model impact:
+  - None (derived from existing finished sessions).
+- Migration notes (if any):
+  - None.
+
+---
+
+## Version 1.96 (2026-07-23)
+- Change summary:
+  - The missed-day banner text is now editable in Settings > Labels ("Missed banner text", default "Missed · tap to add"); added `missedBannerText` to `AppLabels` and persisted it.
+  - Added a 4th theme role, "Missed banner": a full `BANNER_THEME_OPTIONS` set + custom color, resolved to `bannerThemeColor` and passed to `ScheduleScreen`; the missed-day cards and Compact domino pips now use this color (was hardcoded `0xFFBF360C`). The banner card text auto-contrasts against the color.
+- Why changed:
+  - Let users fully customize the most prominent alert element (missed days) in both wording and color.
+- UX impact:
+  - The missed-day banner matches the user's chosen palette and copy.
+- Data/model impact:
+  - No schema change. New SharedPreferences: banner theme id/custom hex and the missed banner text (defaults preserve the current red + copy).
+- Migration notes (if any):
+  - None.
+
+---
+
+## Version 1.95 (2026-07-23)
+- Change summary:
+  - Workout Insights moved off the Insights home into its own in-tab page: the home shows ratios + a "Workout Insights" Open button; the button navigates to the per-workout history view with a back arrow and a `BackHandler`.
+  - Settings > Labels expanded to edit all page/subpage titles: added editable Insights title, Workout Insights title, Progress Graphs title, Theme title, Labels title, and Page Commands title (alongside the existing plan title, Compact/Calendar buttons, and Workout/Insights/Settings tabs).
+  - Introduced an `AppLabels` data class; `SettingsScreen` now takes `labels: AppLabels` and `onLabelsSaved: (AppLabels) -> Unit` instead of a positional 6-tuple. The Settings subpage top-bar titles and the Insights/Progress Graphs titles now read from these labels.
+  - Added `insights.workout` to the page command list.
+- Why changed:
+  - Declutter the Insights tab and make the detailed workout history a focused page; let users rename every visible page/subpage title.
+- UX impact:
+  - Cleaner Insights landing; consistent, fully-customizable titles.
+- Data/model impact:
+  - No schema change. Six new title preferences persisted in SharedPreferences with defaults matching the current copy.
+- Migration notes (if any):
+  - None.
+
+---
+
+## Version 1.94 (2026-07-23)
+- Change summary:
+  - Settings export/import feedback moved to the top of the page with an auto-scroll-to-top on new feedback (was rendered below the Advanced section, easy to miss).
+  - Insights top ratios changed from plain `n/7` and `n/30` text to horizontal battery-style step bars (7 and 30 cells; filled = done days) with the `n/total` shown beside the label.
+  - Workout Insights dropdown now shows the cycle day number as a prefix (`Day N - Name`) for both the selected button and the menu items (`FinishedWorkoutSessionSnapshot` gained `dayNumber`; a `dayNumberByWorkoutName` map is passed to the card).
+  - Removed the workout-day right-swipe-to-mark-done gesture and dropped its code: `SwipeToDismissBox` wrapper, `SwipeHintBackground`, the achievement popup, `canToggleExerciseDone`/`viewedDateIsCompleted`, and the now-orphaned `WorkoutRepository.setExerciseDone` / `WorkoutDao.updateExerciseDone`.
+  - Removed the date shown on the workout-day header (non-session view).
+  - Moved Page Command Names behind an Options button (new `SettingsView.PAGE_COMMANDS`); refreshed the `PAGE_COMMAND_NAMES` descriptions and added `settings.pagecommands`.
+- Why changed:
+  - Make backup feedback actually visible; make consistency easier to read at a glance; make the insights selector clearer; remove a non-obvious/accidental swipe action and screen clutter; declutter Advanced settings.
+- UX impact:
+  - Clearer feedback, ratios, and selector; fewer accidental "done" toggles; tidier Settings.
+- Data/model impact:
+  - No schema change. Removed the unused `updateExerciseDone` DAO query and `setExerciseDone` repository method (the `exercises.isDone` column remains).
+- Migration notes (if any):
+  - None.
+
+---
+
 ## Version 1.93 (2026-07-17)
 - Change summary (merged-view refinements + cleanup on top of 1.92):
   - Timeline cards now always show the workout title (Compact and Calendar); removed the "Done/Upcoming" status label. Today keeps "Today · tap to start"; done days keep the tick.

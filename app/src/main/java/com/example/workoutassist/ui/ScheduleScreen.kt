@@ -19,9 +19,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Bedtime
+import androidx.compose.material.icons.rounded.MilitaryTech
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -41,8 +43,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.workoutassist.data.WorkoutDayModel
 
@@ -171,11 +175,6 @@ private fun ScheduleEntryCard(
 ) {
     val isDone = entry.status == DayStatus.DONE
     val isFuture = entry.status == DayStatus.FUTURE
-    val dayLabelColor = when {
-        isToday -> MaterialTheme.colorScheme.primary
-        isFuture -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-        else -> MaterialTheme.colorScheme.onSurfaceVariant
-    }
 
     Card(
         modifier = modifier
@@ -205,43 +204,59 @@ private fun ScheduleEntryCard(
                 .padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = if (entry.dayNumber > 0) "Day ${entry.dayNumber}" else "Day –",
-                modifier = Modifier.width(64.dp),
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = if (isToday) FontWeight.Bold else FontWeight.Medium,
-                color = dayLabelColor
-            )
-            Spacer(modifier = Modifier.width(12.dp))
+            val dayLabelColor = when {
+                isToday -> MaterialTheme.colorScheme.primary
+                isFuture -> MaterialTheme.colorScheme.onSurfaceVariant
+                else -> MaterialTheme.colorScheme.onSurface
+            }
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = formatDateShort(entry.epochDay),
-                    style = if (isToday) {
-                        MaterialTheme.typography.titleMedium
-                    } else {
-                        MaterialTheme.typography.titleSmall
-                    },
-                    fontWeight = FontWeight.Bold,
-                    color = if (isFuture) {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    } else {
-                        MaterialTheme.colorScheme.onSurface
-                    }
-                )
-                if (entry.workoutName.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(2.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = entry.workoutName,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = if (isFuture) {
-                            MaterialTheme.colorScheme.onSurfaceVariant
+                        text = if (entry.dayNumber > 0) "Day ${entry.dayNumber}" else "",
+                        modifier = Modifier.width(52.dp),
+                        style = if (isToday) {
+                            MaterialTheme.typography.titleMedium
                         } else {
-                            MaterialTheme.colorScheme.onSurface
+                            MaterialTheme.typography.titleSmall
+                        },
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        color = dayLabelColor
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = formatDateShort(entry.epochDay),
+                        modifier = Modifier.width(64.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        color = if (isToday) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
                         }
                     )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    if (entry.workoutName.isNotBlank()) {
+                        Text(
+                            text = entry.workoutName,
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            color = if (isFuture) {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            } else {
+                                MaterialTheme.colorScheme.onSurface
+                            }
+                        )
+                    } else {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
                 }
                 if (entry.status == DayStatus.DUE) {
+                    Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = if (isRestDay) "Rest day · tap to mark done" else "Today · tap to start",
                         style = MaterialTheme.typography.labelSmall,
@@ -251,12 +266,32 @@ private fun ScheduleEntryCard(
                 }
             }
             if (isDone) {
-                Icon(
-                    imageVector = Icons.Rounded.CheckCircle,
-                    contentDescription = "Done",
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(20.dp)
-                )
+                if (isRestDay) {
+                    Icon(
+                        imageVector = Icons.Rounded.Bedtime,
+                        contentDescription = "Rest day complete",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                        modifier = Modifier.size(20.dp)
+                    )
+                } else {
+                    val medalColor = MaterialTheme.colorScheme.primary
+                    Box(
+                        modifier = Modifier
+                            .size(30.dp)
+                            .background(
+                                color = medalColor.copy(alpha = 0.16f),
+                                shape = CircleShape
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.MilitaryTech,
+                            contentDescription = "Workout done",
+                            tint = medalColor,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
             }
         }
     }
@@ -265,15 +300,18 @@ private fun ScheduleEntryCard(
 @Composable
 private fun MissedDayCard(
     entry: ScheduleEntry,
+    bannerColor: Color,
+    bannerText: String,
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
+    val contentColor = if (bannerColor.luminance() > 0.5f) Color.Black else Color.White
     Card(
         modifier = modifier
             .fillMaxWidth()
             .clickable { onClick() },
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFBF360C))
+        colors = CardDefaults.cardColors(containerColor = bannerColor)
     ) {
         Row(
             modifier = Modifier
@@ -286,22 +324,22 @@ private fun MissedDayCard(
                 modifier = Modifier.width(72.dp),
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.SemiBold,
-                color = Color.White
+                color = contentColor
             )
             Spacer(modifier = Modifier.width(12.dp))
             Text(
-                text = "Missed · tap to add",
+                text = bannerText,
                 modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Bold,
-                color = Color.White
+                color = contentColor
             )
         }
     }
 }
 
 @Composable
-private fun GapDominoStrip(count: Int, modifier: Modifier = Modifier) {
+private fun GapDominoStrip(count: Int, color: Color, modifier: Modifier = Modifier) {
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -315,7 +353,7 @@ private fun GapDominoStrip(count: Int, modifier: Modifier = Modifier) {
                     .width(16.dp)
                     .height(5.dp)
                     .background(
-                        color = Color(0xFFBF360C),
+                        color = color,
                         shape = RoundedCornerShape(3.dp)
                     )
             )
@@ -330,6 +368,8 @@ internal fun ScheduleScreen(
     planTitle: String,
     schedulePageLabel: String,
     infinityPageLabel: String,
+    missedBannerText: String,
+    bannerColor: Color,
     lastCompletedDayNumber: Int?,
     completedSessionEpochDays: Set<Long>,
     completedWorkoutByDate: Map<Long, String>,
@@ -502,6 +542,7 @@ internal fun ScheduleScreen(
                             when (row) {
                                 is ScheduleRow.Gap -> GapDominoStrip(
                                     count = row.count,
+                                    color = bannerColor,
                                     modifier = Modifier.animateItem(fadeOutSpec = null)
                                 )
 
@@ -513,6 +554,8 @@ internal fun ScheduleScreen(
                                     when (entry.status) {
                                         DayStatus.MISSED -> MissedDayCard(
                                             entry = entry,
+                                            bannerColor = bannerColor,
+                                            bannerText = missedBannerText,
                                             modifier = Modifier.animateItem(fadeOutSpec = null),
                                             onClick = { editDateTarget = entry.epochDay }
                                         )

@@ -2,16 +2,21 @@ package com.example.workoutassist.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -61,18 +66,15 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
-import androidx.compose.material3.SwipeToDismissBox
-import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberSwipeToDismissBoxState
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -82,8 +84,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
@@ -115,8 +120,6 @@ internal fun WorkoutDayScreen(
 ) {
     val scope = rememberCoroutineScope()
     val viewedDateEpochDay = day.plannedDateEpochDay
-    val viewedDateIsCompleted = day.completedForDateEpochDay == viewedDateEpochDay
-    val canToggleExerciseDone = viewedDateEpochDay <= currentDateEpochDay()
 
     var editMode by remember(day.dayNumber) { mutableStateOf(false) }
     var workoutActive by remember(day.dayNumber) { mutableStateOf(false) }
@@ -144,8 +147,6 @@ internal fun WorkoutDayScreen(
     var activeSessionId by remember(day.dayNumber) { mutableLongStateOf(0L) }
     var sessionStartMessage by remember(day.dayNumber) { mutableStateOf<String?>(null) }
 
-    var showFinishConfirm by remember(day.dayNumber) { mutableStateOf(false) }
-    var showAchievementPopup by remember(day.dayNumber) { mutableStateOf(false) }
     var showExitWorkoutModeConfirm by remember(day.dayNumber) { mutableStateOf(false) }
     var showExportAfterEditPrompt by remember(day.dayNumber) { mutableStateOf(false) }
     var hasEditChangesPendingExport by remember(day.dayNumber) { mutableStateOf(false) }
@@ -157,6 +158,36 @@ internal fun WorkoutDayScreen(
     var draggingExerciseId by remember(day.dayNumber) { mutableLongStateOf(-1L) }
     var dragOffsetY by remember(day.dayNumber) { mutableFloatStateOf(0f) }
     var editCollapseSignal by remember(day.dayNumber) { mutableIntStateOf(0) }
+
+    // Stopwatches (not persisted): total workout time + rest interval since the last set log.
+    var workoutStartMillis by remember(day.dayNumber) { mutableLongStateOf(0L) }
+    var intervalStartMillis by remember(day.dayNumber) { mutableLongStateOf(0L) }
+    var nowMillis by remember(day.dayNumber) { mutableLongStateOf(0L) }
+    var intervalResetSignal by remember(day.dayNumber) { mutableIntStateOf(0) }
+    var intervalFlash by remember(day.dayNumber) { mutableStateOf(false) }
+
+    // Tick once per half-second while a workout is active so both clocks stay current.
+    LaunchedEffect(workoutActive) {
+        while (workoutActive) {
+            nowMillis = System.currentTimeMillis()
+            delay(500)
+        }
+    }
+
+    // Briefly pulse the rest timer whenever it resets on a set log.
+    LaunchedEffect(intervalResetSignal) {
+        if (intervalResetSignal == 0) return@LaunchedEffect
+        intervalFlash = true
+        delay(700)
+        intervalFlash = false
+    }
+
+    val totalElapsedSeconds = if (workoutStartMillis > 0L) {
+        ((nowMillis - workoutStartMillis) / 1000L).coerceAtLeast(0L).toInt()
+    } else 0
+    val intervalElapsedSeconds = if (intervalStartMillis > 0L) {
+        ((nowMillis - intervalStartMillis) / 1000L).coerceAtLeast(0L).toInt()
+    } else 0
 
     // Report active-session state up so the shell can hide the bottom nav during a
     // workout (prevents accidental tab taps from abandoning the session).
@@ -286,6 +317,12 @@ internal fun WorkoutDayScreen(
         }
 
         workoutActive = true
+        val startMillis = System.currentTimeMillis()
+        workoutStartMillis = startMillis
+        intervalStartMillis = startMillis
+        nowMillis = startMillis
+        intervalResetSignal = 0
+        intervalFlash = false
         editMode = false
         focusedExerciseId = 0L
         selectedSetRepsByExerciseId = day.exercises.associate { exercise ->
@@ -314,6 +351,10 @@ internal fun WorkoutDayScreen(
 
         val editedSetIndexes = editedSetIndexesByExerciseId[exercise.id].orEmpty() + setIndex
         editedSetIndexesByExerciseId = editedSetIndexesByExerciseId + (exercise.id to editedSetIndexes)
+
+        intervalStartMillis = System.currentTimeMillis()
+        nowMillis = intervalStartMillis
+        intervalResetSignal += 1
     }
 
     fun updateSetWeightSelection(exercise: ExerciseModel, setIndex: Int, selectedWeightText: String) {
@@ -329,6 +370,10 @@ internal fun WorkoutDayScreen(
 
         val editedSetIndexes = editedSetIndexesByExerciseId[exercise.id].orEmpty() + setIndex
         editedSetIndexesByExerciseId = editedSetIndexesByExerciseId + (exercise.id to editedSetIndexes)
+
+        intervalStartMillis = System.currentTimeMillis()
+        nowMillis = intervalStartMillis
+        intervalResetSignal += 1
     }
 
     fun saveFocusedExerciseSets() {
@@ -504,7 +549,6 @@ internal fun WorkoutDayScreen(
         weightPickerTarget = null
         sessionStartMessage = null
         activeSessionId = 0L
-        showFinishConfirm = false
         showExitWorkoutModeConfirm = false
     }
 
@@ -553,7 +597,33 @@ internal fun WorkoutDayScreen(
                     containerColor = MaterialTheme.colorScheme.background,
                     scrolledContainerColor = MaterialTheme.colorScheme.background
                 ),
-                title = { Text("") },
+                title = {
+                    if (workoutActive) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            TopBarStopwatch(
+                                label = "Total",
+                                timeText = formatStopwatch(totalElapsedSeconds),
+                                flash = false,
+                                modifier = Modifier.weight(1f)
+                            )
+                            VerticalDivider(
+                                modifier = Modifier.height(26.dp),
+                                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+                            )
+                            TopBarStopwatch(
+                                label = "Rest",
+                                timeText = formatStopwatch(intervalElapsedSeconds),
+                                flash = intervalFlash,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    } else {
+                        Text("")
+                    }
+                },
                 navigationIcon = {
                     IconButton(
                         onClick = { requestBackNavigation() },
@@ -566,26 +636,7 @@ internal fun WorkoutDayScreen(
                     }
                 },
                 actions = {
-                    if (workoutActive) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            modifier = Modifier.padding(end = 14.dp)
-                        ) {
-                            Text(
-                                text = "${loggedExerciseIds.size}/${day.exercises.size}",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            Text(
-                                text = formatDateShort(viewedDateEpochDay),
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    } else {
+                    if (!workoutActive) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Switch(
                                 checked = editMode,
@@ -660,14 +711,6 @@ internal fun WorkoutDayScreen(
                         }
 
                         if (!workoutActive) {
-                            Text(
-                                text = formatDateShort(viewedDateEpochDay),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-
-                        if (!workoutActive) {
                             Spacer(modifier = Modifier.height(10.dp))
 
                             Button(
@@ -736,7 +779,7 @@ internal fun WorkoutDayScreen(
                         onAddSet = { addSetToFocusedExercise() },
                         onRemoveSet = { setIndex -> removeSetTarget = setIndex },
                         onAddExercise = { showAddSessionExerciseDialog = true },
-                        onFinish = { showFinishConfirm = true }
+                        onFinish = { finishWorkout() }
                     )
                 } else {
                     if (day.exercises.isEmpty()) {
@@ -757,80 +800,35 @@ internal fun WorkoutDayScreen(
                         contentPadding = PaddingValues(bottom = exerciseListBottomPadding)
                     ) {
                         itemsIndexed(day.exercises, key = { _, exercise -> exercise.id }) { index, exercise ->
-                            key(exercise.id, exercise.isDone) {
-                                val dismissState = rememberSwipeToDismissBoxState(
-                                    confirmValueChange = { targetValue ->
-                                        when (targetValue) {
-                                            SwipeToDismissBoxValue.StartToEnd -> {
-                                                if (canToggleExerciseDone) {
-                                                    val toggledDone = !exercise.isDone
-                                                    val allExercisesDoneAfterToggle = day.exercises.all { item ->
-                                                        if (item.id == exercise.id) toggledDone else item.isDone
-                                                    }
-                                                    scope.launch {
-                                                        repository.setExerciseDone(exercise.id, toggledDone)
-                                                        if (allExercisesDoneAfterToggle && !viewedDateIsCompleted) {
-                                                            repository.setWorkoutDone(
-                                                                dayNumber = day.dayNumber,
-                                                                plannedDateEpochDay = viewedDateEpochDay,
-                                                                isDone = true
-                                                            )
-                                                            showAchievementPopup = true
-                                                        }
-                                                    }
-                                                }
-                                                false
-                                            }
-
-                                            SwipeToDismissBoxValue.EndToStart -> false
-
-                                            SwipeToDismissBoxValue.Settled -> true
-                                        }
+                            ExerciseRow(
+                                exercise = exercise,
+                                index = index,
+                                editMode = editMode,
+                                canEditTemplate = canEditTemplate,
+                                canDelete = editMode && canEditTemplate,
+                                isCurrent = false,
+                                currentSetNumber = 1,
+                                canQuickEdit = canEditTemplate,
+                                collapseSignal = editCollapseSignal,
+                                isDragging = draggingExerciseId == exercise.id,
+                                dragOffsetY = if (draggingExerciseId == exercise.id) dragOffsetY else 0f,
+                                onDragStart = { onDragStart(exercise.id) },
+                                onDrag = { deltaY -> onDrag(deltaY) },
+                                onDragEnd = { onDragEnd() },
+                                onEdit = { editExerciseTarget = exercise },
+                                onQuickEditRepsForSet = { setIndex ->
+                                    openQuickEditDialog(exercise, QuickEditField.REPS, setIndex)
+                                },
+                                onQuickEditWeightForSet = { setIndex ->
+                                    openQuickEditDialog(exercise, QuickEditField.WEIGHT, setIndex)
+                                },
+                                onDelete = {
+                                    scope.launch {
+                                        repository.deleteExercise(exercise)
                                     }
-                                )
-
-                                SwipeToDismissBox(
-                                    state = dismissState,
-                                    enableDismissFromStartToEnd = !editMode && canToggleExerciseDone,
-                                    enableDismissFromEndToStart = false,
-                                    backgroundContent = {
-                                        SwipeHintBackground(
-                                            targetValue = dismissState.targetValue,
-                                            exerciseDone = exercise.isDone
-                                        )
-                                    }
-                                ) {
-                                    ExerciseRow(
-                                        exercise = exercise,
-                                        index = index,
-                                        editMode = editMode,
-                                        canEditTemplate = canEditTemplate,
-                                        canDelete = editMode && canEditTemplate,
-                                        isCurrent = false,
-                                        currentSetNumber = 1,
-                                        canQuickEdit = canEditTemplate,
-                                        collapseSignal = editCollapseSignal,
-                                        isDragging = draggingExerciseId == exercise.id,
-                                        dragOffsetY = if (draggingExerciseId == exercise.id) dragOffsetY else 0f,
-                                        onDragStart = { onDragStart(exercise.id) },
-                                        onDrag = { deltaY -> onDrag(deltaY) },
-                                        onDragEnd = { onDragEnd() },
-                                        onEdit = { editExerciseTarget = exercise },
-                                        onQuickEditRepsForSet = { setIndex ->
-                                            openQuickEditDialog(exercise, QuickEditField.REPS, setIndex)
-                                        },
-                                        onQuickEditWeightForSet = { setIndex ->
-                                            openQuickEditDialog(exercise, QuickEditField.WEIGHT, setIndex)
-                                        },
-                                        onDelete = {
-                                            scope.launch {
-                                                repository.deleteExercise(exercise)
-                                            }
-                                            hasEditChangesPendingExport = true
-                                        }
-                                    )
+                                    hasEditChangesPendingExport = true
                                 }
-                            }
+                            )
                         }
                     }
                 }
@@ -1097,19 +1095,6 @@ internal fun WorkoutDayScreen(
         }
     }
 
-    if (showAchievementPopup) {
-        AlertDialog(
-            onDismissRequest = { showAchievementPopup = false },
-            title = { Text("Achievement") },
-            text = { Text("All exercises are done. Workout marked complete.") },
-            confirmButton = {
-                TextButton(onClick = { showAchievementPopup = false }) {
-                    Text("Nice")
-                }
-            }
-        )
-    }
-
     if (showExportAfterEditPrompt) {
         AlertDialog(
             onDismissRequest = {
@@ -1146,11 +1131,12 @@ internal fun WorkoutDayScreen(
         AlertDialog(
             onDismissRequest = { showExitWorkoutModeConfirm = false },
             title = { Text("Exit workout mode?") },
-            text = { Text("This will end the current workout session and return to schedule.") },
+            text = { Text("Press and hold the Exit button to end the current session. This prevents accidental exits from a stray touch.") },
             confirmButton = {
-                TextButton(onClick = { exitWorkoutModeAndLeave() }) {
-                    Text("Exit")
-                }
+                HoldToConfirmButton(
+                    text = "Hold to exit",
+                    onConfirm = { exitWorkoutModeAndLeave() }
+                )
             },
             dismissButton = {
                 TextButton(onClick = { showExitWorkoutModeConfirm = false }) {
@@ -1159,27 +1145,99 @@ internal fun WorkoutDayScreen(
             }
         )
     }
+}
 
-    if (showFinishConfirm) {
-        AlertDialog(
-            onDismissRequest = { showFinishConfirm = false },
-            title = { Text("Finish day workout?") },
-            text = { Text("This will close the active workout session.") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showFinishConfirm = false
-                        finishWorkout()
+@Composable
+private fun TopBarStopwatch(
+    label: String,
+    timeText: String,
+    flash: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val background by animateColorAsState(
+        targetValue = if (flash) {
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+        } else {
+            Color.Transparent
+        },
+        animationSpec = tween(durationMillis = 250),
+        label = "stopwatchFlash"
+    )
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(background)
+            .padding(horizontal = 8.dp, vertical = 2.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            text = timeText,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            fontFamily = FontFamily.Monospace,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+    }
+}
+
+@Composable
+private fun HoldToConfirmButton(
+    text: String,
+    onConfirm: () -> Unit,
+    modifier: Modifier = Modifier,
+    holdMillis: Int = 1200
+) {
+    val scope = rememberCoroutineScope()
+    val progress = remember { Animatable(0f) }
+    var holding by remember { mutableStateOf(false) }
+
+    Box(
+        modifier = modifier
+            .width(150.dp)
+            .height(44.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.error)
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onPress = {
+                        holding = true
+                        val animJob = scope.launch {
+                            progress.animateTo(
+                                targetValue = 1f,
+                                animationSpec = tween(durationMillis = holdMillis, easing = LinearEasing)
+                            )
+                            holding = false
+                            onConfirm()
+                            progress.snapTo(0f)
+                        }
+                        tryAwaitRelease()
+                        if (animJob.isActive) {
+                            animJob.cancel()
+                            holding = false
+                            scope.launch { progress.snapTo(0f) }
+                        }
                     }
-                ) {
-                    Text("Finish")
-                }
+                )
             },
-            dismissButton = {
-                TextButton(onClick = { showFinishConfirm = false }) {
-                    Text("Cancel")
-                }
-            }
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .fillMaxWidth(progress.value)
+                .background(Color.White.copy(alpha = 0.28f))
+        )
+        Text(
+            text = if (holding) "Keep holding…" else text,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onError,
+            modifier = Modifier.padding(horizontal = 12.dp)
         )
     }
 }
@@ -1257,6 +1315,10 @@ private fun WorkoutActivePage(
         isSessionReady && focusedExercise != null && focusedExercise.id !in loggedExerciseIds
     var showSessionActions by remember(day.dayNumber) { mutableStateOf(false) }
     var showFocusedExerciseRemark by remember(day.dayNumber) { mutableStateOf(false) }
+
+    val finishHoldScope = rememberCoroutineScope()
+    val finishHoldProgress = remember(day.dayNumber) { Animatable(0f) }
+    var finishHolding by remember(day.dayNumber) { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -1474,6 +1536,7 @@ private fun WorkoutActivePage(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(52.dp)
+                            .clip(RoundedCornerShape(14.dp))
                             .border(
                                 width = 1.dp,
                                 color = MaterialTheme.colorScheme.error.copy(alpha = 0.45f),
@@ -1483,10 +1546,41 @@ private fun WorkoutActivePage(
                                 color = MaterialTheme.colorScheme.surface,
                                 shape = RoundedCornerShape(14.dp)
                             )
-                            .combinedClickable(onClick = { }, onLongClick = onFinish)
+                            .pointerInput(Unit) {
+                                detectTapGestures(
+                                    onPress = {
+                                        finishHolding = true
+                                        val holdJob = finishHoldScope.launch {
+                                            finishHoldProgress.animateTo(
+                                                targetValue = 1f,
+                                                animationSpec = tween(
+                                                    durationMillis = 1200,
+                                                    easing = LinearEasing
+                                                )
+                                            )
+                                            finishHolding = false
+                                            onFinish()
+                                            finishHoldProgress.snapTo(0f)
+                                        }
+                                        tryAwaitRelease()
+                                        if (holdJob.isActive) {
+                                            holdJob.cancel()
+                                            finishHolding = false
+                                            finishHoldScope.launch { finishHoldProgress.snapTo(0f) }
+                                        }
+                                    }
+                                )
+                            }
                             .padding(horizontal = 14.dp),
                         contentAlignment = Alignment.Center
                     ) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.CenterStart)
+                                .fillMaxHeight()
+                                .fillMaxWidth(finishHoldProgress.value)
+                                .background(MaterialTheme.colorScheme.error.copy(alpha = 0.18f))
+                        )
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                             verticalAlignment = Alignment.CenterVertically
@@ -1497,7 +1591,7 @@ private fun WorkoutActivePage(
                                 tint = MaterialTheme.colorScheme.error
                             )
                             Text(
-                                text = "Long Press to Finish Workout",
+                                text = if (finishHolding) "Keep holding to finish…" else "Hold to Finish Workout",
                                 color = MaterialTheme.colorScheme.error,
                                 style = MaterialTheme.typography.labelLarge,
                                 fontWeight = FontWeight.SemiBold
@@ -1506,40 +1600,6 @@ private fun WorkoutActivePage(
                     }
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun WorkoutDataRowReadOnly(
-    label: String,
-    value: String
-) {
-    val mutedTextColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.86f)
-
-    Card(
-        shape = RoundedCornerShape(12.dp),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.bodyMedium,
-                color = mutedTextColor
-            )
-            Text(
-                text = value,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Medium,
-                color = mutedTextColor
-            )
         }
     }
 }
@@ -1796,47 +1856,6 @@ private fun ExerciseRow(
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun SwipeHintBackground(
-    targetValue: SwipeToDismissBoxValue,
-    exerciseDone: Boolean
-) {
-    val backgroundColor = when (targetValue) {
-        SwipeToDismissBoxValue.StartToEnd -> MaterialTheme.colorScheme.primary.copy(alpha = 0.9f)
-        SwipeToDismissBoxValue.EndToStart -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
-        SwipeToDismissBoxValue.Settled -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
-    }
-    val labelColor = when (targetValue) {
-        SwipeToDismissBoxValue.StartToEnd -> MaterialTheme.colorScheme.onPrimary
-        SwipeToDismissBoxValue.EndToStart -> MaterialTheme.colorScheme.onSurfaceVariant
-        SwipeToDismissBoxValue.Settled -> MaterialTheme.colorScheme.onSurfaceVariant
-    }
-    val label = when (targetValue) {
-        SwipeToDismissBoxValue.StartToEnd -> if (exerciseDone) "Mark not done" else "Mark done"
-        SwipeToDismissBoxValue.EndToStart -> ""
-        SwipeToDismissBoxValue.Settled -> if (exerciseDone) "Swipe right to undo" else "Swipe right"
-    }
-    val alignment = when (targetValue) {
-        SwipeToDismissBoxValue.StartToEnd -> Alignment.CenterStart
-        SwipeToDismissBoxValue.EndToStart -> Alignment.CenterEnd
-        SwipeToDismissBoxValue.Settled -> Alignment.Center
-    }
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(backgroundColor, RoundedCornerShape(14.dp))
-            .padding(horizontal = 16.dp),
-        contentAlignment = alignment
-    ) {
-        Text(
-            text = label,
-            fontWeight = FontWeight.Medium,
-            color = labelColor
-        )
     }
 }
 

@@ -28,28 +28,15 @@ internal fun currentDateEpochDay(): Long {
     return utc.timeInMillis / MILLIS_PER_DAY
 }
 
-internal fun yearMonthDayToEpochDay(year: Int, month: Int, dayOfMonth: Int): Long {
-    val utc = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
-    utc.clear()
-    utc.set(year, month, dayOfMonth, 0, 0, 0)
-    utc.set(Calendar.MILLISECOND, 0)
-    return utc.timeInMillis / MILLIS_PER_DAY
-}
-
-internal fun epochDayToYearMonthDay(epochDay: Long): Triple<Int, Int, Int> {
-    val utc = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
-    utc.timeInMillis = epochDay * MILLIS_PER_DAY
-    return Triple(
-        utc.get(Calendar.YEAR),
-        utc.get(Calendar.MONTH),
-        utc.get(Calendar.DAY_OF_MONTH)
-    )
-}
-
 internal fun formatDateShort(epochDay: Long): String {
     val formatter = SimpleDateFormat("dd-MMM", Locale.ENGLISH)
     formatter.timeZone = TimeZone.getTimeZone("UTC")
     return formatter.format(Date(epochDay * MILLIS_PER_DAY))
+}
+
+internal fun formatStopwatch(totalSeconds: Int): String {
+    val safe = totalSeconds.coerceAtLeast(0)
+    return "%d:%02d".format(safe / 60, safe % 60)
 }
 
 internal fun timestampMillisToEpochDay(timestampMillis: Long): Long {

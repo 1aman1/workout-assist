@@ -1,9 +1,9 @@
 package com.example.workoutassist.ui
 
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -21,10 +22,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Info
-import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -33,6 +35,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -41,7 +44,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -49,7 +51,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -57,11 +58,11 @@ import com.example.workoutassist.data.SetLogEntity
 import com.example.workoutassist.data.WorkoutDayModel
 import com.example.workoutassist.data.WorkoutRepository
 import com.example.workoutassist.data.WorkoutSessionEntity
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private data class FinishedWorkoutSessionSnapshot(
     val sessionId: Long,
+    val dayNumber: Int,
     val workoutName: String,
     val epochDay: Long,
     val finishedAtMillis: Long
@@ -88,10 +89,16 @@ internal fun InsightsScreen(
     sessions: List<WorkoutSessionEntity>,
     setLogs: List<SetLogEntity>,
     days: List<WorkoutDayModel>,
-    repository: WorkoutRepository
+    repository: WorkoutRepository,
+    insightsTitle: String = "Insights",
+    workoutInsightsTitle: String = "Workout Insights",
+    routineTitle: String = "Back to routine",
+    daysToRoutineText: String = "days to get back on routine",
+    onRoutineText: String = "You're on routine"
 ) {
     val scope = rememberCoroutineScope()
     val todayEpochDay = currentDateEpochDay()
+    var showWorkoutInsights by remember { mutableStateOf(false) }
 
     val finishedSessionSamples = remember(sessions) {
         sessions
@@ -104,6 +111,7 @@ internal fun InsightsScreen(
 
                 FinishedWorkoutSessionSnapshot(
                     sessionId = session.id,
+                    dayNumber = session.dayNumber,
                     workoutName = resolvedWorkoutName,
                     epochDay = timestampMillisToEpochDay(finishedAt),
                     finishedAtMillis = finishedAt
@@ -128,6 +136,26 @@ internal fun InsightsScreen(
         val startDay = todayEpochDay - 29L
         completedSessionEpochDays.count { day -> day in startDay..todayEpochDay }
     }
+    // Back-to-routine metric: consecutive most-recent days that each have a session
+    // (a rest day auto-logs, so a day only breaks the streak if a scheduled workout is
+    // missed). Today counts once it has a session; while today is still unlogged the
+    // streak is measured up to yesterday so the in-progress day isn't penalized.
+    val cycleLength = remember(days) { days.size.takeIf { it > 0 } ?: 7 }
+    val routineStreak = remember(completedSessionEpochDays, todayEpochDay) {
+        var cursor = if (todayEpochDay in completedSessionEpochDays) {
+            todayEpochDay
+        } else {
+            todayEpochDay - 1L
+        }
+        var streak = 0
+        while (cursor in completedSessionEpochDays) {
+            streak++
+            cursor -= 1L
+        }
+        streak
+    }
+    val onRoutine = routineStreak >= cycleLength
+    val daysToRoutine = (cycleLength - routineStreak).coerceAtLeast(0)
 
     val setLogsBySessionId = remember(setLogs) {
         setLogs.groupBy { log -> log.sessionId }
@@ -137,6 +165,9 @@ internal fun InsightsScreen(
         finishedSessionSamples
             .map { sample -> sample.workoutName }
             .distinct()
+    }
+    val dayNumberByWorkoutName = remember(finishedSessionSamples) {
+        finishedSessionSamples.associate { sample -> sample.workoutName to sample.dayNumber }
     }
     var selectedWorkoutName by remember { mutableStateOf("") }
 
@@ -244,6 +275,10 @@ internal fun InsightsScreen(
         )
     )
 
+    BackHandler(enabled = showWorkoutInsights) {
+        showWorkoutInsights = false
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -256,84 +291,223 @@ internal fun InsightsScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(18.dp),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+            if (showWorkoutInsights) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
+                    IconButton(onClick = { showWorkoutInsights = false }) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                            contentDescription = "Back"
+                        )
+                    }
                     Text(
-                        text = "Insights",
+                        text = workoutInsightsTitle,
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.SemiBold
                     )
+                }
 
-                    HorizontalDivider()
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(18.dp)
+                WorkoutSpecificInsightsCard(
+                    workoutNames = trackedWorkoutNames,
+                    dayNumberByWorkoutName = dayNumberByWorkoutName,
+                    selectedWorkoutName = selectedWorkoutName,
+                    onWorkoutSelected = { workoutName -> selectedWorkoutName = workoutName },
+                    exerciseNames = exerciseNamesForSelectedWorkout,
+                    selectedExerciseName = selectedExerciseName,
+                    onExerciseSelected = { exerciseName -> selectedExerciseName = exerciseName },
+                    history = selectedExerciseHistory,
+                    onUpdateSetLog = { logId, actualReps, actualWeight ->
+                        scope.launch {
+                            repository.updateSetLogEntry(
+                                logId = logId,
+                                actualReps = actualReps,
+                                actualWeight = actualWeight
+                            )
+                        }
+                    },
+                    onDeleteSetLog = { logId, sessionId ->
+                        scope.launch {
+                            repository.deleteSetLogEntry(
+                                logId = logId,
+                                sessionId = sessionId
+                            )
+                        }
+                    },
+                    onDeleteDateEntry = { sessionId, exerciseId ->
+                        scope.launch {
+                            repository.deleteExerciseHistoryForSession(
+                                sessionId = sessionId,
+                                exerciseId = exerciseId
+                            )
+                        }
+                    }
+                )
+            } else {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         Text(
-                            text = "$doneLast7/7",
-                            modifier = Modifier.weight(1f),
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                            textAlign = TextAlign.Center
+                            text = insightsTitle,
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.SemiBold
                         )
+
+                        HorizontalDivider()
+
+                        RatioBatteryBar(
+                            label = "Last 7 days",
+                            filled = doneLast7,
+                            total = 7
+                        )
+                        RatioBatteryBar(
+                            label = "Last 30 days",
+                            filled = doneLast30,
+                            total = 30
+                        )
+
+                        HorizontalDivider()
+
                         Text(
-                            text = "$doneLast30/30",
-                            modifier = Modifier.weight(1f),
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                            textAlign = TextAlign.Center
+                            text = routineTitle,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        if (onRoutine) {
+                            Text(
+                                text = onRoutineText,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = "$routineStreak-day streak",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        } else {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = "$daysToRoutine",
+                                    style = MaterialTheme.typography.headlineSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Text(
+                                    text = daysToRoutineText,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                            Text(
+                                text = "$routineStreak-day streak (target $cycleLength)",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = workoutInsightsTitle,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        OutlinedButton(
+                            onClick = { showWorkoutInsights = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("Open")
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                                contentDescription = null
+                            )
+                        }
                     }
                 }
             }
+        }
+    }
+}
 
-            WorkoutSpecificInsightsCard(
-                workoutNames = trackedWorkoutNames,
-                selectedWorkoutName = selectedWorkoutName,
-                onWorkoutSelected = { workoutName -> selectedWorkoutName = workoutName },
-                exerciseNames = exerciseNamesForSelectedWorkout,
-                selectedExerciseName = selectedExerciseName,
-                onExerciseSelected = { exerciseName -> selectedExerciseName = exerciseName },
-                history = selectedExerciseHistory,
-                onUpdateSetLog = { logId, actualReps, actualWeight ->
-                    scope.launch {
-                        repository.updateSetLogEntry(
-                            logId = logId,
-                            actualReps = actualReps,
-                            actualWeight = actualWeight
-                        )
-                    }
-                },
-                onDeleteSetLog = { logId, sessionId ->
-                    scope.launch {
-                        repository.deleteSetLogEntry(
-                            logId = logId,
-                            sessionId = sessionId
-                        )
-                    }
-                },
-                onDeleteDateEntry = { sessionId, exerciseId ->
-                    scope.launch {
-                        repository.deleteExerciseHistoryForSession(
-                            sessionId = sessionId,
-                            exerciseId = exerciseId
-                        )
-                    }
-                }
+@Composable
+private fun RatioBatteryBar(
+    label: String,
+    filled: Int,
+    total: Int
+) {
+    val safeTotal = total.coerceAtLeast(1)
+    val safeFilled = filled.coerceIn(0, safeTotal)
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            Text(
+                text = "$safeFilled/$safeTotal",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+            repeat(safeTotal) { index ->
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(16.dp)
+                        .background(
+                            color = if (index < safeFilled) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                            },
+                            shape = RoundedCornerShape(3.dp)
+                        )
+                        .border(
+                            width = 1.dp,
+                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f),
+                            shape = RoundedCornerShape(3.dp)
+                        )
+                )
+            }
         }
     }
 }
@@ -341,6 +515,7 @@ internal fun InsightsScreen(
 @Composable
 private fun WorkoutSpecificInsightsCard(
     workoutNames: List<String>,
+    dayNumberByWorkoutName: Map<String, Int>,
     selectedWorkoutName: String,
     onWorkoutSelected: (String) -> Unit,
     exerciseNames: List<String>,
@@ -402,7 +577,9 @@ private fun WorkoutSpecificInsightsCard(
                         shape = RoundedCornerShape(12.dp)
                     ) {
                         Text(
-                            text = selectedWorkoutName,
+                            text = dayNumberByWorkoutName[selectedWorkoutName]
+                                ?.let { "Day $it · $selectedWorkoutName" }
+                                ?: selectedWorkoutName,
                             modifier = Modifier.weight(1f),
                             textAlign = TextAlign.Start
                         )
@@ -418,7 +595,13 @@ private fun WorkoutSpecificInsightsCard(
                     ) {
                         workoutNames.forEach { workoutName ->
                             DropdownMenuItem(
-                                text = { Text(workoutName) },
+                                text = {
+                                    Text(
+                                        dayNumberByWorkoutName[workoutName]
+                                            ?.let { "Day $it · $workoutName" }
+                                            ?: workoutName
+                                    )
+                                },
                                 onClick = {
                                     onWorkoutSelected(workoutName)
                                     workoutSelectorExpanded = false

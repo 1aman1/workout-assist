@@ -72,9 +72,6 @@ interface WorkoutDao {
     @Query("UPDATE template_days SET completedForDateEpochDay = :completedForDateEpochDay WHERE dayNumber = :dayNumber")
     suspend fun updateWorkoutDone(dayNumber: Int, completedForDateEpochDay: Long?): Int
 
-    @Query("UPDATE exercises SET isDone = :isDone WHERE id = :exerciseId")
-    suspend fun updateExerciseDone(exerciseId: Long, isDone: Boolean): Int
-
     @Insert
     suspend fun insertSession(session: WorkoutSessionEntity): Long
 

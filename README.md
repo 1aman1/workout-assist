@@ -29,6 +29,7 @@ Workout Assist follows a repeating **7-day training template** (Day 1 → Day 7,
 - Planned vs. actual capture at the **set level** (reps and optional weight).
 - Add/remove exercises and sets mid-session; long-press a set to remove it.
 - **Skip** logs a real 0-rep entry and stays re-selectable so you can undo within the session.
+- Two top-bar **stopwatches** (not saved): a **Total** session timer and a **Rest** interval timer that resets (with a quick flash) each time you save a set.
 
 ### Insights & Analytics
 - Rolling **last-7-day** and **last-30-day** adherence ratios.
@@ -37,7 +38,7 @@ Workout Assist follows a repeating **7-day training template** (Day 1 → Day 7,
 
 ### Personalization
 - **Themes** — role-based colors (Background / Status / Done) picked from tappable swatches, plus a custom **HSV gradient color picker**.
-- **Editable labels** — rename the plan title, the Compact/Calendar toggle, and the bottom tabs in Settings → Labels.
+- **Editable labels** — rename page and subpage titles, the Compact/Calendar toggle, and the bottom tabs in Settings → Labels.
 - **Backup & Restore** — export/import all local data as JSON with clear success/failure feedback.
 
 ---

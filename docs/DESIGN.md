@@ -4,9 +4,46 @@ Lean Android utility app for fast workout logging during training.
 
 Primary design source: see DESIGN_VERSIONS.md and append all future design updates as version increments.
 
-## Current Product Snapshot (v1.93)
+## Current Product Snapshot (v1.102)
 
-> v1.93 is the authoritative current state for Schedule, Insights, active session, and Analytics. Older bullets below are historical and may be superseded by these v1.93 notes.
+> v1.102 is the authoritative current state for Schedule, Insights, active session, and Analytics. Older bullets below are historical and may be superseded by these notes.
+
+### v1.102 current behavior
+- Finishing a workout uses a press-and-hold on the bottom "Hold to Finish Workout" button (Session Actions): it fills as you hold (like exit) and finishes when full — there is no separate confirm dialog, so a stray tap can't end the session.
+- Schedule cards show Day, Date, and workout name on one line: Day (fixed 52dp) and Date (fixed 64dp) have fixed widths so every workout name starts at the same column; the DUE tap-hint sits just below.
+- The active-workout top bar shows only the two stopwatches (Total | Rest); the date was removed from the top-right.
+
+### v1.101 current behavior
+- Active workout top bar shows two stopwatches in a 50/50 split: "Total" (whole session, starts when the workout starts) and "Rest" (interval since the last set log). "Rest" resets to 0:00 and briefly flashes whenever a set's reps or weight is saved. Both are `m:ss`, monospace, and not persisted. The old `logged/total` count ("2/8") was removed from the top bar; the date stays on the right.
+
+### v1.100 current behavior
+- Done marker upgraded from a plain check to an achievement badge: a completed training day shows a medal (`Icons.Rounded.MilitaryTech`, tinted with the Done/Actions theme color — green by default) on a soft circular badge; an auto-logged rest day shows a muted moon (`Icons.Rounded.Bedtime`) so the medal is reserved for actual workouts.
+
+### v1.99 current behavior
+- Exiting an active workout session is now hold-to-confirm: the "Exit workout mode?" dialog's confirm is a press-and-hold button (a red "Hold to exit" that fills over ~1.2s and only exits when full). A tap does nothing; Back / the top-bar back both open this same hold confirm, and "Stay" or tapping outside keeps the session. This prevents accidental exits from a stray/pocket touch.
+
+### v1.98 current behavior
+- The Back-to-routine stat texts are editable in Settings > Labels: "Routine stat title" (default "Back to routine"), "Days-to-routine text" (default "days to get back on routine", shown after the number), and "On-routine text" (default "You're on routine"). The number's singular/plural special-case was dropped since the suffix is now user-defined.
+
+### v1.97 current behavior
+- Insights home adds a "Back to routine" stat: an on-plan streak = the count of consecutive most-recent days that each have a logged session (rest days auto-log, so only a missed scheduled workout breaks it; today isn't penalized until it's over). It shows `daysToRoutine = max(0, cycleLength - streak)` ("N days to get back on routine") or "You're on routine" once the streak reaches one full cycle. It updates as you show up and resets when a day is missed.
+
+### v1.96 current behavior
+- The missed-day banner text (default "Missed · tap to add") is editable in Settings > Labels ("Missed banner text").
+- Theme now has a 4th role, "Missed banner", which sets the color of the missed-day cards (Calendar) and the domino pips (Compact); it uses the same tappable swatches + custom HSV picker as the other roles, and the banner text auto-contrasts (black/white) against the chosen color.
+
+### v1.95 current behavior
+- Insights tab is split: the home view shows the adherence ratios plus a "Workout Insights" card with an Open button; tapping it navigates to a dedicated Workout Insights page (back arrow / system back returns).
+- Settings > Labels now edits all page and subpage titles in addition to the toggle/tabs: Plan title, Compact/Calendar buttons, Workout/Insights/Settings tabs, and titles for Insights, Workout Insights, Progress Graphs, Theme, Labels, and Page Commands. All labels are persisted and applied live (Settings subpage top bars and the Insights/Graphs titles read from them).
+- Labels are threaded through a single `AppLabels` data class (SettingsScreen takes `labels: AppLabels` + `onLabelsSaved: (AppLabels) -> Unit`).
+
+### v1.94 current behavior
+- Settings export/import feedback renders at the top of the Settings page and auto-scrolls into view so success/failure is immediately visible.
+- Insights adherence ratios are horizontal battery-style step bars: last-7-days as 7 steps and last-30-days as 30 steps, each filled cell = one done day (the `n/total` value shown alongside).
+- Workout Insights workout dropdown prefixes each workout with its cycle day number (`Day N - Name`) in the button and the menu.
+- Workout day page: the right-swipe-to-mark-done gesture is removed (exercise rows render directly; the swipe hint/achievement popup and the `setExerciseDone`/`updateExerciseDone` data methods are dropped).
+- Workout day page no longer shows the date in the header (where the exercise list and Start Workout button are).
+- Settings > Advanced: Page Command Names moved behind an "Options" button into a dedicated Page Commands view; the command list was refreshed and a `settings.pagecommands` entry added.
 
 ### v1.93 current behavior
 - Every timeline card shows the workout title in both Compact and Calendar (the separate "Done/Upcoming" status text was removed); today's card still shows "Today · tap to start" and done days keep the tick.
