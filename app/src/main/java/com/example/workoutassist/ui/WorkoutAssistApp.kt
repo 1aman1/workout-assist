@@ -5,7 +5,15 @@ import android.content.Context
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -42,6 +50,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -149,7 +158,7 @@ private const val DEFAULT_TITLE_PAGE_COMMANDS = "Page Commands"
 private const val KEY_TITLE_MISSED_BANNER = "title_missed_banner"
 private const val DEFAULT_TITLE_MISSED_BANNER = "Missed · tap to add"
 private const val KEY_TITLE_ROUTINE = "title_routine"
-private const val DEFAULT_TITLE_ROUTINE = "Back to routine"
+private const val DEFAULT_TITLE_ROUTINE = "routine"
 private const val KEY_TEXT_DAYS_TO_ROUTINE = "text_days_to_routine"
 private const val DEFAULT_TEXT_DAYS_TO_ROUTINE = "days to get back on routine"
 private const val KEY_TEXT_ON_ROUTINE = "text_on_routine"
@@ -163,15 +172,15 @@ private const val DEFAULT_THEME_DONE_CUSTOM_HEX = "#1E9E58"
 private const val DEFAULT_THEME_BANNER_ID = "flame"
 private const val DEFAULT_THEME_BANNER_CUSTOM_HEX = "#BF360C"
 internal const val CUSTOM_THEME_OPTION_ID = "custom"
-internal const val LATEST_DESIGN_VERSION = "1.102"
+internal const val LATEST_DESIGN_VERSION = "1.103"
 
 internal val WORKOUT_SESSION_START_MESSAGES = listOf(
-    "Lift weights and come back!",
-    "This is something you won't regret!",
-    "hustle for that muscle!",
+    "Lift weights and come back !",
+    "This is something you won't regret !",
+    "hustle for that muscle !",
     "mind plays tricks like exhaustion to skip next rep-but pain is not one of them",
-    "No need to stop when you're tired, stop when you're done!",
-    "Last time you lifted more with less sweat."
+    "No need to stop when you're tired, stop when you're Done !",
+    "Last time you lifted more with less sweat !"
 )
 
 private val BACKGROUND_THEME_OPTIONS = listOf(
@@ -202,9 +211,9 @@ internal val PAGE_COMMAND_NAMES = listOf(
     AppPageCommand(command = "workout.schedule", description = "Workout tab: merged plan/history (Compact default, Calendar toggle)"),
     AppPageCommand(command = "workout.day", description = "Workout day detail (start/edit a day)"),
     AppPageCommand(command = "workout.session", description = "Active workout session (focus mode)"),
-    AppPageCommand(command = "insights.home", description = "Insights tab (ratios + open Workout Insights)"),
+    AppPageCommand(command = "insights.home", description = "Insights tab (ratios + open Workout Insights + Progress Graphs)"),
     AppPageCommand(command = "insights.workout", description = "Insights > Workout Insights (per-workout exercise history)"),
-    AppPageCommand(command = "graphs.progress", description = "Progress Graphs (beta)"),
+    AppPageCommand(command = "graphs.progress", description = "Progress Graphs (beta), opened from Insights"),
     AppPageCommand(command = "settings.home", description = "Settings root"),
     AppPageCommand(command = "settings.theme", description = "Settings > Theme (colors + custom picker)"),
     AppPageCommand(command = "settings.labels", description = "Settings > Labels (plan title, toggle, tabs)"),
@@ -212,6 +221,15 @@ internal val PAGE_COMMAND_NAMES = listOf(
 )
 
 internal val LATEST_VERSION_HIGHLIGHTS = listOf(
+    "Switching tabs now slides: swipe left/right (or tap the bottom bar) to move between Workout, Insights, and Settings, and the screen slides in the direction you're going.",
+    "You can now edit an exercise's remark during a workout (the 'i' note dialog is editable). Remarks stick to the exercise, so your note is there again next time you do that workout.",
+    "The Workout home screen now shows your routine streak as a compact strip of bricks under the title — filled bricks are days you've kept the streak, at a glance.",
+    "The Insights routine triangle now shows a little fire icon above each completed day's edge (the same flame as today's pending workout), so your streak lights up as you keep it going.",
+    "Progress Graphs (Beta) now opens from the bottom of the Insights page instead of Settings — all your analytics live together in one place.",
+    "The Insights routine triangle now has a numbered bottom axis (7 6 5 4 3 2 1) so you can read off how many days are left to get back on routine at a glance.",
+    "Turning off Edit mode now asks 'Save changes?' — pick Save to keep your edits, or Discard to roll the workout template back to how it was before you started editing.",
+    "After you save template edits, the follow-up prompt now says 'Go to settings' (instead of exporting straight away) and takes you to Settings, where you can export a backup.",
+    "The Insights 'routine' stat is now a single smooth triangle: the primary-colored part is your current streak and the rest of the triangle (in the missed-banner color) is how many days are left to get back on routine — both shown at once.",
     "The two workout timers now tell themselves apart by icon (a clock for total, a reset icon for the rest timer) instead of 'Total'/'Rest' labels, leaving room for a bigger, easier-to-read time.",
     "The active-workout top bar is now just the two stopwatches (Total and Rest) — the session date was removed from the top-right for a cleaner header.",
     "Finishing a workout now uses a press-and-hold on the bottom 'Hold to Finish Workout' button itself (it fills as you hold, like exit) and finishes when full — no confirm dialog, and a stray tap no longer ends the session.",
@@ -761,6 +779,13 @@ fun WorkoutAssistApp() {
                 selectedTab == RootTab.SETTINGS ||
                     (selectedTab == RootTab.WORKOUT && currentScreen == AppScreen.DAY_DETAIL)
 
+            // Horizontal swipe switches between the root tabs (Workout <-> Insights <-> Settings)
+            // from their home screens. Disabled during a session, in day detail, and over the
+            // graphs overlay, which have their own horizontal interactions.
+            val tabSwipeEnabled = !isWorkoutSessionActive &&
+                !(selectedTab == RootTab.WORKOUT && currentScreen == AppScreen.DAY_DETAIL) &&
+                !showGraphsPage
+
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -770,8 +795,48 @@ fun WorkoutAssistApp() {
                         end = innerPadding.calculateEndPadding(layoutDirection),
                         bottom = innerPadding.calculateBottomPadding()
                     )
+                    .then(
+                        if (tabSwipeEnabled) {
+                            Modifier.pointerInput(selectedTab) {
+                                var totalDrag = 0f
+                                val threshold = 72.dp.toPx()
+                                detectHorizontalDragGestures(
+                                    onDragStart = { totalDrag = 0f },
+                                    onDragEnd = {
+                                        val order = RootTab.entries
+                                        val index = selectedTab.ordinal
+                                        if (totalDrag <= -threshold && index < order.lastIndex) {
+                                            selectedTab = order[index + 1]
+                                        } else if (totalDrag >= threshold && index > 0) {
+                                            selectedTab = order[index - 1]
+                                        }
+                                    },
+                                    onHorizontalDrag = { _, dragAmount ->
+                                        totalDrag += dragAmount
+                                    }
+                                )
+                            }
+                        } else {
+                            Modifier
+                        }
+                    )
             ) {
-                when (selectedTab) {
+                AnimatedContent(
+                    targetState = selectedTab,
+                    modifier = Modifier.fillMaxSize(),
+                    transitionSpec = {
+                        val forward = targetState.ordinal > initialState.ordinal
+                        if (forward) {
+                            (slideInHorizontally(animationSpec = tween(280)) { width -> width } + fadeIn()) togetherWith
+                                (slideOutHorizontally(animationSpec = tween(280)) { width -> -width } + fadeOut())
+                        } else {
+                            (slideInHorizontally(animationSpec = tween(280)) { width -> -width } + fadeIn()) togetherWith
+                                (slideOutHorizontally(animationSpec = tween(280)) { width -> width } + fadeOut())
+                        }
+                    },
+                    label = "tabSwitch"
+                ) { animatedTab ->
+                when (animatedTab) {
                     RootTab.WORKOUT -> {
                         if (days.isEmpty()) {
                             LoadingScreen()
@@ -812,7 +877,10 @@ fun WorkoutAssistApp() {
                                     WorkoutDayScreen(
                                         day = selectedDay,
                                         repository = repository,
-                                        onRequestExport = { requestBackupExport() },
+                                        onRequestGoToSettings = {
+                                            currentScreen = AppScreen.SCHEDULE
+                                            selectedTab = RootTab.SETTINGS
+                                        },
                                         onBack = { currentScreen = AppScreen.SCHEDULE },
                                         onWorkoutActiveChange = { active -> isWorkoutSessionActive = active }
                                     )
@@ -834,7 +902,9 @@ fun WorkoutAssistApp() {
                                 workoutInsightsTitle = workoutInsightsTitleLabel,
                                 routineTitle = routineTitleLabel,
                                 daysToRoutineText = daysToRoutineTextLabel,
-                                onRoutineText = onRoutineTextLabel
+                                onRoutineText = onRoutineTextLabel,
+                                bannerColor = bannerThemeColor,
+                                onOpenGraphs = { showGraphsPage = true }
                             )
                         }
                     }
@@ -982,12 +1052,10 @@ fun WorkoutAssistApp() {
                             },
                             onImportBackup = {
                                 importBackupLauncher.launch(arrayOf("application/json", "text/plain"))
-                            },
-                            onOpenGraphs = {
-                                showGraphsPage = true
                             }
                         )
                     }
+                }
                 }
             }
         }

@@ -118,7 +118,7 @@ private enum class QuickEditField {
 internal fun WorkoutDayScreen(
     day: WorkoutDayModel,
     repository: WorkoutRepository,
-    onRequestExport: () -> Unit,
+    onRequestGoToSettings: () -> Unit,
     onBack: () -> Unit,
     onWorkoutActiveChange: (Boolean) -> Unit = {}
 ) {
@@ -154,6 +154,8 @@ internal fun WorkoutDayScreen(
     var showExitWorkoutModeConfirm by remember(day.dayNumber) { mutableStateOf(false) }
     var showExportAfterEditPrompt by remember(day.dayNumber) { mutableStateOf(false) }
     var hasEditChangesPendingExport by remember(day.dayNumber) { mutableStateOf(false) }
+    var showSaveEditsPrompt by remember(day.dayNumber) { mutableStateOf(false) }
+    var editTemplateSnapshot by remember(day.dayNumber) { mutableStateOf<List<ExerciseModel>?>(null) }
     var quickEditExercise by remember(day.dayNumber) { mutableStateOf<ExerciseModel?>(null) }
     var quickEditField by remember(day.dayNumber) { mutableStateOf<QuickEditField?>(null) }
     var quickEditSetIndex by remember(day.dayNumber) { mutableStateOf<Int?>(null) }
@@ -255,6 +257,25 @@ internal fun WorkoutDayScreen(
                     intervalSeconds = intervalSeconds,
                     plannedWeight = plannedWeight,
                     remarks = exercise.remarks
+                )
+            )
+        }
+    }
+
+    // Remark lives on the exercise template, so editing it (even mid-session) persists
+    // and shows again next time this workout is opened.
+    fun updateFocusedExerciseRemark(newRemark: String) {
+        val focused = day.exercises.firstOrNull { exercise -> exercise.id == focusedExerciseId } ?: return
+        scope.launch {
+            repository.updateExercise(
+                exercise = focused,
+                draft = ExerciseDraft(
+                    name = focused.name,
+                    sets = focused.sets,
+                    reps = focused.reps,
+                    intervalSeconds = focused.intervalSeconds,
+                    plannedWeight = focused.plannedWeight,
+                    remarks = newRemark
                 )
             )
         }
@@ -653,11 +674,13 @@ internal fun WorkoutDayScreen(
                                         editCollapseSignal += 1
                                         hasEditChangesPendingExport = false
                                         showExportAfterEditPrompt = false
+                                        editTemplateSnapshot = day.exercises
+                                    } else if (hasEditChangesPendingExport) {
+                                        // Edits persist live, so ask whether to keep them.
+                                        showSaveEditsPrompt = true
                                     } else {
                                         editMode = false
-                                        if (hasEditChangesPendingExport) {
-                                            showExportAfterEditPrompt = true
-                                        }
+                                        editTemplateSnapshot = null
                                     }
                                 }
                             )
@@ -785,7 +808,8 @@ internal fun WorkoutDayScreen(
                         onAddSet = { addSetToFocusedExercise() },
                         onRemoveSet = { setIndex -> removeSetTarget = setIndex },
                         onAddExercise = { showAddSessionExerciseDialog = true },
-                        onFinish = { finishWorkout() }
+                        onFinish = { finishWorkout() },
+                        onUpdateRemark = { newRemark -> updateFocusedExerciseRemark(newRemark) }
                     )
                 } else {
                     if (day.exercises.isEmpty()) {
@@ -1101,23 +1125,61 @@ internal fun WorkoutDayScreen(
         }
     }
 
+    if (showSaveEditsPrompt) {
+        AlertDialog(
+            onDismissRequest = { showSaveEditsPrompt = false },
+            title = { Text("Save changes?") },
+            text = { Text("Keep the changes you made to this workout template?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showSaveEditsPrompt = false
+                        editMode = false
+                        editTemplateSnapshot = null
+                        showExportAfterEditPrompt = true
+                    }
+                ) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showSaveEditsPrompt = false
+                        editMode = false
+                        hasEditChangesPendingExport = false
+                        val snapshot = editTemplateSnapshot
+                        editTemplateSnapshot = null
+                        if (snapshot != null) {
+                            scope.launch {
+                                repository.restoreDayExercises(day.dayNumber, snapshot)
+                            }
+                        }
+                    }
+                ) {
+                    Text("Discard")
+                }
+            }
+        )
+    }
+
     if (showExportAfterEditPrompt) {
         AlertDialog(
             onDismissRequest = {
                 showExportAfterEditPrompt = false
                 hasEditChangesPendingExport = false
             },
-            title = { Text("Export changes?") },
-            text = { Text("You changed workout template values. Export a backup now?") },
+            title = { Text("Back up your changes?") },
+            text = { Text("You changed the workout template. Go to Settings to export a backup now?") },
             confirmButton = {
                 TextButton(
                     onClick = {
                         showExportAfterEditPrompt = false
                         hasEditChangesPendingExport = false
-                        onRequestExport()
+                        onRequestGoToSettings()
                     }
                 ) {
-                    Text("Export")
+                    Text("Go to settings")
                 }
             },
             dismissButton = {
@@ -1307,7 +1369,8 @@ private fun WorkoutActivePage(
     onAddSet: () -> Unit,
     onRemoveSet: (Int) -> Unit,
     onAddExercise: () -> Unit,
-    onFinish: () -> Unit
+    onFinish: () -> Unit,
+    onUpdateRemark: (String) -> Unit
 ) {
     val focusedExercise = day.exercises.firstOrNull { exercise -> exercise.id == focusedExerciseId }
     val exerciseStripState = rememberLazyListState()
@@ -1482,19 +1545,34 @@ private fun WorkoutActivePage(
         }
 
         if (showFocusedExerciseRemark && focusedExercise != null) {
+            var remarkDraft by remember(focusedExercise.id, showFocusedExerciseRemark) {
+                mutableStateOf(focusedExercise.remarks)
+            }
             AlertDialog(
                 onDismissRequest = { showFocusedExerciseRemark = false },
                 title = { Text("${focusedExercise.name} remark") },
                 text = {
-                    Text(
-                        focusedExercise.remarks.ifBlank {
-                            "No remark added for this exercise."
-                        }
+                    OutlinedTextField(
+                        value = remarkDraft,
+                        onValueChange = { remarkDraft = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = { Text("Add a remark for this exercise") },
+                        minLines = 2
                     )
                 },
                 confirmButton = {
+                    TextButton(
+                        onClick = {
+                            onUpdateRemark(remarkDraft.trim())
+                            showFocusedExerciseRemark = false
+                        }
+                    ) {
+                        Text("Save")
+                    }
+                },
+                dismissButton = {
                     TextButton(onClick = { showFocusedExerciseRemark = false }) {
-                        Text("Close")
+                        Text("Cancel")
                     }
                 }
             )

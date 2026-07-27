@@ -359,6 +359,49 @@ class WorkoutRepository(private val dao: WorkoutDao) {
         }
     }
 
+    // Restore a day's template to a pre-edit snapshot (used to discard live edits).
+    // Exercises added during the edit (present now, absent in the snapshot) are removed;
+    // surviving exercises are updated in place (same id); exercises deleted during the
+    // edit are re-inserted (they get a fresh id, but past history keeps its exerciseName).
+    suspend fun restoreDayExercises(dayNumber: Int, snapshot: List<ExerciseModel>) {
+        val current = dao.getExercisesForDay(dayNumber)
+        val snapshotIds = snapshot.mapTo(HashSet()) { it.id }
+        val currentIds = current.mapTo(HashSet()) { it.id }
+
+        current.filter { entity -> entity.id !in snapshotIds }.forEach { entity ->
+            dao.deleteExercise(entity)
+        }
+
+        snapshot.forEach { model ->
+            val repsBySet = model.plannedRepsBySet
+                .normalizeRepsBySet(expectedSets = model.sets, fallbackValue = model.reps)
+            val weightBySet = model.plannedWeightBySet
+                .normalizeWeightBySet(expectedSets = model.sets, fallbackValue = model.plannedWeight)
+            val survived = model.id in currentIds
+            val entity = ExerciseEntity(
+                id = if (survived) model.id else 0L,
+                dayNumber = dayNumber,
+                name = model.name,
+                sets = model.sets,
+                reps = repsBySet.firstOrNull() ?: model.reps,
+                intervalSeconds = model.intervalSeconds,
+                plannedWeight = weightBySet.firstOrNull() ?: model.plannedWeight,
+                plannedRepsBySetJson = encodeRepsBySetJson(repsBySet),
+                plannedWeightBySetJson = encodeWeightBySetJson(weightBySet),
+                remarks = model.remarks,
+                position = model.position,
+                isDone = model.isDone
+            )
+            if (survived) {
+                dao.updateExercise(entity)
+            } else {
+                dao.insertExercise(entity)
+            }
+        }
+
+        normalizePositions(dayNumber)
+    }
+
     suspend fun startSession(day: WorkoutDayModel): Long {
         return dao.insertSession(
             WorkoutSessionEntity(

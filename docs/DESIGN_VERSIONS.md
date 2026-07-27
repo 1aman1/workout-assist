@@ -1483,11 +1483,35 @@ How to use:
 
 ---
 
+## Version 1.103 (2026-07-27)
+- Change summary:
+  - Turning off Edit mode now shows a "Save changes?" dialog when edits were made (`showSaveEditsPrompt`). Because template edits persist live, entering Edit mode captures a snapshot of `day.exercises` (`editTemplateSnapshot`); **Discard** calls the new `WorkoutRepository.restoreDayExercises(dayNumber, snapshot)` which removes exercises added during the edit, updates surviving exercises in place (same id), and re-inserts exercises deleted during the edit (fresh id; history keeps its `exerciseName`), then normalizes positions. **Save** keeps the live changes. Dismissing the dialog cancels and stays in Edit mode.
+  - The post-save backup prompt no longer exports directly: its confirm button is now "Go to settings" and calls a new `onRequestGoToSettings` callback (replacing `onRequestExport`) that leaves day-detail (`currentScreen = SCHEDULE`) and switches to the Settings tab (`selectedTab = SETTINGS`). "Later" dismisses.
+  - Added a numeric bottom axis under the Insights routine triangle: a `Row` of `cycleLength` centered labels counting down left-to-right (`total downTo 1`, e.g. 7 6 5 4 3 2 1). The label at the start of the banner-colored region reads as the days remaining to get back on routine.
+  - Moved the Progress Graphs (Beta) entry point from Settings > Analytics to the end of the Insights home page (a card with an "Open" button). `InsightsScreen` gained an `onOpenGraphs` callback (wired to `showGraphsPage = true`); the Settings "Analytics" section and its `onOpenGraphs` parameter were removed. The graphs page itself is unchanged.
+  - Added per-day fire markers to the Insights routine triangle: for each completed day in the streak, an orange `Icons.Rounded.LocalFireDepartment` (same marker as "due today") is placed just above the green hypotenuse at that step's center. The triangle is wrapped in a `BoxWithConstraints` (extra `fireHeadroom` above the `triangleHeight` so top-of-slope icons don't clip); icon positions are computed from `centerXFrac = (i + 0.5) / total` and the hypotenuse `edgeYFrac = 1 - centerXFrac`.
+  - Added a compact streak strip to the Workout (home) title row: a new `StreakBricks(streak, total, remainingColor)` renders `cycleLength` fixed-size bricks (15x10dp) under the plan title — streak bricks in the Done/primary color, the rest in `bannerColor`. `ScheduleScreen` computes `routineStreak`/`cycleLength` locally (same consecutive-recent-days logic as Insights). Visual only; the earlier `1/7` count was dropped from the Insights triangle header too.
+  - Made the exercise remark editable during an active session: the focused-exercise `i` dialog changed from read-only text to an `OutlinedTextField` with Save/Cancel. Save calls a new `updateFocusedExerciseRemark` in `WorkoutDayScreen` (threaded to `WorkoutActivePage` as `onUpdateRemark`) which persists via `repository.updateExercise` with a remark-only draft. Remarks are template-level (`ExerciseEntity.remarks`), so the edit carries over to the next session of the same workout (this mapping was already the case; only the in-session editability was new).
+  - Added a thin `HorizontalDivider` between the Schedule header (plan title + streak strip + toggle) and the scrolling list, so the header reads as a separate strip instead of blending into the scroll (mirrors the bottom nav's edge).
+  - Added horizontal swipe navigation between root tabs: a `detectHorizontalDragGestures` on the root content Box (past a ~72dp threshold) moves `selectedTab` by ordinal — swipe left = next tab (Workout -> Insights -> Settings), swipe right = previous. Gated by `tabSwipeEnabled` (off during an active session, in `DAY_DETAIL`, and while the graphs overlay `showGraphsPage` is shown) so it doesn't fight the exercise strip / charts. Tab content is wrapped in an `AnimatedContent` (`tween(280)` slide + fade) whose direction follows the ordinal change, so both swipes and bottom-nav taps slide in the travel direction.
+  - Removed the `streak/total` count text from the Insights routine triangle header (the two-color triangle + axis + fire markers already convey it).
+- Why changed:
+  - Users wanted an explicit keep/discard choice on leaving Edit mode, and a backup nudge that routes to the Settings export area rather than firing the export immediately.
+- UX impact:
+  - Editing is undoable via Discard; the backup step is a gentle redirect to Settings.
+- Data/model impact:
+  - New repository method `restoreDayExercises`; no schema or backup-mapping change. Caveat: an exercise deleted during an edit and then restored via Discard gets a new row id (past set-log rows keep their `exerciseName`).
+- Migration notes (if any):
+  - None.
+
+---
+
 ## Version 1.102 (2026-07-23)
 - Change summary:
   - The bottom "Hold to Finish Workout" button (in Session Actions) now finishes via a press-and-hold fill animation on the button itself (an `Animatable` progress fill over ~1.2s, matching the exit hold) and calls finish directly when complete. The separate "Finish day workout?" confirm dialog was removed, along with its `showFinishConfirm` state. Releasing early cancels.
   - Schedule `ScheduleEntryCard` body is a single line: Day (fixed 52dp width) | Date (fixed 64dp width) | workout name (`weight(1f)`), all vertically centered in one `Row`. The fixed Day/Date widths keep every workout name left-aligned to the same column for view consistency. The DUE tap-hint sits just below this line.
   - Removed the date from the active-workout top bar (the `actions` slot), so during a session the top bar shows only the two stopwatches; the edit-mode `Switch` still shows when not in a session.
+  - Merged the two Insights routine bars (streak + days-to-routine) into one full-width **smooth triangle** (`RoutineBatteryBar`, drawn on a `Canvas`): a right triangle rising left-to-right, split vertically at `streak / cycleLength` — the left part fills in the Done/primary color (streak) and the remaining part fills in the themed missed-banner color (days to get back on routine), with an anti-aliased hypotenuse (no cells/steps). `bannerColor` is threaded from `WorkoutAssistApp` into `InsightsScreen`. The stat label was shortened to "routine" (`DEFAULT_TITLE_ROUTINE`); the header still shows `streak/total`. Below the bar: "You're on routine" when complete, else the "N days to get back on routine" caption.
   - The two stopwatches now differentiate by icon instead of text labels: `TopBarStopwatch` dropped the "Total"/"Rest" caption and shows a leading icon (`Icons.Rounded.Timer` for total, tinted `onSurfaceVariant`; `Icons.Rounded.RestartAlt` for the resetting rest timer, tinted `primary`) beside a larger `headlineSmall` monospace time. Layout changed from a `Column` (label over time) to a single centered `Row` (icon + time). Rest still flashes on reset.
 - Why changed:
   - Consistency: finishing and exiting are both session-ending, so they now share the deliberate hold gesture; the aligned card columns make the schedule easier to scan.

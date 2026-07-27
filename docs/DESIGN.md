@@ -4,14 +4,26 @@ Lean Android utility app for fast workout logging during training.
 
 Primary design source: see DESIGN_VERSIONS.md and append all future design updates as version increments.
 
-## Current Product Snapshot (v1.102)
+## Current Product Snapshot (v1.103)
 
-> v1.102 is the authoritative current state for Schedule, Insights, active session, and Analytics. Older bullets below are historical and may be superseded by these notes.
+> v1.103 is the authoritative current state for Schedule, Insights, active session, and Analytics. Older bullets below are historical and may be superseded by these notes.
+
+### v1.103 current behavior
+- Horizontal swipe switches between the bottom tabs from their home screens: swipe left goes to the next tab (Workout -> Insights -> Settings), swipe right goes back, with a directional slide animation (content slides in the swipe direction; a tab tap animates too). Disabled during an active session, in the workout day detail, and over the Progress Graphs overlay (which have their own horizontal gestures).
+- The Workout (home) header (plan title + streak strip + Compact/Calendar toggle) is separated from the scrolling list by a thin `HorizontalDivider`, so the header no longer visually blends into the scroll content.
+- The exercise remark is editable during an active workout: the `i` remark dialog now has a text field with Save/Cancel. Remarks live on the exercise template, so an edit persists and shows again next time the same workout is opened.
+- The Workout (home) title row now shows a compact streak strip under the plan title: `cycleLength` small bricks with the current routine streak filled in the Done/primary color and the rest in the missed-banner color (visual only, no numbers).
+- The Insights routine triangle shows a small orange fire icon (same as the "due today" marker) just above the green hypotenuse for each completed day in the streak, marching up the slope.
+- Progress Graphs (Beta) now opens from a card at the end of the Insights home page (moved out of Settings > Analytics, which was removed).
+- The Insights routine triangle has a numeric bottom axis (e.g. 7 6 5 4 3 2 1, counting down left-to-right) so the days remaining to get back on routine are easy to read off the steps.
+- Turning **off** Edit mode now prompts "Save changes?" when edits were made: **Save** keeps them (edits are written live as you make them), **Discard** rolls the day's template back to a snapshot captured when Edit was turned on (added exercises removed, edited ones restored in place, deleted ones re-inserted). Tapping outside the dialog cancels and stays in Edit mode.
+- After **Save** (only when something changed), the follow-up backup prompt no longer exports directly — its confirm button reads "Go to settings" and navigates to the Settings tab (where export lives); "Later" dismisses.
 
 ### v1.102 current behavior
 - Finishing a workout uses a press-and-hold on the bottom "Hold to Finish Workout" button (Session Actions): it fills as you hold (like exit) and finishes when full — there is no separate confirm dialog, so a stray tap can't end the session.
 - Schedule cards show Day, Date, and workout name on one line: Day (fixed 52dp) and Date (fixed 64dp) have fixed widths so every workout name starts at the same column; the DUE tap-hint sits just below.
 - The active-workout top bar shows only the two stopwatches; the date was removed from the top-right. The two timers are told apart by a leading icon rather than text labels — a clock (`Timer`) for the total and a reset icon (`RestartAlt`, primary-tinted) for the rest timer — with a larger monospace time; the rest timer flashes on reset.
+- Insights "routine" stat is a single full-width smooth triangle (rising left-to-right): the left part (your streak) is the Done/primary color and the remaining part (days to get back on routine) uses the themed missed-banner color, split at `streak / cycle`. Below it: "You're on routine" when the streak fills a full cycle, else "N days to get back on routine".
 
 ### v1.101 current behavior
 - Active workout top bar shows two stopwatches in a 50/50 split: "Total" (whole session, starts when the workout starts) and "Rest" (interval since the last set log). "Rest" resets to 0:00 and briefly flashes whenever a set's reps or weight is saved. Both are `m:ss`, monospace, and not persisted. The old `logged/total` count ("2/8") was removed from the top bar; the date stays on the right.
@@ -77,8 +89,8 @@ Primary design source: see DESIGN_VERSIONS.md and append all future design updat
 - Infinity tab: factual history calendar, chronological (oldest at top, today at bottom, auto-scrolled), today always highlighted; each date shows the workout done (tick) or "No workout" gap; tap a past day to backfill (mark a workout) or remove it.
 - Done is one definition everywhere: a finished session on a date drives Insights ratios, Progress Graphs, and Schedule/Infinity ticks; deleting a day's session clears its mark.
 - Insights: no Refresh button; "Delete Set" wording; rolling last-7-day (`n/7`) and rolling last-30-day (`n/30`) ratios; exercise chips ordered by the workout's template sequence.
-- Progress Graphs (Beta): opened from Settings > Analytics; consistency rings, weekly-frequency bars, per-exercise weight/reps line charts (native Compose Canvas).
-- Settings grouped into sections: Appearance, Data, Advanced, Analytics.
+- Progress Graphs (Beta): opened from the end of the Insights page; consistency rings, weekly-frequency bars, per-exercise weight/reps line charts (native Compose Canvas).
+- Settings grouped into sections: Appearance, Data, Advanced.
 - Active session: Skip logs 0 reps and stays re-selectable to undo; rest interval shown under the focused exercise; content scrolls so Log/Skip stay reachable; long-press a set to remove; sets can be 0; add/remove exercise and sets mid-session; k/n moved to app bar and title hidden; bottom nav hidden (focus mode) so only Back → confirm exits; 3s motivational banner.
 - Weights are plain numbers (`wt(kg)` table column); seed template weights are numeric only; Treadmill ends every training day.
 

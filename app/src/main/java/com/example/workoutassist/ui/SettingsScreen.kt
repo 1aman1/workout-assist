@@ -108,8 +108,7 @@ internal fun SettingsScreen(
     labels: AppLabels,
     onLabelsSaved: (AppLabels) -> Unit,
     onExportBackup: () -> Unit,
-    onImportBackup: () -> Unit,
-    onOpenGraphs: () -> Unit
+    onImportBackup: () -> Unit
 ) {
     val context = LocalContext.current
     val appVersion = remember(context) { currentAppVersionName(context) }
@@ -349,38 +348,6 @@ internal fun SettingsScreen(
                                     imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
                                     contentDescription = null
                                 )
-                            }
-                        }
-                    }
-
-                    SettingsSectionHeader("Analytics")
-                    Card(
-                        shape = RoundedCornerShape(18.dp),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text(
-                                text = "Progress Graphs (Beta)",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text(
-                                text = "Visualize your Insights data as charts — consistency, weekly frequency, and per-exercise trends.",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Button(
-                                onClick = onOpenGraphs,
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Text("Open Progress Graphs")
                             }
                         }
                     }

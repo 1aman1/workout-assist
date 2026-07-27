@@ -35,6 +35,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -335,6 +336,37 @@ private fun ScheduleEntryCard(
 }
 
 @Composable
+private fun StreakBricks(
+    streak: Int,
+    total: Int,
+    remainingColor: Color,
+    modifier: Modifier = Modifier
+) {
+    val safeTotal = total.coerceAtLeast(1)
+    val safeStreak = streak.coerceIn(0, safeTotal)
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(3.dp)
+    ) {
+        repeat(safeTotal) { index ->
+            Box(
+                modifier = Modifier
+                    .width(15.dp)
+                    .height(10.dp)
+                    .background(
+                        color = if (index < safeStreak) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            remainingColor
+                        },
+                        shape = RoundedCornerShape(2.dp)
+                    )
+            )
+        }
+    }
+}
+
+@Composable
 private fun MissedDayCard(
     entry: ScheduleEntry,
     bannerColor: Color,
@@ -428,6 +460,20 @@ internal fun ScheduleScreen(
 
     val nextDueDay = remember(orderedDays, lastCompletedDayNumber) {
         computeNextDueDay(orderedDays, lastCompletedDayNumber)
+    }
+    val cycleLength = remember(orderedDays) { orderedDays.size.takeIf { it > 0 } ?: 7 }
+    val routineStreak = remember(completedSessionEpochDays, todayEpochDay) {
+        var cursor = if (todayEpochDay in completedSessionEpochDays) {
+            todayEpochDay
+        } else {
+            todayEpochDay - 1L
+        }
+        var streak = 0
+        while (cursor in completedSessionEpochDays) {
+            streak++
+            cursor -= 1L
+        }
+        streak
     }
     val timeline = remember(
         orderedDays,
@@ -531,6 +577,12 @@ internal fun ScheduleScreen(
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold
                     )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    StreakBricks(
+                        streak = routineStreak,
+                        total = cycleLength,
+                        remainingColor = bannerColor
+                    )
                 }
                 Spacer(modifier = Modifier.width(12.dp))
                 OutlinedButton(
@@ -543,6 +595,11 @@ internal fun ScheduleScreen(
                     Text(if (expanded) schedulePageLabel else infinityPageLabel)
                 }
             }
+
+            HorizontalDivider(
+                thickness = 1.dp,
+                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.28f)
+            )
 
             Box(
                 modifier = Modifier

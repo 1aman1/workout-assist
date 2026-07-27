@@ -2,12 +2,14 @@ package com.example.workoutassist.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -15,6 +17,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -27,6 +30,7 @@ import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.LocalFireDepartment
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -51,6 +55,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -92,9 +98,11 @@ internal fun InsightsScreen(
     repository: WorkoutRepository,
     insightsTitle: String = "Insights",
     workoutInsightsTitle: String = "Workout Insights",
-    routineTitle: String = "Back to routine",
+    routineTitle: String = "routine",
     daysToRoutineText: String = "days to get back on routine",
-    onRoutineText: String = "You're on routine"
+    onRoutineText: String = "You're on routine",
+    bannerColor: Color = Color(0xFFBF360C),
+    onOpenGraphs: () -> Unit = {}
 ) {
     val scope = rememberCoroutineScope()
     val todayEpochDay = currentDateEpochDay()
@@ -366,10 +374,11 @@ internal fun InsightsScreen(
 
                         HorizontalDivider()
 
-                        RatioBatteryBar(
+                        RoutineBatteryBar(
                             label = routineTitle,
-                            filled = routineStreak,
-                            total = cycleLength
+                            streak = routineStreak,
+                            total = cycleLength,
+                            remainingColor = bannerColor
                         )
                         if (onRoutine) {
                             Text(
@@ -379,10 +388,11 @@ internal fun InsightsScreen(
                                 color = MaterialTheme.colorScheme.primary
                             )
                         } else {
-                            RatioBatteryBar(
-                                label = daysToRoutineText,
-                                filled = daysToRoutine,
-                                total = cycleLength
+                            Text(
+                                text = "$daysToRoutine $daysToRoutineText",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
 
@@ -432,6 +442,134 @@ internal fun InsightsScreen(
                         }
                     }
                 }
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "Progress Graphs (Beta)",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = "Visualize your data as charts — consistency, weekly frequency, and per-exercise trends.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        OutlinedButton(
+                            onClick = onOpenGraphs,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("Open")
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                                contentDescription = null
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RoutineBatteryBar(
+    label: String,
+    streak: Int,
+    total: Int,
+    remainingColor: Color
+) {
+    val safeTotal = total.coerceAtLeast(1)
+    val safeStreak = streak.coerceIn(0, safeTotal)
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        val streakColor = MaterialTheme.colorScheme.primary
+        val fireColor = Color(0xFFFF6D00)
+        val fraction = safeStreak.toFloat() / safeTotal
+        val triangleHeight = 96.dp
+        val fireHeadroom = 18.dp
+        val fireIconSize = 14.dp
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(triangleHeight + fireHeadroom)
+        ) {
+            val barWidth = maxWidth
+            Canvas(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(triangleHeight)
+                    .align(Alignment.BottomCenter)
+            ) {
+                val w = size.width
+                val h = size.height
+                val splitX = w * fraction
+                val ySplit = h * (1f - fraction)
+                if (fraction > 0f) {
+                    val streakPath = Path().apply {
+                        moveTo(0f, h)
+                        lineTo(splitX, h)
+                        lineTo(splitX, ySplit)
+                        close()
+                    }
+                    drawPath(path = streakPath, color = streakColor)
+                }
+                if (fraction < 1f) {
+                    val remainingPath = Path().apply {
+                        moveTo(splitX, h)
+                        lineTo(w, h)
+                        lineTo(w, 0f)
+                        lineTo(splitX, ySplit)
+                        close()
+                    }
+                    drawPath(path = remainingPath, color = remainingColor)
+                }
+            }
+            // A fire marker just above the green hypotenuse for each completed day.
+            for (i in 0 until safeStreak) {
+                val centerXFrac = (i + 0.5f) / safeTotal
+                val edgeYFrac = 1f - centerXFrac
+                Icon(
+                    imageVector = Icons.Rounded.LocalFireDepartment,
+                    contentDescription = null,
+                    tint = fireColor,
+                    modifier = Modifier
+                        .size(fireIconSize)
+                        .offset(
+                            x = barWidth * centerXFrac - fireIconSize / 2f,
+                            y = fireHeadroom + triangleHeight * edgeYFrac - fireIconSize - 2.dp
+                        )
+                )
+            }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            for (n in safeTotal downTo 1) {
+                Text(
+                    text = n.toString(),
+                    modifier = Modifier.weight(1f),
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }
