@@ -10,6 +10,10 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -87,6 +91,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -171,6 +176,7 @@ internal fun WorkoutDayScreen(
     var nowMillis by remember(day.dayNumber) { mutableLongStateOf(0L) }
     var intervalResetSignal by remember(day.dayNumber) { mutableIntStateOf(0) }
     var intervalFlash by remember(day.dayNumber) { mutableStateOf(false) }
+    var intervalResetting by remember(day.dayNumber) { mutableStateOf(false) }
 
     // Tick once per half-second while a workout is active so both clocks stay current.
     LaunchedEffect(workoutActive) {
@@ -180,9 +186,15 @@ internal fun WorkoutDayScreen(
         }
     }
 
-    // Briefly pulse the rest timer whenever it resets on a set log.
+    // On a set log, keep the final rest duration visible for 2s (blinking the rest timer
+    // to warn it's about to reset), then refresh it and briefly pulse to confirm the reset.
     LaunchedEffect(intervalResetSignal) {
         if (intervalResetSignal == 0) return@LaunchedEffect
+        intervalResetting = true
+        delay(2000)
+        intervalResetting = false
+        intervalStartMillis = System.currentTimeMillis()
+        nowMillis = intervalStartMillis
         intervalFlash = true
         delay(700)
         intervalFlash = false
@@ -367,18 +379,23 @@ internal fun WorkoutDayScreen(
         if (setIndex < 0) {
             return
         }
+        val value = selectedReps.coerceIn(1, 50)
         val current = (selectedSetRepsByExerciseId[exercise.id] ?: exercise.plannedRepsBySet).toMutableList()
-        while (current.size <= setIndex) {
+        val lastSetIndex = maxOf(setIndex, exercise.sets - 1)
+        while (current.size <= lastSetIndex) {
             current.add(exercise.reps)
         }
-        current[setIndex] = selectedReps.coerceIn(1, 50)
+        // Ladder fill-down: apply to this set and copy the value to every later set,
+        // so logging set 1 pre-fills the rest and leaves fewer taps.
+        for (index in setIndex..lastSetIndex) {
+            current[index] = value
+        }
         selectedSetRepsByExerciseId = selectedSetRepsByExerciseId + (exercise.id to current.toList())
 
         val editedSetIndexes = editedSetIndexesByExerciseId[exercise.id].orEmpty() + setIndex
         editedSetIndexesByExerciseId = editedSetIndexesByExerciseId + (exercise.id to editedSetIndexes)
 
-        intervalStartMillis = System.currentTimeMillis()
-        nowMillis = intervalStartMillis
+        // Trigger the (delayed) rest-timer refresh; the reset itself happens 2s later.
         intervalResetSignal += 1
     }
 
@@ -387,17 +404,20 @@ internal fun WorkoutDayScreen(
             return
         }
         val current = (selectedSetWeightByExerciseId[exercise.id] ?: exercise.plannedWeightBySet).toMutableList()
-        while (current.size <= setIndex) {
+        val lastSetIndex = maxOf(setIndex, exercise.sets - 1)
+        while (current.size <= lastSetIndex) {
             current.add(exercise.plannedWeight)
         }
-        current[setIndex] = selectedWeightText
+        // Ladder fill-down: apply to this set and copy the value to every later set.
+        for (index in setIndex..lastSetIndex) {
+            current[index] = selectedWeightText
+        }
         selectedSetWeightByExerciseId = selectedSetWeightByExerciseId + (exercise.id to current.toList())
 
         val editedSetIndexes = editedSetIndexesByExerciseId[exercise.id].orEmpty() + setIndex
         editedSetIndexesByExerciseId = editedSetIndexesByExerciseId + (exercise.id to editedSetIndexes)
 
-        intervalStartMillis = System.currentTimeMillis()
-        nowMillis = intervalStartMillis
+        // Trigger the (delayed) rest-timer refresh; the reset itself happens 2s later.
         intervalResetSignal += 1
     }
 
@@ -633,7 +653,7 @@ internal fun WorkoutDayScreen(
                                 iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 timeText = formatStopwatch(totalElapsedSeconds),
                                 flash = false,
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier.weight(0.4f)
                             )
                             VerticalDivider(
                                 modifier = Modifier.height(26.dp),
@@ -644,7 +664,8 @@ internal fun WorkoutDayScreen(
                                 iconTint = MaterialTheme.colorScheme.primary,
                                 timeText = formatStopwatch(intervalElapsedSeconds),
                                 flash = intervalFlash,
-                                modifier = Modifier.weight(1f)
+                                blinking = intervalResetting,
+                                modifier = Modifier.weight(0.6f)
                             )
                         }
                     } else {
@@ -1221,7 +1242,8 @@ private fun TopBarStopwatch(
     iconTint: Color,
     timeText: String,
     flash: Boolean,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    blinking: Boolean = false
 ) {
     val background by animateColorAsState(
         targetValue = if (flash) {
@@ -1232,11 +1254,23 @@ private fun TopBarStopwatch(
         animationSpec = tween(durationMillis = 250),
         label = "stopwatchFlash"
     )
+    val blinkTransition = rememberInfiniteTransition(label = "stopwatchBlink")
+    val blinkAlpha by blinkTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 0.2f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 350, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "stopwatchBlinkAlpha"
+    )
+    val contentAlpha = if (blinking) blinkAlpha else 1f
     Row(
         modifier = modifier
             .clip(RoundedCornerShape(10.dp))
             .background(background)
-            .padding(horizontal = 8.dp, vertical = 2.dp),
+            .padding(horizontal = 8.dp, vertical = 2.dp)
+            .alpha(contentAlpha),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -1470,9 +1504,9 @@ private fun WorkoutActivePage(
                 .weight(1f),
             shape = RoundedCornerShape(18.dp),
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)),
-            elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
             colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.78f)
+                containerColor = MaterialTheme.colorScheme.secondaryContainer
             )
         ) {
             Column(
@@ -1483,28 +1517,32 @@ private fun WorkoutActivePage(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 if (focusedExercise != null) {
-                    Text(
-                        text = focusedExercise.name,
-                        modifier = Modifier.fillMaxWidth(),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        textAlign = TextAlign.Center
-                    )
-
                     val intervalLabel = focusedExercise.intervalSeconds.let { seconds ->
                         when {
                             seconds <= 0 -> ""
                             seconds < 60 -> "${seconds}s"
                             seconds % 60 == 0 -> "${seconds / 60}m"
-                            else -> "${seconds / 60}m ${seconds % 60}s"
+                            else -> "${seconds / 60}m${seconds % 60}s"
                         }
                     }
-                    if (intervalLabel.isNotBlank()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        if (intervalLabel.isNotBlank()) {
+                            Text(
+                                text = "rest $intervalLabel",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                         Text(
-                            text = "Rest $intervalLabel between sets",
-                            modifier = Modifier.fillMaxWidth(),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            text = focusedExercise.name,
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
                             textAlign = TextAlign.Center
                         )
                     }
@@ -1914,28 +1952,30 @@ private fun ExerciseRow(
                     )
 
                     HorizontalDivider(modifier = Modifier.padding(vertical = 2.dp))
-                    Text(
-                        text = "interval",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = "${exercise.intervalSeconds}s",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f)
-                    )
-
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 2.dp))
-                    Text(
-                        text = "remarks",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = exercise.remarks.ifBlank { "No remarks" },
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f)
-                    )
+                    Row {
+                        Text(
+                            text = "interval : ",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = "${exercise.intervalSeconds}s",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f)
+                        )
+                    }
+                    Row {
+                        Text(
+                            text = "remarks : ",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = exercise.remarks.ifBlank { "No remarks" },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f)
+                        )
+                    }
                 }
 
                 if (isCurrent) {

@@ -1483,6 +1483,29 @@ How to use:
 
 ---
 
+## Version 1.104 (2026-08-14)
+- Change summary:
+  - Ladder set fill-down during a session: `updateSetRepsSelection` / `updateSetWeightSelection` now apply the picked value to the chosen set AND copy it down to every later set (indices `setIndex..exercise.sets - 1`), so logging set 1 pre-fills the rest. Only the explicitly chosen set is marked in `editedSetIndexesByExerciseId`; subsequent per-set edits fill down from their own index. Saving the exercise persists the filled values as the actuals.
+  - The Insights adherence ratio bars (`RatioBatteryBar`, last-7 and last-30) now paint their empty cells with the themed missed-banner color instead of a muted surface, matching the routine bar. Added a `remainingColor` parameter (passed `bannerColor` at both call sites).
+  - The Insights short ("Last N days") ratio window is now user-editable (5–15): tapping the bar opens a `NumberWheelDialog`; the value persists in prefs (`KEY_INSIGHTS_SHORT_WINDOW`, default 7) and drives the label, `total`, and the done-count window. `RatioBatteryBar` gained an optional `onClick`; `InsightsScreen` gained `shortWindowDays` + `onShortWindowChange`.
+  - Active-session top-bar stopwatches changed from a 50:50 split to 40:60 (Total `weight(0.4f)`, Rest `weight(0.6f)`).
+  - The focused-exercise rest text was reorganized: moved to the left of the exercise name on one `Row` and simplified from "Rest 1m 30s between sets" to a compact `rest 1m30s` / `rest 2m` / `rest 45s`.
+  - The rest (interval) timer now refreshes 2s after a set is logged instead of instantly: logging only bumps `intervalResetSignal`; a `LaunchedEffect` waits `delay(2000)` before resetting `intervalStartMillis` and flashing, so the final rest duration stays readable. Rapid logs re-schedule the reset to 2s after the latest.
+  - Each app part now has a friendly `name` in `AppPageCommand` (new field) and the Settings > Page Commands list shows `name · command` with the description below. Added entries for `settings.backup` (Backup & Restore) and `settings.about` (version details + What's new) so every part is listed.
+  - The rest timer now blinks while it holds the final duration during the 2s pre-reset window (signalling the imminent refresh), replacing the single post-reset flash; the focused-exercise rest label font was bumped to `titleMedium` for legibility.
+  - Expandable exercise card (workout day) reorganized: `interval` and `remarks` are inline (`interval : value`, `remarks : value`) instead of stacked. `ExerciseSetTable` dropped its boxed cells and surface `Card` — reps render as `xN` and weight as `N kg` in plain text on the card background, with tightened spacing (cell 58dp, gap 4dp, label 44dp). Removed now-unused imports (`Card`, `CardDefaults`, `BorderStroke`, `background`, `RoundedCornerShape`).
+  - The active-session focused-exercise card lost its `3.dp` elevation shadow and semi-transparent fill; it now uses a solid `secondaryContainer` color so the shadow no longer bleeds behind the exercise title.
+  - The Insights routine streak target (`cycleLength`) is now user-overridable (5–15) by long-pressing the triangle (opens a `NumberWheelDialog`), persisted in `KEY_ROUTINE_WINDOW` (0 = use plan length). `RoutineBatteryBar` gained an optional `onLongPress`; `InsightsScreen` gained `routineWindowOverride` + `onRoutineWindowChange`.
+  - Listed all graphs in Page Commands: added `insights.routine` (Routine Streak), `insights.ratios` (Adherence Ratios), `graphs.consistency` (Consistency Rings), `graphs.frequency` (Weekly Frequency), `graphs.exercise` (Exercise Trends).
+- Why changed:
+  - Fewer taps while logging (most sets repeat the same reps/weight); consistent "done vs. remaining" coloring across all Insights bars; a configurable recent-days window; more room for the rest timer; a cleaner rest label; and a moment to read the rest duration before it resets.
+- UX impact:
+  - Set 1's values ripple down to later sets automatically; ratio bars read consistently and the short window is tap-to-change; the two timers are 40:60; rest reads as "rest 1m30s" beside the exercise; the rest timer lingers 2s before zeroing.
+- Data/model impact:
+  - New prefs `KEY_INSIGHTS_SHORT_WINDOW` (Int, default 7) and `KEY_ROUTINE_WINDOW` (Int, default 0 = use plan length); everything else is in-session/presentation state.
+- Migration notes (if any):
+  - None.
+
 ## Version 1.103 (2026-07-27)
 - Change summary:
   - Turning off Edit mode now shows a "Save changes?" dialog when edits were made (`showSaveEditsPrompt`). Because template edits persist live, entering Edit mode captures a snapshot of `day.exercises` (`editTemplateSnapshot`); **Discard** calls the new `WorkoutRepository.restoreDayExercises(dayNumber, snapshot)` which removes exercises added during the edit, updates surviving exercises in place (same id), and re-inserts exercises deleted during the edit (fresh id; history keeps its `exerciseName`), then normalizes positions. **Save** keeps the live changes. Dismissing the dialog cancels and stays in Edit mode.

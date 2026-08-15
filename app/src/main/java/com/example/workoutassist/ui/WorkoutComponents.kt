@@ -3,8 +3,6 @@ package com.example.workoutassist.ui
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.widget.NumberPicker
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -15,10 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -48,41 +43,33 @@ internal fun ExerciseSetTable(
     val columnCount = maxOf(repsBySet.size, weightBySet.size, 1)
     val repsValues = remember(repsBySet, columnCount) {
         List(columnCount) { index ->
-            repsBySet.getOrNull(index)?.toString() ?: "-"
+            repsBySet.getOrNull(index)?.let { reps -> "x$reps" } ?: "-"
         }
     }
     val weightValues = remember(weightBySet, columnCount) {
         List(columnCount) { index ->
-            val raw = weightBySet.getOrNull(index)?.ifBlank { "-" } ?: "-"
-            raw.removeSuffix(" kg").ifBlank { "-" }
+            weightBySet.getOrNull(index)?.trim()?.ifBlank { "-" } ?: "-"
         }
     }
 
-    Card(
-        shape = RoundedCornerShape(12.dp),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(tableScroll)
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(tableScroll)
-                .padding(horizontal = 12.dp, vertical = 10.dp)
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                ExerciseSetTableRow(
-                    label = "reps",
-                    values = repsValues,
-                    editable = editable,
-                    onValueClickAt = onEditRepsAt
-                )
-                ExerciseSetTableRow(
-                    label = "wgt",
-                    values = weightValues,
-                    editable = editable,
-                    onValueClickAt = onEditWeightAt
-                )
-            }
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            ExerciseSetTableRow(
+                label = "reps",
+                values = repsValues,
+                editable = editable,
+                onValueClickAt = onEditRepsAt
+            )
+            ExerciseSetTableRow(
+                label = "wgt",
+                values = weightValues,
+                editable = editable,
+                onValueClickAt = onEditWeightAt
+            )
         }
     }
 }
@@ -96,11 +83,11 @@ private fun ExerciseSetTableRow(
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         Text(
             text = label,
-            modifier = Modifier.width(52.dp),
+            modifier = Modifier.width(44.dp),
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -108,13 +95,9 @@ private fun ExerciseSetTableRow(
         values.forEachIndexed { index, value ->
             Box(
                 modifier = Modifier
-                    .width(72.dp)
-                    .background(
-                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
-                        shape = RoundedCornerShape(8.dp)
-                    )
+                    .width(58.dp)
                     .clickable(enabled = editable, onClick = { onValueClickAt(index) })
-                    .padding(vertical = 8.dp),
+                    .padding(vertical = 6.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Text(

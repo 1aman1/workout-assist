@@ -29,11 +29,12 @@ Workout Assist follows a repeating **7-day training template** (Day 1 → Day 7,
 - Planned vs. actual capture at the **set level** (reps and optional weight).
 - Add/remove exercises and sets mid-session; long-press a set to remove it.
 - **Skip** logs a real 0-rep entry and stays re-selectable so you can undo within the session.
+- **Ladder fill-down** — the reps/weight you set on a set copy down to the later sets, so you only change what differs.
 - Two top-bar **stopwatches** (not saved), told apart by icon: a **Total** session timer and a **Rest** interval timer that resets (with a quick flash) each time you save a set.
 - **Finish** and **exit** are press-and-hold (a filling button) to prevent an accidental tap ending your session.
 
 ### Insights & Analytics
-- Rolling **last-7-day** and **last-30-day** adherence ratios, shown as battery-style step bars.
+- Rolling adherence ratios shown as battery-style step bars: an adjustable recent window (tap to set 5–15 days, default 7) plus a fixed **last-30-day** bar.
 - **Back-to-routine streak** — an on-plan streak toward one full cycle; shows how many days are left to get back on routine, or "You're on routine" once the streak covers a full cycle.
 - **Workout Insights** sub-page — per-workout, date-wise exercise history (e.g. `50 x6, 60 x6x6`) with per-set edit/delete, opened from the Insights home.
 - **Progress Graphs (Beta)** — consistency rings, weekly-frequency bars, and per-exercise weight/reps line charts (native Compose Canvas).

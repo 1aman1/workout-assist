@@ -6,6 +6,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -58,6 +59,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.workoutassist.data.SetLogEntity
@@ -102,11 +104,17 @@ internal fun InsightsScreen(
     daysToRoutineText: String = "days to get back on routine",
     onRoutineText: String = "You're on routine",
     bannerColor: Color = Color(0xFFBF360C),
+    shortWindowDays: Int = 7,
+    onShortWindowChange: (Int) -> Unit = {},
+    routineWindowOverride: Int = 0,
+    onRoutineWindowChange: (Int) -> Unit = {},
     onOpenGraphs: () -> Unit = {}
 ) {
     val scope = rememberCoroutineScope()
     val todayEpochDay = currentDateEpochDay()
     var showWorkoutInsights by remember { mutableStateOf(false) }
+    var showWindowPicker by remember { mutableStateOf(false) }
+    var showRoutineWindowPicker by remember { mutableStateOf(false) }
 
     val finishedSessionSamples = remember(sessions) {
         sessions
@@ -136,8 +144,9 @@ internal fun InsightsScreen(
             .toSet()
     }
 
-    val doneLast7 = remember(completedSessionEpochDays, todayEpochDay) {
-        val startDay = todayEpochDay - 6L
+    val doneShort = remember(completedSessionEpochDays, todayEpochDay, shortWindowDays) {
+        val window = shortWindowDays.coerceIn(5, 15)
+        val startDay = todayEpochDay - (window - 1).toLong()
         completedSessionEpochDays.count { day -> day in startDay..todayEpochDay }
     }
     val doneLast30 = remember(completedSessionEpochDays, todayEpochDay) {
@@ -148,7 +157,9 @@ internal fun InsightsScreen(
     // (a rest day auto-logs, so a day only breaks the streak if a scheduled workout is
     // missed). Today counts once it has a session; while today is still unlogged the
     // streak is measured up to yesterday so the in-progress day isn't penalized.
-    val cycleLength = remember(days) { days.size.takeIf { it > 0 } ?: 7 }
+    val cycleLength = remember(days, routineWindowOverride) {
+        routineWindowOverride.takeIf { it in 5..15 } ?: (days.size.takeIf { it > 0 } ?: 7)
+    }
     val routineStreak = remember(completedSessionEpochDays, todayEpochDay) {
         var cursor = if (todayEpochDay in completedSessionEpochDays) {
             todayEpochDay
@@ -378,7 +389,8 @@ internal fun InsightsScreen(
                             label = routineTitle,
                             streak = routineStreak,
                             total = cycleLength,
-                            remainingColor = bannerColor
+                            remainingColor = bannerColor,
+                            onLongPress = { showRoutineWindowPicker = true }
                         )
                         if (onRoutine) {
                             Text(
@@ -399,14 +411,17 @@ internal fun InsightsScreen(
                         HorizontalDivider()
 
                         RatioBatteryBar(
-                            label = "Last 7 days",
-                            filled = doneLast7,
-                            total = 7
+                            label = "Last $shortWindowDays days",
+                            filled = doneShort,
+                            total = shortWindowDays,
+                            remainingColor = bannerColor,
+                            onClick = { showWindowPicker = true }
                         )
                         RatioBatteryBar(
                             label = "Last 30 days",
                             filled = doneLast30,
-                            total = 30
+                            total = 30,
+                            remainingColor = bannerColor
                         )
                     }
                 }
@@ -482,6 +497,34 @@ internal fun InsightsScreen(
             }
         }
     }
+
+    if (showWindowPicker) {
+        NumberWheelDialog(
+            title = "Recent-days window",
+            value = shortWindowDays,
+            range = 5..15,
+            valueText = { days -> "$days days" },
+            onDismiss = { showWindowPicker = false },
+            onConfirm = { newWindow ->
+                onShortWindowChange(newWindow)
+                showWindowPicker = false
+            }
+        )
+    }
+
+    if (showRoutineWindowPicker) {
+        NumberWheelDialog(
+            title = "Routine target days",
+            value = cycleLength,
+            range = 5..15,
+            valueText = { days -> "$days days" },
+            onDismiss = { showRoutineWindowPicker = false },
+            onConfirm = { newTarget ->
+                onRoutineWindowChange(newTarget)
+                showRoutineWindowPicker = false
+            }
+        )
+    }
 }
 
 @Composable
@@ -489,11 +532,21 @@ private fun RoutineBatteryBar(
     label: String,
     streak: Int,
     total: Int,
-    remainingColor: Color
+    remainingColor: Color,
+    onLongPress: (() -> Unit)? = null
 ) {
     val safeTotal = total.coerceAtLeast(1)
     val safeStreak = streak.coerceIn(0, safeTotal)
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(
+        modifier = if (onLongPress != null) {
+            Modifier.pointerInput(Unit) {
+                detectTapGestures(onLongPress = { onLongPress() })
+            }
+        } else {
+            Modifier
+        },
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
         Text(
             text = label,
             style = MaterialTheme.typography.labelLarge,
@@ -579,11 +632,16 @@ private fun RoutineBatteryBar(
 private fun RatioBatteryBar(
     label: String,
     filled: Int,
-    total: Int
+    total: Int,
+    remainingColor: Color,
+    onClick: (() -> Unit)? = null
 ) {
     val safeTotal = total.coerceAtLeast(1)
     val safeFilled = filled.coerceIn(0, safeTotal)
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(
+        modifier = if (onClick != null) Modifier.clickable { onClick() } else Modifier,
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -614,7 +672,7 @@ private fun RatioBatteryBar(
                             color = if (index < safeFilled) {
                                 MaterialTheme.colorScheme.primary
                             } else {
-                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                remainingColor
                             },
                             shape = RoundedCornerShape(3.dp)
                         )

@@ -97,6 +97,7 @@ internal data class SettingsFeedback(
 )
 
 internal data class AppPageCommand(
+    val name: String,
     val command: String,
     val description: String
 )
@@ -163,6 +164,11 @@ private const val KEY_TEXT_DAYS_TO_ROUTINE = "text_days_to_routine"
 private const val DEFAULT_TEXT_DAYS_TO_ROUTINE = "days to get back on routine"
 private const val KEY_TEXT_ON_ROUTINE = "text_on_routine"
 private const val DEFAULT_TEXT_ON_ROUTINE = "You're on routine"
+private const val KEY_INSIGHTS_SHORT_WINDOW = "insights_short_window"
+private const val DEFAULT_INSIGHTS_SHORT_WINDOW = 7
+private const val MIN_INSIGHTS_SHORT_WINDOW = 5
+private const val MAX_INSIGHTS_SHORT_WINDOW = 15
+private const val KEY_ROUTINE_WINDOW = "insights_routine_window"
 private const val DEFAULT_THEME_BACKGROUND_ID = "white"
 private const val DEFAULT_THEME_STATUS_ID = "turquoise"
 private const val DEFAULT_THEME_DONE_ID = "green"
@@ -172,7 +178,7 @@ private const val DEFAULT_THEME_DONE_CUSTOM_HEX = "#1E9E58"
 private const val DEFAULT_THEME_BANNER_ID = "flame"
 private const val DEFAULT_THEME_BANNER_CUSTOM_HEX = "#BF360C"
 internal const val CUSTOM_THEME_OPTION_ID = "custom"
-internal const val LATEST_DESIGN_VERSION = "1.103"
+internal const val LATEST_DESIGN_VERSION = "1.104"
 
 internal val WORKOUT_SESSION_START_MESSAGES = listOf(
     "Lift weights and come back !",
@@ -208,19 +214,34 @@ private val BANNER_THEME_OPTIONS = listOf(
 )
 
 internal val PAGE_COMMAND_NAMES = listOf(
-    AppPageCommand(command = "workout.schedule", description = "Workout tab: merged plan/history (Compact default, Calendar toggle)"),
-    AppPageCommand(command = "workout.day", description = "Workout day detail (start/edit a day)"),
-    AppPageCommand(command = "workout.session", description = "Active workout session (focus mode)"),
-    AppPageCommand(command = "insights.home", description = "Insights tab (ratios + open Workout Insights + Progress Graphs)"),
-    AppPageCommand(command = "insights.workout", description = "Insights > Workout Insights (per-workout exercise history)"),
-    AppPageCommand(command = "graphs.progress", description = "Progress Graphs (beta), opened from Insights"),
-    AppPageCommand(command = "settings.home", description = "Settings root"),
-    AppPageCommand(command = "settings.theme", description = "Settings > Theme (colors + custom picker)"),
-    AppPageCommand(command = "settings.labels", description = "Settings > Labels (plan title, toggle, tabs)"),
-    AppPageCommand(command = "settings.pagecommands", description = "Settings > Page command names")
+    AppPageCommand(name = "Schedule", command = "workout.schedule", description = "Workout tab: merged plan/history (Compact default, Calendar toggle)"),
+    AppPageCommand(name = "Day Detail", command = "workout.day", description = "Workout day detail (start/edit a day)"),
+    AppPageCommand(name = "Workout Session", command = "workout.session", description = "Active workout session (focus mode)"),
+    AppPageCommand(name = "Insights", command = "insights.home", description = "Insights tab (ratios + open Workout Insights + Progress Graphs)"),
+    AppPageCommand(name = "Routine Streak", command = "insights.routine", description = "Insights: routine streak triangle w/ day axis + fire markers (hold to change target days 5-15)"),
+    AppPageCommand(name = "Adherence Ratios", command = "insights.ratios", description = "Insights: recent-days + last-30-day ratio bars (tap short bar to change window 5-15)"),
+    AppPageCommand(name = "Workout Insights", command = "insights.workout", description = "Insights > Workout Insights (per-workout exercise history)"),
+    AppPageCommand(name = "Progress Graphs", command = "graphs.progress", description = "Progress Graphs (beta), opened from Insights"),
+    AppPageCommand(name = "Consistency Rings", command = "graphs.consistency", description = "Progress Graphs: last-7 / last-30 consistency rings"),
+    AppPageCommand(name = "Weekly Frequency", command = "graphs.frequency", description = "Progress Graphs: weekly-frequency bars"),
+    AppPageCommand(name = "Exercise Trends", command = "graphs.exercise", description = "Progress Graphs: per-exercise weight/reps line charts"),
+    AppPageCommand(name = "Settings", command = "settings.home", description = "Settings root (Appearance, Data, Advanced)"),
+    AppPageCommand(name = "Backup & Restore", command = "settings.backup", description = "Settings > Data: export/import a JSON backup"),
+    AppPageCommand(name = "Theme", command = "settings.theme", description = "Settings > Theme (colors + custom picker)"),
+    AppPageCommand(name = "Labels", command = "settings.labels", description = "Settings > Labels (titles, toggle, tabs, routine texts)"),
+    AppPageCommand(name = "Page Commands", command = "settings.pagecommands", description = "Settings > Page command names (this list)"),
+    AppPageCommand(name = "About & What's New", command = "settings.about", description = "Settings: version badge -> details + What's new highlights")
 )
 
 internal val LATEST_VERSION_HIGHLIGHTS = listOf(
+    "The routine streak graph's target is adjustable too — long-press the triangle to set 5–15 days.",
+    "Cleaner active workout: the focused exercise card is now a solid color (no shadow behind the title), the rest timer blinks before it resets, and the rest duration is bigger.",
+    "Tidier exercise details: interval and remarks show inline, and reps/weight show as plain 'x6' / '60 kg' text instead of boxes.",
+    "The 'Last 7 days' ratio is now tap-to-change: pick any window from 5 to 15 days (it's remembered).",
+    "After you log a set, the rest timer now waits ~2 seconds before resetting, so you can see how long the rest actually was.",
+    "Tidied the active workout: the rest time shows as a compact 'rest 1m30s' to the left of the exercise name, and the Total/Rest timers now use a 40:60 width split.",
+    "Logging a set now fills down: set the reps/weight on set 1 and the later sets copy it automatically (a ladder), so you only change the sets that differ.",
+    "The last-7-day and last-30-day bars now show their empty part in the missed-banner color (matching the routine bar), so done vs. remaining reads consistently.",
     "Switching tabs now slides: swipe left/right (or tap the bottom bar) to move between Workout, Insights, and Settings, and the screen slides in the direction you're going.",
     "You can now edit an exercise's remark during a workout (the 'i' note dialog is editable). Remarks stick to the exercise, so your note is there again next time you do that workout.",
     "The Workout home screen now shows your routine streak as a compact strip of bricks under the title — filled bricks are days you've kept the streak, at a glance.",
@@ -507,6 +528,12 @@ fun WorkoutAssistApp() {
     }
     var onRoutineTextLabel by remember {
         mutableStateOf(prefs.getString(KEY_TEXT_ON_ROUTINE, DEFAULT_TEXT_ON_ROUTINE) ?: DEFAULT_TEXT_ON_ROUTINE)
+    }
+    var insightsShortWindow by remember {
+        mutableStateOf(prefs.getInt(KEY_INSIGHTS_SHORT_WINDOW, DEFAULT_INSIGHTS_SHORT_WINDOW))
+    }
+    var routineWindowOverride by remember {
+        mutableStateOf(prefs.getInt(KEY_ROUTINE_WINDOW, 0))
     }
     var backgroundThemeOptionId by remember {
         mutableStateOf(
@@ -904,6 +931,24 @@ fun WorkoutAssistApp() {
                                 daysToRoutineText = daysToRoutineTextLabel,
                                 onRoutineText = onRoutineTextLabel,
                                 bannerColor = bannerThemeColor,
+                                shortWindowDays = insightsShortWindow,
+                                onShortWindowChange = { newWindow ->
+                                    val clamped = newWindow.coerceIn(
+                                        MIN_INSIGHTS_SHORT_WINDOW,
+                                        MAX_INSIGHTS_SHORT_WINDOW
+                                    )
+                                    insightsShortWindow = clamped
+                                    prefs.edit().putInt(KEY_INSIGHTS_SHORT_WINDOW, clamped).apply()
+                                },
+                                routineWindowOverride = routineWindowOverride,
+                                onRoutineWindowChange = { newTarget ->
+                                    val clamped = newTarget.coerceIn(
+                                        MIN_INSIGHTS_SHORT_WINDOW,
+                                        MAX_INSIGHTS_SHORT_WINDOW
+                                    )
+                                    routineWindowOverride = clamped
+                                    prefs.edit().putInt(KEY_ROUTINE_WINDOW, clamped).apply()
+                                },
                                 onOpenGraphs = { showGraphsPage = true }
                             )
                         }
