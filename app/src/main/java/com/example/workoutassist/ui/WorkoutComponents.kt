@@ -48,8 +48,7 @@ internal fun ExerciseSetTable(
     }
     val weightValues = remember(weightBySet, columnCount) {
         List(columnCount) { index ->
-            val raw = weightBySet.getOrNull(index)?.trim().orEmpty()
-            raw.replace(Regex("\\s*kg\\s*$", RegexOption.IGNORE_CASE), "").trim().ifBlank { "-" }
+            stripWeightUnit(weightBySet.getOrNull(index).orEmpty()).ifBlank { "-" }
         }
     }
 
@@ -60,13 +59,13 @@ internal fun ExerciseSetTable(
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             ExerciseSetTableRow(
-                label = "reps",
+                label = "REPS",
                 values = repsValues,
                 editable = editable,
                 onValueClickAt = onEditRepsAt
             )
             ExerciseSetTableRow(
-                label = "wgt",
+                label = "WGT",
                 values = weightValues,
                 editable = editable,
                 onValueClickAt = onEditWeightAt

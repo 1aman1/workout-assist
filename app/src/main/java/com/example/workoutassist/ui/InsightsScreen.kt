@@ -145,13 +145,10 @@ internal fun InsightsScreen(
     }
 
     val doneShort = remember(completedSessionEpochDays, todayEpochDay, shortWindowDays) {
-        val window = shortWindowDays.coerceIn(5, 15)
-        val startDay = todayEpochDay - (window - 1).toLong()
-        completedSessionEpochDays.count { day -> day in startDay..todayEpochDay }
+        completedInWindow(completedSessionEpochDays, todayEpochDay, shortWindowDays.coerceIn(5, 15))
     }
     val doneLast30 = remember(completedSessionEpochDays, todayEpochDay) {
-        val startDay = todayEpochDay - 29L
-        completedSessionEpochDays.count { day -> day in startDay..todayEpochDay }
+        completedInWindow(completedSessionEpochDays, todayEpochDay, 30)
     }
     // Back-to-routine metric: consecutive most-recent days that each have a session
     // (a rest day auto-logs, so a day only breaks the streak if a scheduled workout is
@@ -161,17 +158,7 @@ internal fun InsightsScreen(
         routineWindowOverride.takeIf { it in 5..15 } ?: (days.size.takeIf { it > 0 } ?: 7)
     }
     val routineStreak = remember(completedSessionEpochDays, todayEpochDay) {
-        var cursor = if (todayEpochDay in completedSessionEpochDays) {
-            todayEpochDay
-        } else {
-            todayEpochDay - 1L
-        }
-        var streak = 0
-        while (cursor in completedSessionEpochDays) {
-            streak++
-            cursor -= 1L
-        }
-        streak
+        computeRoutineStreak(completedSessionEpochDays, todayEpochDay)
     }
     val onRoutine = routineStreak >= cycleLength
     val daysToRoutine = (cycleLength - routineStreak).coerceAtLeast(0)

@@ -57,6 +57,32 @@ internal fun timestampMillisToEpochDay(timestampMillis: Long): Long {
     return utc.timeInMillis / MILLIS_PER_DAY
 }
 
+internal fun stripWeightUnit(raw: String): String =
+    raw.trim().replace(Regex("\\s*kg\\s*$", RegexOption.IGNORE_CASE), "").trim()
+
+// Count completed days within the last [windowDays] days, inclusive of today.
+internal fun completedInWindow(
+    completedDays: Set<Long>,
+    todayEpochDay: Long,
+    windowDays: Int
+): Int {
+    val startDay = todayEpochDay - (windowDays - 1).toLong()
+    return completedDays.count { day -> day in startDay..todayEpochDay }
+}
+
+// Consecutive most-recent days that each have a completed session. Today counts if
+// present; otherwise the streak is measured up to yesterday so an in-progress day
+// isn't penalized.
+internal fun computeRoutineStreak(completedDays: Set<Long>, todayEpochDay: Long): Int {
+    var cursor = if (todayEpochDay in completedDays) todayEpochDay else todayEpochDay - 1L
+    var streak = 0
+    while (cursor in completedDays) {
+        streak++
+        cursor -= 1L
+    }
+    return streak
+}
+
 internal fun parseWeightValue(text: String): Float? {
     return Regex("\\d+(?:\\.\\d+)?")
         .find(text)

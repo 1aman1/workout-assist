@@ -425,6 +425,7 @@ internal fun ScheduleScreen(
     infinityPageLabel: String,
     missedBannerText: String,
     bannerColor: Color,
+    defaultCalendarView: Boolean = false,
     lastCompletedDayNumber: Int?,
     completedSessionEpochDays: Set<Long>,
     completedWorkoutByDate: Map<Long, String>,
@@ -437,7 +438,7 @@ internal fun ScheduleScreen(
     val todayEpochDay = currentDateEpochDay()
     val listState = rememberLazyListState()
 
-    var expanded by remember { mutableStateOf(false) }
+    var expanded by remember { mutableStateOf(defaultCalendarView) }
     var editDateTarget by remember { mutableStateOf<Long?>(null) }
     var removeConfirmDate by remember { mutableStateOf<Long?>(null) }
     // Set when the user toggles Compact/Calendar, so the transition can reveal the
@@ -449,17 +450,7 @@ internal fun ScheduleScreen(
     }
     val cycleLength = remember(orderedDays) { orderedDays.size.takeIf { it > 0 } ?: 7 }
     val routineStreak = remember(completedSessionEpochDays, todayEpochDay) {
-        var cursor = if (todayEpochDay in completedSessionEpochDays) {
-            todayEpochDay
-        } else {
-            todayEpochDay - 1L
-        }
-        var streak = 0
-        while (cursor in completedSessionEpochDays) {
-            streak++
-            cursor -= 1L
-        }
-        streak
+        computeRoutineStreak(completedSessionEpochDays, todayEpochDay)
     }
     val timeline = remember(
         orderedDays,

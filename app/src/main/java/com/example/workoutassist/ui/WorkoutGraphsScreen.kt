@@ -90,12 +90,10 @@ internal fun WorkoutGraphsScreen(
 
     // Consistency ---------------------------------------------------------
     val doneLast7 = remember(completedDays, todayEpochDay) {
-        val startDay = todayEpochDay - 6L
-        completedDays.count { it in startDay..todayEpochDay }
+        completedInWindow(completedDays, todayEpochDay, 7)
     }
     val doneLast30 = remember(completedDays, todayEpochDay) {
-        val startDay = todayEpochDay - 29L
-        completedDays.count { it in startDay..todayEpochDay }
+        completedInWindow(completedDays, todayEpochDay, 30)
     }
 
     // Weekly frequency (last 8 weeks, oldest -> newest) -------------------

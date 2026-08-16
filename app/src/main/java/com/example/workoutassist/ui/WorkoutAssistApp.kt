@@ -169,6 +169,7 @@ private const val DEFAULT_INSIGHTS_SHORT_WINDOW = 7
 private const val MIN_INSIGHTS_SHORT_WINDOW = 5
 private const val MAX_INSIGHTS_SHORT_WINDOW = 15
 private const val KEY_ROUTINE_WINDOW = "insights_routine_window"
+private const val KEY_DEFAULT_SCHEDULE_CALENDAR = "default_schedule_calendar"
 private const val DEFAULT_THEME_BACKGROUND_ID = "white"
 private const val DEFAULT_THEME_STATUS_ID = "turquoise"
 private const val DEFAULT_THEME_DONE_ID = "green"
@@ -539,6 +540,9 @@ fun WorkoutAssistApp() {
     var routineWindowOverride by remember {
         mutableStateOf(prefs.getInt(KEY_ROUTINE_WINDOW, 0))
     }
+    var defaultScheduleCalendar by remember {
+        mutableStateOf(prefs.getBoolean(KEY_DEFAULT_SCHEDULE_CALENDAR, false))
+    }
     var backgroundThemeOptionId by remember {
         mutableStateOf(
             prefs.getString(KEY_THEME_BACKGROUND, DEFAULT_THEME_BACKGROUND_ID) ?: DEFAULT_THEME_BACKGROUND_ID
@@ -881,6 +885,7 @@ fun WorkoutAssistApp() {
                                         infinityPageLabel = infinityPageLabel,
                                         missedBannerText = missedBannerTextLabel,
                                         bannerColor = bannerThemeColor,
+                                        defaultCalendarView = defaultScheduleCalendar,
                                         lastCompletedDayNumber = lastCompletedDayNumber,
                                         completedSessionEpochDays = completedSessionEpochDays,
                                         completedWorkoutByDate = completedWorkoutByDate,
@@ -1102,6 +1107,11 @@ fun WorkoutAssistApp() {
                             },
                             onImportBackup = {
                                 importBackupLauncher.launch(arrayOf("application/json", "text/plain"))
+                            },
+                            defaultScheduleCalendar = defaultScheduleCalendar,
+                            onDefaultScheduleCalendarChanged = { useCalendar ->
+                                defaultScheduleCalendar = useCalendar
+                                prefs.edit().putBoolean(KEY_DEFAULT_SCHEDULE_CALENDAR, useCalendar).apply()
                             }
                         )
                     }

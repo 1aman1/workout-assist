@@ -107,6 +107,8 @@ internal fun SettingsScreen(
     onBannerCustomColorChanged: (Color) -> Unit,
     labels: AppLabels,
     onLabelsSaved: (AppLabels) -> Unit,
+    defaultScheduleCalendar: Boolean,
+    onDefaultScheduleCalendarChanged: (Boolean) -> Unit,
     onExportBackup: () -> Unit,
     onImportBackup: () -> Unit
 ) {
@@ -235,6 +237,42 @@ internal fun SettingsScreen(
                                 Icon(
                                     imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
                                     contentDescription = null
+                                )
+                            }
+                        }
+                    }
+
+                    Card(
+                        shape = RoundedCornerShape(18.dp),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Text(
+                                text = "Default schedule view",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = "Which view the workout page opens in.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                FilterChip(
+                                    selected = !defaultScheduleCalendar,
+                                    onClick = { onDefaultScheduleCalendarChanged(false) },
+                                    label = { Text(labels.compactButton) }
+                                )
+                                FilterChip(
+                                    selected = defaultScheduleCalendar,
+                                    onClick = { onDefaultScheduleCalendarChanged(true) },
+                                    label = { Text(labels.calendarButton) }
                                 )
                             }
                         }
