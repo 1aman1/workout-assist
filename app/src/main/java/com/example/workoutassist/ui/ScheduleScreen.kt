@@ -29,7 +29,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Bedtime
-import androidx.compose.material.icons.rounded.LocalFireDepartment
 import androidx.compose.material.icons.rounded.MilitaryTech
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -302,34 +301,21 @@ private fun ScheduleEntryCard(
                     }
                 }
             } else if (entry.status == DayStatus.DUE && !isRestDay) {
-                val pushColor = Color(0xFFFF6D00)
                 val duePulse = rememberInfiniteTransition(label = "duePulse")
                 val pulseScale by duePulse.animateFloat(
-                    initialValue = 0.84f,
-                    targetValue = 1.1f,
+                    initialValue = 0.9f,
+                    targetValue = 1.12f,
                     animationSpec = infiniteRepeatable(
                         animation = tween(durationMillis = 720, easing = FastOutSlowInEasing),
                         repeatMode = RepeatMode.Reverse
                     ),
                     label = "duePulseScale"
                 )
-                Box(
-                    modifier = Modifier
-                        .size(30.dp)
-                        .scale(pulseScale)
-                        .background(
-                            color = pushColor.copy(alpha = 0.16f),
-                            shape = CircleShape
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.LocalFireDepartment,
-                        contentDescription = "Workout due today",
-                        tint = pushColor,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
+                Text(
+                    text = "\uD83D\uDE21",
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.scale(pulseScale)
+                )
             }
         }
     }

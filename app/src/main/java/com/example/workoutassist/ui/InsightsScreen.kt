@@ -390,7 +390,7 @@ internal fun InsightsScreen(
                             streak = routineStreak,
                             total = cycleLength,
                             remainingColor = bannerColor,
-                            onLongPress = { showRoutineWindowPicker = true }
+                            onDoubleTap = { showRoutineWindowPicker = true }
                         )
                         if (onRoutine) {
                             Text(
@@ -415,7 +415,7 @@ internal fun InsightsScreen(
                             filled = doneShort,
                             total = shortWindowDays,
                             remainingColor = bannerColor,
-                            onClick = { showWindowPicker = true }
+                            onDoubleTap = { showWindowPicker = true }
                         )
                         RatioBatteryBar(
                             label = "Last 30 days",
@@ -533,14 +533,14 @@ private fun RoutineBatteryBar(
     streak: Int,
     total: Int,
     remainingColor: Color,
-    onLongPress: (() -> Unit)? = null
+    onDoubleTap: (() -> Unit)? = null
 ) {
     val safeTotal = total.coerceAtLeast(1)
     val safeStreak = streak.coerceIn(0, safeTotal)
     Column(
-        modifier = if (onLongPress != null) {
+        modifier = if (onDoubleTap != null) {
             Modifier.pointerInput(Unit) {
-                detectTapGestures(onLongPress = { onLongPress() })
+                detectTapGestures(onDoubleTap = { onDoubleTap() })
             }
         } else {
             Modifier
@@ -556,8 +556,8 @@ private fun RoutineBatteryBar(
         val fireColor = Color(0xFFFF6D00)
         val fraction = safeStreak.toFloat() / safeTotal
         val triangleHeight = 96.dp
-        val fireHeadroom = 18.dp
-        val fireIconSize = 14.dp
+        val fireHeadroom = 22.dp
+        val fireIconSize = 18.dp
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
@@ -634,12 +634,18 @@ private fun RatioBatteryBar(
     filled: Int,
     total: Int,
     remainingColor: Color,
-    onClick: (() -> Unit)? = null
+    onDoubleTap: (() -> Unit)? = null
 ) {
     val safeTotal = total.coerceAtLeast(1)
     val safeFilled = filled.coerceIn(0, safeTotal)
     Column(
-        modifier = if (onClick != null) Modifier.clickable { onClick() } else Modifier,
+        modifier = if (onDoubleTap != null) {
+            Modifier.pointerInput(Unit) {
+                detectTapGestures(onDoubleTap = { onDoubleTap() })
+            }
+        } else {
+            Modifier
+        },
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         Row(

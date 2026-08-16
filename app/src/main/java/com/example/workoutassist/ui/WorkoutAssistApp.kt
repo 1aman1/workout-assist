@@ -217,6 +217,7 @@ internal val PAGE_COMMAND_NAMES = listOf(
     AppPageCommand(name = "Schedule", command = "workout.schedule", description = "Workout tab: merged plan/history (Compact default, Calendar toggle)"),
     AppPageCommand(name = "Day Detail", command = "workout.day", description = "Workout day detail (start/edit a day)"),
     AppPageCommand(name = "Workout Session", command = "workout.session", description = "Active workout session (focus mode)"),
+    AppPageCommand(name = "Exercise History Peek", command = "workout.session.history", description = "Active session: double-tap the exercise title -> confirm -> temporary past-sessions overlay (back/close returns to the session)"),
     AppPageCommand(name = "Insights", command = "insights.home", description = "Insights tab (ratios + open Workout Insights + Progress Graphs)"),
     AppPageCommand(name = "Routine Streak", command = "insights.routine", description = "Insights: routine streak triangle w/ day axis + fire markers (hold to change target days 5-15)"),
     AppPageCommand(name = "Adherence Ratios", command = "insights.ratios", description = "Insights: recent-days + last-30-day ratio bars (tap short bar to change window 5-15)"),
@@ -234,6 +235,9 @@ internal val PAGE_COMMAND_NAMES = listOf(
 )
 
 internal val LATEST_VERSION_HIGHLIGHTS = listOf(
+    "Today's pending workout now nudges you with a pulsing angry red emoji instead of a flame, and your streak triangle shows bigger flames for each day done.",
+    "Editing the recent-days ratio and the streak target is now double-tap (both), the past-sessions peek shows a clean reps/wgt table, and weights drop the 'kg' clutter.",
+    "Peek at your history mid-workout: double-tap the exercise title, confirm, and a temporary overlay shows what you did for that exercise in past sessions — close it (or back) to drop right back into your session.",
     "The routine streak graph's target is adjustable too — long-press the triangle to set 5–15 days.",
     "Cleaner active workout: the focused exercise card is now a solid color (no shadow behind the title), the rest timer blinks before it resets, and the rest duration is bigger.",
     "Tidier exercise details: interval and remarks show inline, and reps/weight show as plain 'x6' / '60 kg' text instead of boxes.",
@@ -904,6 +908,7 @@ fun WorkoutAssistApp() {
                                     WorkoutDayScreen(
                                         day = selectedDay,
                                         repository = repository,
+                                        setLogs = setLogs,
                                         onRequestGoToSettings = {
                                             currentScreen = AppScreen.SCHEDULE
                                             selectedTab = RootTab.SETTINGS

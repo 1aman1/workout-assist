@@ -34,6 +34,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -102,9 +103,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.zIndex
 import com.example.workoutassist.data.ExerciseDraft
 import com.example.workoutassist.data.ExerciseModel
+import com.example.workoutassist.data.SetLogEntity
 import com.example.workoutassist.data.WorkoutDayModel
 import com.example.workoutassist.data.WorkoutRepository
 import kotlinx.coroutines.delay
@@ -118,11 +121,19 @@ private enum class QuickEditField {
     INTERVAL
 }
 
+private data class PastSessionPeek(
+    val epochDay: Long,
+    val latestMillis: Long,
+    val repsBySet: List<Int>,
+    val weightBySet: List<String>
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun WorkoutDayScreen(
     day: WorkoutDayModel,
     repository: WorkoutRepository,
+    setLogs: List<SetLogEntity>,
     onRequestGoToSettings: () -> Unit,
     onBack: () -> Unit,
     onWorkoutActiveChange: (Boolean) -> Unit = {}
@@ -830,7 +841,9 @@ internal fun WorkoutDayScreen(
                         onRemoveSet = { setIndex -> removeSetTarget = setIndex },
                         onAddExercise = { showAddSessionExerciseDialog = true },
                         onFinish = { finishWorkout() },
-                        onUpdateRemark = { newRemark -> updateFocusedExerciseRemark(newRemark) }
+                        onUpdateRemark = { newRemark -> updateFocusedExerciseRemark(newRemark) },
+                        setLogs = setLogs,
+                        activeSessionId = activeSessionId
                     )
                 } else {
                     if (day.exercises.isEmpty()) {
@@ -1404,7 +1417,9 @@ private fun WorkoutActivePage(
     onRemoveSet: (Int) -> Unit,
     onAddExercise: () -> Unit,
     onFinish: () -> Unit,
-    onUpdateRemark: (String) -> Unit
+    onUpdateRemark: (String) -> Unit,
+    setLogs: List<SetLogEntity>,
+    activeSessionId: Long
 ) {
     val focusedExercise = day.exercises.firstOrNull { exercise -> exercise.id == focusedExerciseId }
     val exerciseStripState = rememberLazyListState()
@@ -1422,6 +1437,31 @@ private fun WorkoutActivePage(
         isSessionReady && focusedExercise != null && focusedExercise.id !in loggedExerciseIds
     var showSessionActions by remember(day.dayNumber) { mutableStateOf(false) }
     var showFocusedExerciseRemark by remember(day.dayNumber) { mutableStateOf(false) }
+    var showHistoryConfirm by remember(day.dayNumber) { mutableStateOf(false) }
+    var showHistoryPeek by remember(day.dayNumber) { mutableStateOf(false) }
+    val focusedExerciseHistory = remember(setLogs, focusedExercise?.name, activeSessionId) {
+        val name = focusedExercise?.name?.trim().orEmpty()
+        if (name.isEmpty()) {
+            emptyList()
+        } else {
+            setLogs.asSequence()
+                .filter { log -> log.sessionId != activeSessionId }
+                .filter { log -> log.exerciseName.trim().equals(name, ignoreCase = true) }
+                .groupBy { log -> log.sessionId }
+                .map { (_, logs) ->
+                    val latestMillis = logs.maxOf { it.loggedAt }
+                    val sorted = logs.sortedBy { it.setNumber }
+                    PastSessionPeek(
+                        epochDay = timestampMillisToEpochDay(latestMillis),
+                        latestMillis = latestMillis,
+                        repsBySet = sorted.map { log -> log.actualReps.coerceAtLeast(0) },
+                        weightBySet = sorted.map { log -> log.actualWeight.trim().ifBlank { log.plannedWeight.trim() } }
+                    )
+                }
+                .sortedByDescending { it.latestMillis }
+                .take(8)
+        }
+    }
 
     val finishHoldScope = rememberCoroutineScope()
     val finishHoldProgress = remember(day.dayNumber) { Animatable(0f) }
@@ -1540,7 +1580,12 @@ private fun WorkoutActivePage(
                         }
                         Text(
                             text = focusedExercise.name,
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier
+                                .weight(1f)
+                                .combinedClickable(
+                                    onClick = {},
+                                    onDoubleClick = { showHistoryConfirm = true }
+                                ),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,
                             textAlign = TextAlign.Center
@@ -1557,7 +1602,11 @@ private fun WorkoutActivePage(
                     repeat(focusedExercise.sets) { setIndex ->
                         val selectedValue = selectedSetReps.getOrElse(setIndex) { focusedExercise.reps }
                         val rawWeight = selectedSetWeights.getOrElse(setIndex) { focusedExercise.plannedWeight }
-                        val weightLabel = rawWeight.trim().ifBlank { "—" }
+                        val weightLabel = rawWeight
+                            .trim()
+                            .replace(Regex("\\s*kg\\s*$", RegexOption.IGNORE_CASE), "")
+                            .trim()
+                            .ifBlank { "—" }
                         WorkoutSetEditRow(
                             label = "Set ${setIndex + 1}",
                             weightText = weightLabel,
@@ -1616,6 +1665,101 @@ private fun WorkoutActivePage(
             )
         }
 
+        if (showHistoryConfirm && focusedExercise != null) {
+            AlertDialog(
+                onDismissRequest = { showHistoryConfirm = false },
+                title = { Text("View past sessions?") },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            showHistoryConfirm = false
+                            showHistoryPeek = true
+                        }
+                    ) {
+                        Text("Yes")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showHistoryConfirm = false }) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
+
+        if (showHistoryPeek && focusedExercise != null) {
+            Dialog(onDismissRequest = { showHistoryPeek = false }) {
+                Card(
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Past sessions",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    text = focusedExercise.name,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            IconButton(onClick = { showHistoryPeek = false }) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Close,
+                                    contentDescription = "Close history"
+                                )
+                            }
+                        }
+                        HorizontalDivider()
+                        if (focusedExerciseHistory.isEmpty()) {
+                            Text(
+                                text = "No past sessions logged for this exercise yet.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        } else {
+                            Column(
+                                modifier = Modifier
+                                    .heightIn(max = 360.dp)
+                                    .verticalScroll(rememberScrollState()),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                focusedExerciseHistory.forEach { entry ->
+                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Text(
+                                            text = formatDateShort(entry.epochDay),
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                        ExerciseSetTable(
+                                            repsBySet = entry.repsBySet,
+                                            weightBySet = entry.weightBySet,
+                                            editable = false,
+                                            onEditRepsAt = {},
+                                            onEditWeightAt = {}
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         Spacer(modifier = Modifier.height(4.dp))
 
         Card(
@@ -1642,19 +1786,25 @@ private fun WorkoutActivePage(
                     Text(if (isSessionReady) "Log Exercise" else "Starting...")
                 }
 
-                TextButton(
-                    onClick = onSkip,
-                    enabled = focusedExercise != null && focusedExercise.id !in loggedExerciseIds,
-                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Skip")
-                }
+                    TextButton(
+                        onClick = onSkip,
+                        enabled = focusedExercise != null && focusedExercise.id !in loggedExerciseIds,
+                        modifier = Modifier.weight(0.2f)
+                    ) {
+                        Text("Skip")
+                    }
 
-                TextButton(
-                    onClick = { showSessionActions = !showSessionActions },
-                    modifier = Modifier.align(Alignment.CenterHorizontally)
-                ) {
-                    Text(if (showSessionActions) "Hide Session Actions" else "Show Session Actions")
+                    TextButton(
+                        onClick = { showSessionActions = !showSessionActions },
+                        modifier = Modifier.weight(0.8f)
+                    ) {
+                        Text(if (showSessionActions) "Hide Session Actions" else "Show Session Actions")
+                    }
                 }
 
                 if (showSessionActions) {

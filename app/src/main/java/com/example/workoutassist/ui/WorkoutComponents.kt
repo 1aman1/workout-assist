@@ -48,7 +48,8 @@ internal fun ExerciseSetTable(
     }
     val weightValues = remember(weightBySet, columnCount) {
         List(columnCount) { index ->
-            weightBySet.getOrNull(index)?.trim()?.ifBlank { "-" } ?: "-"
+            val raw = weightBySet.getOrNull(index)?.trim().orEmpty()
+            raw.replace(Regex("\\s*kg\\s*$", RegexOption.IGNORE_CASE), "").trim().ifBlank { "-" }
         }
     }
 

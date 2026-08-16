@@ -9,13 +9,14 @@ Primary design source: see DESIGN_VERSIONS.md and append all future design updat
 > v1.104 is the authoritative current state for Schedule, Insights, active session, and Analytics. Older bullets below are historical and may be superseded by these notes.
 
 ### v1.104 current behavior
+- Mid-session, double-tapping the focused exercise's title opens a confirm ("View past sessions?" / Cancel / Yes), and confirming shows a temporary overlay (`Dialog`) of that exercise's prior sessions — each rendered with the compact reps/wgt table — pulled from `setLogs` (excluding the active session, matched by exercise name). Back or the close (X) dismisses it and returns to the live session unchanged — no tab switch, so the session never breaks.
 - In a session, logging a set's reps/weight fills down: the value is copied to that set and every later set (a ladder), so set 1's values pre-fill the rest; edit any set to fill down from there. Saving persists the filled values.
-- The Insights "Last N days" ratio window is editable (5–15): tap the bar to change it (persisted); the 30-day bar is fixed. Empty cells on both ratio bars use the missed-banner color.
-- The Insights routine streak triangle's target days are editable (5–15) by long-pressing it (persisted); default follows the plan length.
-- Active-session top bar splits the two stopwatches 40:60 (Total : Rest).
+- The Insights "Last N days" ratio window and the routine streak triangle's target days are both editable (5–15) by **double-tapping** them (persisted); the routine default follows the plan length, the 30-day bar is fixed. Empty cells on both ratio bars use the missed-banner color.
+- Today's due-today workout shows a pulsing angry red emoji (😡); completed streak days show larger flames on the routine triangle.
+- Active-session top bar splits the two stopwatches 40:60 (Total : Rest). Skip and Show Session Actions share one row (20:80).
 - The focused exercise shows its rest to the left of the name as a compact `rest 1m30s` / `rest 2m` (bigger font), and its card is a solid color (no shadow bleeding behind the title).
 - After logging a set, the rest timer holds ~2s (so the final duration is readable), blinking to warn of the reset, then resets.
-- Expandable exercise cards show `interval : value` and `remarks : value` inline, and reps/weight as plain `xN` / `N kg` text (no boxes), tightly spaced.
+- Expandable exercise cards show `interval : value` and `remarks : value` inline, and reps/weight as plain `xN` / number text (no boxes, no `kg` suffix), tightly spaced.
 
 ### v1.103 current behavior
 - Horizontal swipe switches between the bottom tabs from their home screens: swipe left goes to the next tab (Workout -> Insights -> Settings), swipe right goes back, with a directional slide animation (content slides in the swipe direction; a tab tap animates too). Disabled during an active session, in the workout day detail, and over the Progress Graphs overlay (which have their own horizontal gestures).
