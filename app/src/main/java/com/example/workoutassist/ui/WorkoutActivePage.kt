@@ -452,25 +452,19 @@ internal fun WorkoutActivePage(
                     Text(if (isSessionReady) "Log Exercise" else "Starting...")
                 }
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                TextButton(
+                    onClick = onSkip,
+                    enabled = focusedExercise != null && focusedExercise.id !in loggedExerciseIds,
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    TextButton(
-                        onClick = onSkip,
-                        enabled = focusedExercise != null && focusedExercise.id !in loggedExerciseIds,
-                        modifier = Modifier.weight(0.2f)
-                    ) {
-                        Text("Skip")
-                    }
+                    Text("Skip")
+                }
 
-                    TextButton(
-                        onClick = { showSessionActions = !showSessionActions },
-                        modifier = Modifier.weight(0.8f)
-                    ) {
-                        Text(if (showSessionActions) "Hide Session Actions" else "Show Session Actions")
-                    }
+                TextButton(
+                    onClick = { showSessionActions = !showSessionActions },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(if (showSessionActions) "Hide Session Actions" else "Show Session Actions")
                 }
 
                 if (showSessionActions) {
@@ -536,7 +530,9 @@ internal fun WorkoutActivePage(
                                 text = if (finishHolding) "Keep holding to finish…" else "Hold to Finish Workout",
                                 color = MaterialTheme.colorScheme.error,
                                 style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.SemiBold
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                softWrap = false
                             )
                         }
                     }

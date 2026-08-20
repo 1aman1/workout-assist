@@ -13,13 +13,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -79,6 +77,39 @@ private fun SettingsSectionHeader(title: String) {
         color = MaterialTheme.colorScheme.primary,
         modifier = Modifier.padding(start = 4.dp, top = 6.dp)
     )
+}
+
+// A root Settings entry whose whole title row is the button that opens a subpage.
+// The subpage carries its own description, so none is shown here.
+@Composable
+private fun SettingsNavCard(title: String, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(18.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 18.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = title,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            Icon(
+                imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -142,6 +173,7 @@ internal fun SettingsScreen(
     var pageCommandsTitleInput by remember(labels) { mutableStateOf(labels.pageCommandsTitle) }
     var missedBannerTextInput by remember(labels) { mutableStateOf(labels.missedBannerText) }
     var routineTitleInput by remember(labels) { mutableStateOf(labels.routineTitle) }
+    var streakTitleInput by remember(labels) { mutableStateOf(labels.streakTitle) }
     var daysToRoutineTextInput by remember(labels) { mutableStateOf(labels.daysToRoutineText) }
     var onRoutineTextInput by remember(labels) { mutableStateOf(labels.onRoutineText) }
 
@@ -211,42 +243,10 @@ internal fun SettingsScreen(
                     }
 
                     SettingsSectionHeader("Appearance")
-                    Card(
-                        shape = RoundedCornerShape(18.dp),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Text(
-                                text = "Labels",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text(
-                                text = "Rename the workout view toggle and bottom tabs.",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-
-                            OutlinedButton(
-                                onClick = { settingsView = SettingsView.LABEL_OPTIONS },
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Text("Options")
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                                    contentDescription = null
-                                )
-                            }
-                        }
-                    }
+                    SettingsNavCard(
+                        title = "Labels",
+                        onClick = { settingsView = SettingsView.LABEL_OPTIONS }
+                    )
 
                     Card(
                         shape = RoundedCornerShape(18.dp),
@@ -284,77 +284,15 @@ internal fun SettingsScreen(
                         }
                     }
 
-                    Card(
-                        shape = RoundedCornerShape(18.dp),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Text(
-                                text = "Streak graph",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text(
-                                text = "Choose the Insights streak graph style and its look.",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            OutlinedButton(
-                                onClick = { settingsView = SettingsView.STREAK_GRAPH_OPTIONS },
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Text("Options")
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                                    contentDescription = null
-                                )
-                            }
-                        }
-                    }
+                    SettingsNavCard(
+                        title = "Streak graph",
+                        onClick = { settingsView = SettingsView.STREAK_GRAPH_OPTIONS }
+                    )
 
-                    Card(
-                        shape = RoundedCornerShape(18.dp),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text(
-                                text = "Theme",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text(
-                                text = "Configure app colors by role.",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            OutlinedButton(
-                                onClick = { settingsView = SettingsView.THEME_OPTIONS },
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Text("Options")
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                                    contentDescription = null
-                                )
-                            }
-                        }
-                    }
+                    SettingsNavCard(
+                        title = "Theme",
+                        onClick = { settingsView = SettingsView.THEME_OPTIONS }
+                    )
 
                     SettingsSectionHeader("Data")
                     Card(
@@ -396,41 +334,10 @@ internal fun SettingsScreen(
                     }
 
                     SettingsSectionHeader("Advanced")
-                    Card(
-                        shape = RoundedCornerShape(18.dp),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text(
-                                text = "Page Command Names",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text(
-                                text = "Use these stable names for quick commands.",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            OutlinedButton(
-                                onClick = { settingsView = SettingsView.PAGE_COMMANDS },
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Text("Options")
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                                    contentDescription = null
-                                )
-                            }
-                        }
-                    }
+                    SettingsNavCard(
+                        title = "Page Command Names",
+                        onClick = { settingsView = SettingsView.PAGE_COMMANDS }
+                    )
                 } else {
                     when (settingsView) {
                         SettingsView.THEME_OPTIONS -> {
@@ -620,6 +527,13 @@ internal fun SettingsScreen(
                                         modifier = Modifier.fillMaxWidth()
                                     )
                                     OutlinedTextField(
+                                        value = streakTitleInput,
+                                        onValueChange = { streakTitleInput = it },
+                                        label = { Text("Streak graph title") },
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                    OutlinedTextField(
                                         value = daysToRoutineTextInput,
                                         onValueChange = { daysToRoutineTextInput = it },
                                         label = { Text("Days-to-routine text") },
@@ -652,6 +566,7 @@ internal fun SettingsScreen(
                                                     pageCommandsTitle = pageCommandsTitleInput,
                                                     missedBannerText = missedBannerTextInput,
                                                     routineTitle = routineTitleInput,
+                                                    streakTitle = streakTitleInput,
                                                     daysToRoutineText = daysToRoutineTextInput,
                                                     onRoutineText = onRoutineTextInput
                                                 )
@@ -671,6 +586,7 @@ internal fun SettingsScreen(
                                             pageCommandsTitleInput.isNotBlank() &&
                                             missedBannerTextInput.isNotBlank() &&
                                             routineTitleInput.isNotBlank() &&
+                                            streakTitleInput.isNotBlank() &&
                                             daysToRoutineTextInput.isNotBlank() &&
                                             onRoutineTextInput.isNotBlank(),
                                         modifier = Modifier.fillMaxWidth(),

@@ -86,7 +86,7 @@ internal fun computeRoutineStreak(completedDays: Set<Long>, todayEpochDay: Long)
 // Streak-momentum series: each maximal run of consecutive completed days is emitted as
 // a 0 (the break/reset) followed by 1..runLength (the climb), so missed-day gaps read as
 // drops to zero. Example: runs of 4, 3, 4 days -> [0,1,2,3,4, 0,1,2,3, 0,1,2,3,4].
-internal fun buildStreakMomentumSeries(completedDays: Set<Long>): List<Int> {
+internal fun buildStreakMomentumSeries(completedDays: Set<Long>, todayEpochDay: Long): List<Int> {
     if (completedDays.isEmpty()) return emptyList()
     val sortedDays = completedDays.toSortedSet().toList()
     val series = mutableListOf<Int>()
@@ -103,7 +103,88 @@ internal fun buildStreakMomentumSeries(completedDays: Set<Long>): List<Int> {
         series.add(runLength)
         previousDay = day
     }
+    // If the most recent run has already broken (a full day was missed before today, e.g.
+    // yesterday), append the drop to zero so the latest break shows as a red tick. Today
+    // being unlogged (last day == today or yesterday) is not yet a break.
+    if (todayEpochDay - sortedDays.last() >= 2L) {
+        series.add(0)
+    }
     return series
+}
+
+// Lengths of each maximal run of consecutive completed days, e.g. days {1,2,3, 5} -> [3, 1].
+internal fun streakRunLengths(completedDays: Set<Long>): List<Int> {
+    if (completedDays.isEmpty()) return emptyList()
+    val sortedDays = completedDays.toSortedSet().toList()
+    val runs = mutableListOf<Int>()
+    var runLength = 1
+    for (i in 1 until sortedDays.size) {
+        if (sortedDays[i] == sortedDays[i - 1] + 1L) {
+            runLength++
+        } else {
+            runs.add(runLength)
+            runLength = 1
+        }
+    }
+    runs.add(runLength)
+    return runs
+}
+
+// Histogram of streak run lengths bucketed 1..maxBucket; the last bucket accumulates runs
+// of length >= maxBucket. Returns counts where index i corresponds to a run length of i + 1.
+internal fun streakLengthHistogram(completedDays: Set<Long>, maxBucket: Int = 7): List<Int> {
+    val buckets = maxBucket.coerceAtLeast(1)
+    val counts = IntArray(buckets)
+    streakRunLengths(completedDays).forEach { length ->
+        val index = length.coerceIn(1, buckets) - 1
+        counts[index] += 1
+    }
+    return counts.toList()
+}
+
+// Epoch days on which a streak break occurred: the first missed day after each run that
+// has already ended. A run whose last day is today or yesterday has not broken yet (today
+// may still be logged), so its trailing gap is only counted once yesterday is confirmed missed.
+internal fun streakBreakDays(completedDays: Set<Long>, todayEpochDay: Long): List<Long> {
+    if (completedDays.isEmpty()) return emptyList()
+    val sortedDays = completedDays.toSortedSet().toList()
+    val breaks = mutableListOf<Long>()
+    for (i in 1 until sortedDays.size) {
+        if (sortedDays[i] != sortedDays[i - 1] + 1L) {
+            breaks.add(sortedDays[i - 1] + 1L)
+        }
+    }
+    val lastDay = sortedDays.last()
+    if (lastDay < todayEpochDay - 1L) {
+        breaks.add(lastDay + 1L)
+    }
+    return breaks
+}
+
+// The longest gap (in days) between streaks, including any ongoing gap since the last
+// active day up to today.
+internal fun longestStreakGap(completedDays: Set<Long>, todayEpochDay: Long): Int {
+    if (completedDays.isEmpty()) return 0
+    val sortedDays = completedDays.toSortedSet().toList()
+    var longest = 0
+    for (i in 1 until sortedDays.size) {
+        val gap = (sortedDays[i] - sortedDays[i - 1] - 1L).toInt()
+        if (gap > longest) longest = gap
+    }
+    val trailingGap = (todayEpochDay - sortedDays.last()).toInt()
+    if (trailingGap > longest) longest = trailingGap
+    return longest.coerceAtLeast(0)
+}
+
+// The epoch day of the first of the month, [monthsBack] calendar months before the month
+// containing [epochDay]. Used to bucket events into calendar-month windows.
+internal fun startOfMonthEpochDay(epochDay: Long, monthsBack: Int = 0): Long {
+    val cal = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
+    cal.clear()
+    cal.timeInMillis = epochDay * MILLIS_PER_DAY
+    cal.set(Calendar.DAY_OF_MONTH, 1)
+    cal.add(Calendar.MONTH, -monthsBack.coerceAtLeast(0))
+    return cal.timeInMillis / MILLIS_PER_DAY
 }
 
 internal fun parseWeightValue(text: String): Float? {

@@ -116,7 +116,7 @@ internal fun HoldToConfirmButton(
 
     Box(
         modifier = modifier
-            .width(150.dp)
+            .width(176.dp)
             .height(44.dp)
             .clip(RoundedCornerShape(12.dp))
             .background(MaterialTheme.colorScheme.error)
@@ -155,6 +155,8 @@ internal fun HoldToConfirmButton(
             style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onError,
+            maxLines = 1,
+            softWrap = false,
             modifier = Modifier.padding(horizontal = 12.dp)
         )
     }

@@ -87,9 +87,11 @@ private fun ExerciseSetTableRow(
     ) {
         Text(
             text = label,
-            modifier = Modifier.width(44.dp),
+            modifier = Modifier.width(52.dp),
             style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            softWrap = false
         )
 
         values.forEachIndexed { index, value ->

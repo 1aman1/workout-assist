@@ -118,6 +118,7 @@ internal data class AppLabels(
     val pageCommandsTitle: String,
     val missedBannerText: String,
     val routineTitle: String,
+    val streakTitle: String,
     val daysToRoutineText: String,
     val onRoutineText: String
 )
@@ -161,6 +162,8 @@ private const val KEY_TITLE_MISSED_BANNER = "title_missed_banner"
 private const val DEFAULT_TITLE_MISSED_BANNER = "Missed · tap to add"
 private const val KEY_TITLE_ROUTINE = "title_routine"
 private const val DEFAULT_TITLE_ROUTINE = "routine"
+private const val KEY_TITLE_STREAK = "title_streak"
+private const val DEFAULT_TITLE_STREAK = "Streak momentum"
 private const val KEY_TEXT_DAYS_TO_ROUTINE = "text_days_to_routine"
 private const val DEFAULT_TEXT_DAYS_TO_ROUTINE = "days to get back on routine"
 private const val KEY_TEXT_ON_ROUTINE = "text_on_routine"
@@ -239,7 +242,7 @@ internal val PAGE_COMMAND_NAMES = listOf(
 )
 
 internal val LATEST_VERSION_HIGHLIGHTS = listOf(
-    "The Insights streak view is now a scrollable Streak Momentum graph: it climbs 1 per workout day and drops to 0 when you miss a day, and opens on today (right-most). Double-tap it to open a taller, scrollable inspector that shows your best streak. Switch the style (momentum or classic triangle) and look (bars or stock-market candles) under Settings > Streak graph.",
+    "The Insights streak view is now a scrollable Streak Momentum graph: it climbs 1 per workout day and drops to 0 when you miss a day, and opens on today (right-most). Double-tap it to open a taller, scrollable inspector that shows your best streak. Switch the style (momentum or classic triangle) and look (line or stock-market candles) under Settings > Streak graph.",
     "Exiting a workout mid-session no longer counts as completed - only the Hold-to-Finish action records a done workout, so your streaks stay honest.",
     "Pick which schedule view opens by default (Compact or Calendar) in Settings > Default schedule view.",
     "Logging a set now fills weight down to later sets but keeps each set's reps independent (reps usually vary per set).",
@@ -535,6 +538,9 @@ fun WorkoutAssistApp() {
     }
     var routineTitleLabel by remember {
         mutableStateOf(prefs.getString(KEY_TITLE_ROUTINE, DEFAULT_TITLE_ROUTINE) ?: DEFAULT_TITLE_ROUTINE)
+    }
+    var streakTitleLabel by remember {
+        mutableStateOf(prefs.getString(KEY_TITLE_STREAK, DEFAULT_TITLE_STREAK) ?: DEFAULT_TITLE_STREAK)
     }
     var daysToRoutineTextLabel by remember {
         mutableStateOf(prefs.getString(KEY_TEXT_DAYS_TO_ROUTINE, DEFAULT_TEXT_DAYS_TO_ROUTINE) ?: DEFAULT_TEXT_DAYS_TO_ROUTINE)
@@ -952,6 +958,7 @@ fun WorkoutAssistApp() {
                                 insightsTitle = insightsTitleLabel,
                                 workoutInsightsTitle = workoutInsightsTitleLabel,
                                 routineTitle = routineTitleLabel,
+                                streakTitle = streakTitleLabel,
                                 daysToRoutineText = daysToRoutineTextLabel,
                                 onRoutineText = onRoutineTextLabel,
                                 bannerColor = bannerThemeColor,
@@ -1063,6 +1070,7 @@ fun WorkoutAssistApp() {
                                 pageCommandsTitle = pageCommandsTitleLabel,
                                 missedBannerText = missedBannerTextLabel,
                                 routineTitle = routineTitleLabel,
+                                streakTitle = streakTitleLabel,
                                 daysToRoutineText = daysToRoutineTextLabel,
                                 onRoutineText = onRoutineTextLabel
                             ),
@@ -1081,6 +1089,7 @@ fun WorkoutAssistApp() {
                                 val cleanPageCommandsTitle = updated.pageCommandsTitle.trim().ifEmpty { DEFAULT_TITLE_PAGE_COMMANDS }
                                 val cleanMissedBanner = updated.missedBannerText.trim().ifEmpty { DEFAULT_TITLE_MISSED_BANNER }
                                 val cleanRoutineTitle = updated.routineTitle.trim().ifEmpty { DEFAULT_TITLE_ROUTINE }
+                                val cleanStreakTitle = updated.streakTitle.trim().ifEmpty { DEFAULT_TITLE_STREAK }
                                 val cleanDaysToRoutine = updated.daysToRoutineText.trim().ifEmpty { DEFAULT_TEXT_DAYS_TO_ROUTINE }
                                 val cleanOnRoutine = updated.onRoutineText.trim().ifEmpty { DEFAULT_TEXT_ON_ROUTINE }
                                 scheduleTitle = cleanPlanTitle
@@ -1097,6 +1106,7 @@ fun WorkoutAssistApp() {
                                 pageCommandsTitleLabel = cleanPageCommandsTitle
                                 missedBannerTextLabel = cleanMissedBanner
                                 routineTitleLabel = cleanRoutineTitle
+                                streakTitleLabel = cleanStreakTitle
                                 daysToRoutineTextLabel = cleanDaysToRoutine
                                 onRoutineTextLabel = cleanOnRoutine
                                 prefs.edit()
@@ -1114,6 +1124,7 @@ fun WorkoutAssistApp() {
                                     .putString(KEY_TITLE_PAGE_COMMANDS, cleanPageCommandsTitle)
                                     .putString(KEY_TITLE_MISSED_BANNER, cleanMissedBanner)
                                     .putString(KEY_TITLE_ROUTINE, cleanRoutineTitle)
+                                    .putString(KEY_TITLE_STREAK, cleanStreakTitle)
                                     .putString(KEY_TEXT_DAYS_TO_ROUTINE, cleanDaysToRoutine)
                                     .putString(KEY_TEXT_ON_ROUTINE, cleanOnRoutine)
                                     .apply()
