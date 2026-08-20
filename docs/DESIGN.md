@@ -4,9 +4,17 @@ Lean Android utility app for fast workout logging during training.
 
 Primary design source: see DESIGN_VERSIONS.md and append all future design updates as version increments.
 
-## Current Product Snapshot (v1.104)
+## Current Product Snapshot (v1.105)
 
-> v1.104 is the authoritative current state for Schedule, Insights, active session, and Analytics. Older bullets below are historical and may be superseded by these notes.
+> v1.105 is the authoritative current state for Schedule, Insights, active session, and Analytics. Older bullets below are historical and may be superseded by these notes.
+
+### v1.105 current behavior
+- The Insights streak visualization defaults to a **Streak Momentum** graph: a horizontally scrollable bar chart where each run of consecutive workout days climbs 1,2,3… and every missed day resets it to 0. It auto-opens on the latest (right-most) entry. Double-tap it (no confirm) to open a full-screen inspector that shows your best streak and scales taller per streak-day, scrolling both ways.
+- **Settings > Streak graph** (an Options subpage, like Labels) holds two toggles: **Classic triangle graph** (off = momentum, on = the old triangle) and **Stock-market candles** (off = bars, on = green/red candles where green climbs a day and a red candle crashes the streak to 0 on a miss). Settings > Appearance > **Default schedule view** picks whether the Workout home opens in Compact or Calendar (default Compact).
+- Exiting a workout mid-session no longer counts as a completed workout — the started session is discarded (`abandonSession`); only the Hold-to-Finish action records completion, so streaks/Insights/schedule "done" stay accurate.
+- Logging a set fills **weight** down to later sets but keeps each set's **reps** independent.
+- Polish: the workout day title is centered; the set-table headers read `REPS` / `WGT`; the active-session rest shows as `Rest 1m30s` under the exercise name.
+- Internal: shared pure helpers live in `AppFormatters` (`stripWeightUnit`, `computeRoutineStreak`, `completedInWindow`, `buildStreakMomentumSeries`), the old `WorkoutDayScreen` god file was split into focused files, and JUnit tests cover the streak/window/weight helpers.
 
 ### v1.104 current behavior
 - Mid-session, double-tapping the focused exercise's title opens a confirm ("View past sessions?" / Cancel / Yes), and confirming shows a temporary overlay (`Dialog`) of that exercise's prior sessions — each rendered with the compact reps/wgt table — pulled from `setLogs` (excluding the active session, matched by exercise name). Back or the close (X) dismisses it and returns to the live session unchanged — no tab switch, so the session never breaks.

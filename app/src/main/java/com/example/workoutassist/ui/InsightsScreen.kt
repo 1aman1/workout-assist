@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -28,6 +29,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Info
@@ -55,6 +57,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -62,6 +67,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import com.example.workoutassist.data.SetLogEntity
 import com.example.workoutassist.data.WorkoutDayModel
 import com.example.workoutassist.data.WorkoutRepository
@@ -108,6 +114,8 @@ internal fun InsightsScreen(
     onShortWindowChange: (Int) -> Unit = {},
     routineWindowOverride: Int = 0,
     onRoutineWindowChange: (Int) -> Unit = {},
+    useClassicStreakGraph: Boolean = false,
+    stockMode: Boolean = false,
     onOpenGraphs: () -> Unit = {}
 ) {
     val scope = rememberCoroutineScope()
@@ -115,6 +123,8 @@ internal fun InsightsScreen(
     var showWorkoutInsights by remember { mutableStateOf(false) }
     var showWindowPicker by remember { mutableStateOf(false) }
     var showRoutineWindowPicker by remember { mutableStateOf(false) }
+    // Full-screen inspector so a tall streak graph can be examined with 2D scrolling.
+    var showMomentumInspector by remember { mutableStateOf(false) }
 
     val finishedSessionSamples = remember(sessions) {
         sessions
@@ -162,6 +172,13 @@ internal fun InsightsScreen(
     }
     val onRoutine = routineStreak >= cycleLength
     val daysToRoutine = (cycleLength - routineStreak).coerceAtLeast(0)
+
+    // Momentum: streak length plotted over the full history. Each run of consecutive
+    // workout days climbs 1,2,3..., and every missed-day gap drops it back to 0.
+    val momentumSeries = remember(completedSessionEpochDays) {
+        buildStreakMomentumSeries(completedSessionEpochDays)
+    }
+    val bestStreak = remember(momentumSeries) { momentumSeries.maxOrNull() ?: 0 }
 
     val setLogsBySessionId = remember(setLogs) {
         setLogs.groupBy { log -> log.sessionId }
@@ -372,13 +389,21 @@ internal fun InsightsScreen(
 
                         HorizontalDivider()
 
-                        RoutineBatteryBar(
-                            label = routineTitle,
-                            streak = routineStreak,
-                            total = cycleLength,
-                            remainingColor = bannerColor,
-                            onDoubleTap = { showRoutineWindowPicker = true }
-                        )
+                        if (useClassicStreakGraph) {
+                            RoutineBatteryBar(
+                                label = routineTitle,
+                                streak = routineStreak,
+                                total = cycleLength,
+                                remainingColor = bannerColor,
+                                onDoubleTap = { showRoutineWindowPicker = true }
+                            )
+                        } else {
+                            StreakMomentumGraph(
+                                momentumSeries = momentumSeries,
+                                stockMode = stockMode,
+                                onInspect = { showMomentumInspector = true }
+                            )
+                        }
                         if (onRoutine) {
                             Text(
                                 text = onRoutineText,
@@ -511,6 +536,217 @@ internal fun InsightsScreen(
                 showRoutineWindowPicker = false
             }
         )
+    }
+
+    if (showMomentumInspector && momentumSeries.isNotEmpty()) {
+        // Scale the chart to a fixed height-per-day so a long streak grows a tall graph;
+        // the inspector then scrolls both ways to examine it.
+        val inspectorHeight = (bestStreak.coerceAtLeast(1) * 40).dp.coerceAtLeast(200.dp)
+        val inspectorHScroll = rememberScrollState()
+        LaunchedEffect(stockMode, inspectorHScroll.maxValue) {
+            inspectorHScroll.scrollTo(inspectorHScroll.maxValue)
+        }
+        Dialog(onDismissRequest = { showMomentumInspector = false }) {
+            Card(
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Streak momentum",
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        IconButton(onClick = { showMomentumInspector = false }) {
+                            Icon(
+                                imageVector = Icons.Rounded.Close,
+                                contentDescription = "Close"
+                            )
+                        }
+                    }
+                    Text(
+                        text = "Best streak: $bestStreak ${if (bestStreak == 1) "day" else "days"}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 460.dp)
+                            .verticalScroll(rememberScrollState())
+                            .horizontalScroll(inspectorHScroll)
+                    ) {
+                        if (stockMode) {
+                            MomentumCandleChart(
+                                values = momentumSeries,
+                                upColor = Color(0xFF16A34A),
+                                downColor = Color(0xFFDC2626),
+                                modifier = Modifier.height(inspectorHeight)
+                            )
+                        } else {
+                            MomentumBarChart(
+                                values = momentumSeries,
+                                barColor = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.height(inspectorHeight)
+                            )
+                        }
+                    }
+                    Text(
+                        text = "Scroll to explore.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+    }
+}
+
+// The routine streak visualization (default). A horizontally scrollable momentum graph
+// with a Bars/Stocks toggle; the classic triangle graph is shown instead via Settings.
+@Composable
+private fun StreakMomentumGraph(
+    momentumSeries: List<Int>,
+    stockMode: Boolean,
+    onInspect: () -> Unit
+) {
+    val chartScroll = rememberScrollState()
+    // Anchor the view on the latest (right-most) entry so today's trend shows first;
+    // the user can still scroll left through history.
+    LaunchedEffect(momentumSeries, stockMode, chartScroll.maxValue) {
+        chartScroll.scrollTo(chartScroll.maxValue)
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = "Streak momentum",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold
+        )
+        if (momentumSeries.isEmpty()) {
+            Text(
+                text = "Finish a few workouts to see your streak momentum build up here.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        } else {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(chartScroll)
+                    .pointerInput(Unit) {
+                        detectTapGestures(onDoubleTap = { onInspect() })
+                    }
+            ) {
+                if (stockMode) {
+                    MomentumCandleChart(
+                        values = momentumSeries,
+                        upColor = Color(0xFF16A34A),
+                        downColor = Color(0xFFDC2626),
+                        modifier = Modifier.height(180.dp)
+                    )
+                } else {
+                    MomentumBarChart(
+                        values = momentumSeries,
+                        barColor = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.height(180.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+// Stock-market gimmick: draw each day-over-day change in streak as a candle. A climb
+// (green) rises one step; a break (red) drops from the streak peak all the way to zero.
+@Composable
+private fun MomentumCandleChart(
+    values: List<Int>,
+    upColor: Color,
+    downColor: Color,
+    modifier: Modifier = Modifier
+) {
+    if (values.size < 2) return
+    val maxValue = (values.maxOrNull() ?: 1).coerceAtLeast(1)
+    val candleCount = values.size - 1
+    val candleWidth = 12.dp
+    val gap = 6.dp
+    val chartWidth = candleWidth * candleCount + gap * (candleCount - 1).coerceAtLeast(0)
+    Canvas(modifier = modifier.width(chartWidth)) {
+        val cw = candleWidth.toPx()
+        val g = gap.toPx()
+        val radius = CornerRadius(3.dp.toPx(), 3.dp.toPx())
+        val minBody = 3.dp.toPx()
+        for (i in 1 until values.size) {
+            val open = values[i - 1]
+            val close = values[i]
+            val isUp = close >= open
+            val color = if (isUp) upColor else downColor
+            val topValue = maxOf(open, close)
+            val bottomValue = minOf(open, close)
+            val topY = size.height * (1f - topValue.toFloat() / maxValue)
+            val bottomY = size.height * (1f - bottomValue.toFloat() / maxValue)
+            val left = (i - 1) * (cw + g)
+            var bodyTop = topY
+            var bodyHeight = bottomY - topY
+            if (bodyHeight < minBody) {
+                bodyTop = ((topY + bottomY) / 2f) - minBody / 2f
+                bodyHeight = minBody
+            }
+            drawRoundRect(
+                color = color,
+                topLeft = Offset(left, bodyTop),
+                size = Size(cw, bodyHeight),
+                cornerRadius = radius
+            )
+        }
+    }
+}
+
+@Composable
+private fun MomentumBarChart(
+    values: List<Int>,
+    barColor: Color,
+    modifier: Modifier = Modifier
+) {
+    if (values.isEmpty()) return
+    val maxValue = (values.maxOrNull() ?: 1).coerceAtLeast(1)
+    val barWidth = 14.dp
+    val gap = 6.dp
+    val chartWidth = barWidth * values.size + gap * (values.size - 1).coerceAtLeast(0)
+    Canvas(modifier = modifier.width(chartWidth)) {
+        val bw = barWidth.toPx()
+        val g = gap.toPx()
+        val radius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
+        values.forEachIndexed { index, value ->
+            val norm = value.toFloat() / maxValue.toFloat()
+            val barHeight = size.height * norm
+            val left = index * (bw + g)
+            drawRoundRect(
+                color = barColor.copy(alpha = 0.12f),
+                topLeft = Offset(left, 0f),
+                size = Size(bw, size.height),
+                cornerRadius = radius
+            )
+            if (barHeight > 0f) {
+                drawRoundRect(
+                    color = barColor,
+                    topLeft = Offset(left, size.height - barHeight),
+                    size = Size(bw, barHeight),
+                    cornerRadius = radius
+                )
+            }
+        }
     }
 }
 

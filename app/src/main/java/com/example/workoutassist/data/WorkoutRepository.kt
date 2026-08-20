@@ -458,6 +458,12 @@ class WorkoutRepository(private val dao: WorkoutDao) {
             .forEach { stale -> dao.deleteSessionById(stale.id) }
     }
 
+    // Abandon an in-progress session: delete the session (its set logs cascade away) so a
+    // workout that was exited rather than completed never counts as done.
+    suspend fun abandonSession(sessionId: Long) {
+        dao.deleteSessionById(sessionId)
+    }
+
     // Records a completed workout on a past (or any) date using its planned reps/weights.
     // Enforces one workout per day by replacing anything already on that date.
     suspend fun logBackdatedWorkout(day: WorkoutDayModel, dateEpochDay: Long) {

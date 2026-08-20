@@ -43,6 +43,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -109,6 +110,10 @@ internal fun SettingsScreen(
     onLabelsSaved: (AppLabels) -> Unit,
     defaultScheduleCalendar: Boolean,
     onDefaultScheduleCalendarChanged: (Boolean) -> Unit,
+    useClassicStreakGraph: Boolean,
+    onUseClassicStreakGraphChanged: (Boolean) -> Unit,
+    momentumStockMode: Boolean,
+    onMomentumStockModeChanged: (Boolean) -> Unit,
     onExportBackup: () -> Unit,
     onImportBackup: () -> Unit
 ) {
@@ -165,6 +170,7 @@ internal fun SettingsScreen(
                             SettingsView.ROOT -> labels.settingsTab
                             SettingsView.THEME_OPTIONS -> labels.themeTitle
                             SettingsView.LABEL_OPTIONS -> labels.labelsTitle
+                            SettingsView.STREAK_GRAPH_OPTIONS -> "Streak graph"
                             SettingsView.PAGE_COMMANDS -> labels.pageCommandsTitle
                         },
                         fontWeight = FontWeight.SemiBold
@@ -273,6 +279,42 @@ internal fun SettingsScreen(
                                     selected = defaultScheduleCalendar,
                                     onClick = { onDefaultScheduleCalendarChanged(true) },
                                     label = { Text(labels.calendarButton) }
+                                )
+                            }
+                        }
+                    }
+
+                    Card(
+                        shape = RoundedCornerShape(18.dp),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Text(
+                                text = "Streak graph",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = "Choose the Insights streak graph style and its look.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            OutlinedButton(
+                                onClick = { settingsView = SettingsView.STREAK_GRAPH_OPTIONS },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Text("Options")
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                                    contentDescription = null
                                 )
                             }
                         }
@@ -635,6 +677,74 @@ internal fun SettingsScreen(
                                         shape = RoundedCornerShape(12.dp)
                                     ) {
                                         Text("Save labels")
+                                    }
+                                }
+                            }
+                        }
+
+                        SettingsView.STREAK_GRAPH_OPTIONS -> {
+                            Card(
+                                shape = RoundedCornerShape(18.dp),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                                ) {
+                                    Text(
+                                        text = "Streak graph",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Text(
+                                        text = "Choose how your streak shows in Insights.",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "Classic triangle graph",
+                                                style = MaterialTheme.typography.bodyLarge
+                                            )
+                                            Text(
+                                                text = "Use the old triangle instead of the momentum graph.",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                        Switch(
+                                            checked = useClassicStreakGraph,
+                                            onCheckedChange = onUseClassicStreakGraphChanged
+                                        )
+                                    }
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "Stock-market candles",
+                                                style = MaterialTheme.typography.bodyLarge
+                                            )
+                                            Text(
+                                                text = "Show the momentum graph as green/red candles.",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                        Switch(
+                                            checked = momentumStockMode,
+                                            onCheckedChange = onMomentumStockModeChanged
+                                        )
                                     }
                                 }
                             }

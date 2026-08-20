@@ -29,19 +29,21 @@ Workout Assist follows a repeating **7-day training template** (Day 1 → Day 7,
 - Planned vs. actual capture at the **set level** (reps and optional weight).
 - Add/remove exercises and sets mid-session; long-press a set to remove it.
 - **Skip** logs a real 0-rep entry and stays re-selectable so you can undo within the session.
-- **Ladder fill-down** — the reps/weight you set on a set copy down to the later sets, so you only change what differs.
+- **Fill-down** — the weight you set on a set copies down to the later sets (reps stay per-set, since they usually vary), so you only change what differs.
 - Two top-bar **stopwatches** (not saved), told apart by icon: a **Total** session timer and a **Rest** interval timer that resets (with a quick flash) each time you save a set.
-- **Finish** and **exit** are press-and-hold (a filling button) to prevent an accidental tap ending your session.
+- **Finish** and **exit** are press-and-hold (a filling button) to prevent an accidental tap ending your session. Exiting mid-session discards the started session, so only a finished workout counts as done.
 
 ### Insights & Analytics
 - Rolling adherence ratios shown as battery-style step bars: an adjustable recent window (tap to set 5–15 days, default 7) plus a fixed **last-30-day** bar.
 - **Back-to-routine streak** — an on-plan streak toward one full cycle; shows how many days are left to get back on routine, or "You're on routine" once the streak covers a full cycle.
+- **Streak Momentum graph** — a horizontally scrollable graph that climbs 1 per workout day and drops to 0 on a missed day; opens on today and double-taps into a full-screen inspector that shows your best streak. Choose the style (momentum or classic triangle) and look (bars or stock-market candles) under Settings > Streak graph.
 - **Workout Insights** sub-page — per-workout, date-wise exercise history (e.g. `50 x6, 60 x6x6`) with per-set edit/delete, opened from the Insights home.
 - **Progress Graphs (Beta)** — consistency rings, weekly-frequency bars, and per-exercise weight/reps line charts (native Compose Canvas).
 
 ### Personalization
 - **Themes** — four role-based colors (Background / Status / Done / Missed-banner) picked from tappable swatches, plus a custom **HSV gradient color picker**.
 - **Editable labels** — rename all page and subpage titles, the Compact/Calendar toggle, the bottom tabs, the missed-day banner text, and the Back-to-routine stat texts in Settings → Labels.
+- **View preferences** — choose the default schedule view (Compact or Calendar) in Settings → Appearance, and switch the streak visualization between the momentum graph and the classic triangle (plus bars vs. stock-market candles) in Settings → Streak graph.
 - **Backup & Restore** — export/import all local data as JSON with clear success/failure feedback.
 
 ---

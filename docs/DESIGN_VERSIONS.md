@@ -1483,6 +1483,25 @@ How to use:
 
 ---
 
+## Version 1.105 (2026-08-20)
+- Change summary:
+  - Insights streak visualization now defaults to a new **Streak Momentum** graph (replacing the routine triangle). A pure helper `buildStreakMomentumSeries(completedDays)` emits, per run of consecutive completed days, a `0` (break/reset) then `1..runLength` (the climb), e.g. `[0,1,2,3,4, 0,1,2,3]`. Rendered as a horizontally scrollable `MomentumBarChart` that auto-anchors to the right-most (latest) entry via `LaunchedEffect(scroll.maxValue)`. The inline graph is just a title + chart; "Best streak: N" shows only inside the inspector.
+  - Double-tap to inspect (no confirm): opens a full-screen `Dialog` inspector that scales the chart to a fixed height-per-day (~40dp) and scrolls both vertically and horizontally (also right-anchored) so tall streaks can be examined; it shows the best-streak count. Inline chart height bumped 150dp -> 180dp.
+  - Streak-graph preferences live in a **Settings > Streak graph** subpage (opened via an Options button, like Labels/Theme). It holds two persisted toggles: **Classic triangle graph** (`KEY_CLASSIC_STREAK_GRAPH`, default off = momentum; on = `RoutineBatteryBar`) and **Stock-market candles** (`KEY_MOMENTUM_STOCK_MODE`, default off = bars; on = `MomentumCandleChart`, green climbs a day / red crashes to zero). `InsightsScreen` reads both as `useClassicStreakGraph` + `stockMode`; the momentum UI is a `StreakMomentumGraph` composable. New `SettingsView.STREAK_GRAPH_OPTIONS`.
+  - Settings > Appearance adds a **Default schedule view** chooser (Compact/Calendar, `KEY_DEFAULT_SCHEDULE_CALENDAR`, default Compact); `ScheduleScreen` gained `defaultCalendarView` initializing its `expanded` state.
+  - Bugfix — exiting a session no longer counts as completed: `exitWorkoutModeAndLeave` now calls a new `WorkoutRepository.abandonSession(id)` (deletes the started session; its set logs cascade via FK) instead of `finishSession`. Completion (`finishedAt`) is set only by the Hold-to-Finish action, keeping Insights/streak/schedule "done" accurate.
+  - Reps fill-down fix: `updateSetRepsSelection` now applies the picked reps only to the tapped set (reps vary per set); weight (`updateSetWeightSelection`) still ladders down to later sets.
+  - Small UI: workout day title centered (`TextAlign.Center`); `ExerciseSetTable` headers `reps`/`wgt` -> `REPS`/`WGT`; active-session rest text moved below the exercise title and capitalized to `Rest 1m30s`.
+  - Internal refactor (no behavior change): extracted shared pure helpers into `AppFormatters` (`stripWeightUnit`, `computeRoutineStreak`, `completedInWindow`, `buildStreakMomentumSeries`) and split the 2268-line `WorkoutDayScreen.kt` god file into focused files (`WorkoutActivePage.kt`, `WorkoutSessionControls.kt`, `ExerciseRow.kt`, `WorkoutDialogs.kt`). Added JUnit tests (`AppFormattersTest`) covering the streak/window/weight helpers.
+- Why changed:
+  - A momentum graph reads "trend" better than a static triangle and scales to long streaks; abandoning (not finishing) an exited session fixes false "completed" days; reps rarely repeat across sets so they shouldn't auto-fill.
+- UX impact:
+  - Insights opens on today's streak trend with a live current-streak count; a fun Stocks mode and a double-tap inspector; the classic triangle is one toggle away; exiting mid-workout never inflates your streak.
+- Data/model impact:
+  - New prefs `KEY_CLASSIC_STREAK_GRAPH` (Bool, default false) and `KEY_DEFAULT_SCHEDULE_CALENDAR` (Bool, default false). New repo API `abandonSession` (delete-only; cascades set logs). No schema change.
+- Migration notes (if any):
+  - None.
+
 ## Version 1.104 (2026-08-14)
 - Change summary:
   - Ladder set fill-down during a session: `updateSetRepsSelection` / `updateSetWeightSelection` now apply the picked value to the chosen set AND copy it down to every later set (indices `setIndex..exercise.sets - 1`), so logging set 1 pre-fills the rest. Only the explicitly chosen set is marked in `editedSetIndexesByExerciseId`; subsequent per-set edits fill down from their own index. Saving the exercise persists the filled values as the actuals.

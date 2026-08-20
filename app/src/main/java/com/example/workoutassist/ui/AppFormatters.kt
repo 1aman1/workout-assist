@@ -83,6 +83,29 @@ internal fun computeRoutineStreak(completedDays: Set<Long>, todayEpochDay: Long)
     return streak
 }
 
+// Streak-momentum series: each maximal run of consecutive completed days is emitted as
+// a 0 (the break/reset) followed by 1..runLength (the climb), so missed-day gaps read as
+// drops to zero. Example: runs of 4, 3, 4 days -> [0,1,2,3,4, 0,1,2,3, 0,1,2,3,4].
+internal fun buildStreakMomentumSeries(completedDays: Set<Long>): List<Int> {
+    if (completedDays.isEmpty()) return emptyList()
+    val sortedDays = completedDays.toSortedSet().toList()
+    val series = mutableListOf<Int>()
+    var runLength = 0
+    var previousDay: Long? = null
+    for (day in sortedDays) {
+        val continuesRun = previousDay != null && day == previousDay + 1L
+        if (continuesRun) {
+            runLength += 1
+        } else {
+            series.add(0)
+            runLength = 1
+        }
+        series.add(runLength)
+        previousDay = day
+    }
+    return series
+}
+
 internal fun parseWeightValue(text: String): Float? {
     return Regex("\\d+(?:\\.\\d+)?")
         .find(text)

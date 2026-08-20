@@ -82,6 +82,7 @@ internal enum class SettingsView {
     ROOT,
     THEME_OPTIONS,
     LABEL_OPTIONS,
+    STREAK_GRAPH_OPTIONS,
     PAGE_COMMANDS
 }
 
@@ -170,6 +171,8 @@ private const val MIN_INSIGHTS_SHORT_WINDOW = 5
 private const val MAX_INSIGHTS_SHORT_WINDOW = 15
 private const val KEY_ROUTINE_WINDOW = "insights_routine_window"
 private const val KEY_DEFAULT_SCHEDULE_CALENDAR = "default_schedule_calendar"
+private const val KEY_CLASSIC_STREAK_GRAPH = "classic_streak_graph"
+private const val KEY_MOMENTUM_STOCK_MODE = "momentum_stock_mode"
 private const val DEFAULT_THEME_BACKGROUND_ID = "white"
 private const val DEFAULT_THEME_STATUS_ID = "turquoise"
 private const val DEFAULT_THEME_DONE_ID = "green"
@@ -179,7 +182,7 @@ private const val DEFAULT_THEME_DONE_CUSTOM_HEX = "#1E9E58"
 private const val DEFAULT_THEME_BANNER_ID = "flame"
 private const val DEFAULT_THEME_BANNER_CUSTOM_HEX = "#BF360C"
 internal const val CUSTOM_THEME_OPTION_ID = "custom"
-internal const val LATEST_DESIGN_VERSION = "1.104"
+internal const val LATEST_DESIGN_VERSION = "1.105"
 
 internal val WORKOUT_SESSION_START_MESSAGES = listOf(
     "Lift weights and come back !",
@@ -220,14 +223,14 @@ internal val PAGE_COMMAND_NAMES = listOf(
     AppPageCommand(name = "Workout Session", command = "workout.session", description = "Active workout session (focus mode)"),
     AppPageCommand(name = "Exercise History Peek", command = "workout.session.history", description = "Active session: double-tap the exercise title -> confirm -> temporary past-sessions overlay (back/close returns to the session)"),
     AppPageCommand(name = "Insights", command = "insights.home", description = "Insights tab (ratios + open Workout Insights + Progress Graphs)"),
-    AppPageCommand(name = "Routine Streak", command = "insights.routine", description = "Insights: routine streak triangle w/ day axis + fire markers (hold to change target days 5-15)"),
+    AppPageCommand(name = "Streak Graph", command = "insights.routine", description = "Insights: streak momentum graph (Bars/Stocks toggle, double-tap to inspect); Settings > Streak graph switches to the classic triangle"),
     AppPageCommand(name = "Adherence Ratios", command = "insights.ratios", description = "Insights: recent-days + last-30-day ratio bars (tap short bar to change window 5-15)"),
     AppPageCommand(name = "Workout Insights", command = "insights.workout", description = "Insights > Workout Insights (per-workout exercise history)"),
     AppPageCommand(name = "Progress Graphs", command = "graphs.progress", description = "Progress Graphs (beta), opened from Insights"),
     AppPageCommand(name = "Consistency Rings", command = "graphs.consistency", description = "Progress Graphs: last-7 / last-30 consistency rings"),
     AppPageCommand(name = "Weekly Frequency", command = "graphs.frequency", description = "Progress Graphs: weekly-frequency bars"),
     AppPageCommand(name = "Exercise Trends", command = "graphs.exercise", description = "Progress Graphs: per-exercise weight/reps line charts"),
-    AppPageCommand(name = "Settings", command = "settings.home", description = "Settings root (Appearance, Data, Advanced)"),
+    AppPageCommand(name = "Settings", command = "settings.home", description = "Settings root (Appearance: labels, theme, default schedule view, streak graph; Data; Advanced)"),
     AppPageCommand(name = "Backup & Restore", command = "settings.backup", description = "Settings > Data: export/import a JSON backup"),
     AppPageCommand(name = "Theme", command = "settings.theme", description = "Settings > Theme (colors + custom picker)"),
     AppPageCommand(name = "Labels", command = "settings.labels", description = "Settings > Labels (titles, toggle, tabs, routine texts)"),
@@ -236,6 +239,11 @@ internal val PAGE_COMMAND_NAMES = listOf(
 )
 
 internal val LATEST_VERSION_HIGHLIGHTS = listOf(
+    "The Insights streak view is now a scrollable Streak Momentum graph: it climbs 1 per workout day and drops to 0 when you miss a day, and opens on today (right-most). Double-tap it to open a taller, scrollable inspector that shows your best streak. Switch the style (momentum or classic triangle) and look (bars or stock-market candles) under Settings > Streak graph.",
+    "Exiting a workout mid-session no longer counts as completed - only the Hold-to-Finish action records a done workout, so your streaks stay honest.",
+    "Pick which schedule view opens by default (Compact or Calendar) in Settings > Default schedule view.",
+    "Logging a set now fills weight down to later sets but keeps each set's reps independent (reps usually vary per set).",
+    "Polish: the workout day title is centered, the set-table headers read REPS / WGT, and the active-session rest shows as 'Rest 1m30s' under the exercise name.",
     "Today's pending workout now nudges you with a pulsing angry red emoji instead of a flame, and your streak triangle shows bigger flames for each day done.",
     "Editing the recent-days ratio and the streak target is now double-tap (both), the past-sessions peek shows a clean reps/wgt table, and weights drop the 'kg' clutter.",
     "Peek at your history mid-workout: double-tap the exercise title, confirm, and a temporary overlay shows what you did for that exercise in past sessions — close it (or back) to drop right back into your session.",
@@ -542,6 +550,12 @@ fun WorkoutAssistApp() {
     }
     var defaultScheduleCalendar by remember {
         mutableStateOf(prefs.getBoolean(KEY_DEFAULT_SCHEDULE_CALENDAR, false))
+    }
+    var useClassicStreakGraph by remember {
+        mutableStateOf(prefs.getBoolean(KEY_CLASSIC_STREAK_GRAPH, false))
+    }
+    var momentumStockMode by remember {
+        mutableStateOf(prefs.getBoolean(KEY_MOMENTUM_STOCK_MODE, false))
     }
     var backgroundThemeOptionId by remember {
         mutableStateOf(
@@ -959,6 +973,8 @@ fun WorkoutAssistApp() {
                                     routineWindowOverride = clamped
                                     prefs.edit().putInt(KEY_ROUTINE_WINDOW, clamped).apply()
                                 },
+                                useClassicStreakGraph = useClassicStreakGraph,
+                                stockMode = momentumStockMode,
                                 onOpenGraphs = { showGraphsPage = true }
                             )
                         }
@@ -1112,6 +1128,16 @@ fun WorkoutAssistApp() {
                             onDefaultScheduleCalendarChanged = { useCalendar ->
                                 defaultScheduleCalendar = useCalendar
                                 prefs.edit().putBoolean(KEY_DEFAULT_SCHEDULE_CALENDAR, useCalendar).apply()
+                            },
+                            useClassicStreakGraph = useClassicStreakGraph,
+                            onUseClassicStreakGraphChanged = { enabled ->
+                                useClassicStreakGraph = enabled
+                                prefs.edit().putBoolean(KEY_CLASSIC_STREAK_GRAPH, enabled).apply()
+                            },
+                            momentumStockMode = momentumStockMode,
+                            onMomentumStockModeChanged = { enabled ->
+                                momentumStockMode = enabled
+                                prefs.edit().putBoolean(KEY_MOMENTUM_STOCK_MODE, enabled).apply()
                             }
                         )
                     }

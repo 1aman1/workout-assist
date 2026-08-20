@@ -349,11 +349,9 @@ internal fun WorkoutDayScreen(
         while (current.size <= lastSetIndex) {
             current.add(exercise.reps)
         }
-        // Ladder fill-down: apply to this set and copy the value to every later set,
-        // so logging set 1 pre-fills the rest and leaves fewer taps.
-        for (index in setIndex..lastSetIndex) {
-            current[index] = value
-        }
+        // Reps apply only to the tapped set. Unlike weight (which ladders down to every
+        // later set), reps commonly vary per set, so we don't overwrite the rest.
+        current[setIndex] = value
         selectedSetRepsByExerciseId = selectedSetRepsByExerciseId + (exercise.id to current.toList())
 
         val editedSetIndexes = editedSetIndexesByExerciseId[exercise.id].orEmpty() + setIndex
@@ -546,6 +544,17 @@ internal fun WorkoutDayScreen(
         }
     }
 
+    // Exiting without completing must not count as a workout: drop the started session
+    // (and its logged sets) so only the Finish action records a completed workout.
+    fun abandonActiveSessionIfAny() {
+        if (activeSessionId != 0L) {
+            val sessionId = activeSessionId
+            scope.launch {
+                repository.abandonSession(sessionId)
+            }
+        }
+    }
+
     fun resetWorkoutModeState() {
         workoutActive = false
         editMode = false
@@ -585,7 +594,7 @@ internal fun WorkoutDayScreen(
     }
 
     fun exitWorkoutModeAndLeave() {
-        finishActiveSessionIfAny()
+        abandonActiveSessionIfAny()
         resetWorkoutModeState()
         onBack()
     }

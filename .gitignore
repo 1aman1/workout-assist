@@ -12,6 +12,12 @@ gradle/gradle-daemon-jvm.properties
 # Kotlin/Java compile output
 out/
 
+# Kotlin compiler cache, sessions, and error logs
+.kotlin/
+
+# Logs and scratch build output
+*.log
+
 # Local SDK and machine-specific config
 local.properties
 

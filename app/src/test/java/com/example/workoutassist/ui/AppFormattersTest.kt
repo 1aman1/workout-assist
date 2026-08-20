@@ -87,6 +87,31 @@ class AppFormattersTest {
     }
 
     @Test
+    fun buildStreakMomentumSeries_emitsZeroThenClimbPerRun() {
+        // runs of 4, 3, 4 consecutive days separated by gaps.
+        val days = setOf(1L, 2L, 3L, 4L, 10L, 11L, 12L, 20L, 21L, 22L, 23L)
+        assertEquals(
+            listOf(0, 1, 2, 3, 4, 0, 1, 2, 3, 0, 1, 2, 3, 4),
+            buildStreakMomentumSeries(days)
+        )
+    }
+
+    @Test
+    fun buildStreakMomentumSeries_singleDayIsZeroThenOne() {
+        assertEquals(listOf(0, 1), buildStreakMomentumSeries(setOf(5L)))
+    }
+
+    @Test
+    fun buildStreakMomentumSeries_emptyIsEmpty() {
+        assertEquals(emptyList<Int>(), buildStreakMomentumSeries(emptySet()))
+    }
+
+    @Test
+    fun buildStreakMomentumSeries_sortsUnorderedInput() {
+        assertEquals(listOf(0, 1, 2, 3), buildStreakMomentumSeries(setOf(3L, 1L, 2L)))
+    }
+
+    @Test
     fun parseWeightValue_extractsLeadingNumber() {
         assertEquals(60f, parseWeightValue("60 kg"))
         assertEquals(12.5f, parseWeightValue("12.5 kg"))
