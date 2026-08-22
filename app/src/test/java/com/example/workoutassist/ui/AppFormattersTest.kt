@@ -88,27 +88,38 @@ class AppFormattersTest {
 
     @Test
     fun buildMomentumEntries_climbsAndShowsEachMiss() {
-        // days 1,2,3 (climb), then 4 & 5 missed, then 6 (today) -> leading 0 at day 0.
+        // days 1,2,3 (climb), then 4 & 5 missed, then 6 (today, logged) -> leading 0 at day 0.
         val entries = buildMomentumEntries(setOf(1L, 2L, 3L, 6L), todayEpochDay = 6L)
         assertEquals(
             listOf(0L to 0, 1L to 1, 2L to 2, 3L to 3, 4L to 0, 5L to 0, 6L to 1),
             entries.map { it.epochDay to it.value }
         )
+        assertEquals(MomentumDayStatus.DONE, entries.last().status)
     }
 
     @Test
-    fun buildMomentumEntries_appendsTrailingMissesUpToYesterday() {
-        // last workout day 3, today 6 -> days 4 & 5 missed (today not counted yet).
+    fun buildMomentumEntries_appendsTrailingMissesThenPendingToday() {
+        // last workout day 3, today 6 -> days 4 & 5 confirmed missed, today (6) is pending.
         val entries = buildMomentumEntries(setOf(1L, 2L, 3L), todayEpochDay = 6L)
         assertEquals(
-            listOf(0L to 0, 1L to 1, 2L to 2, 3L to 3, 4L to 0, 5L to 0),
+            listOf(0L to 0, 1L to 1, 2L to 2, 3L to 3, 4L to 0, 5L to 0, 6L to 0),
             entries.map { it.epochDay to it.value }
         )
+        assertEquals(MomentumDayStatus.MISS, entries[entries.size - 2].status)
+        assertEquals(MomentumDayStatus.PENDING, entries.last().status)
     }
 
     @Test
-    fun buildMomentumEntries_emptyIsEmpty() {
-        assertEquals(emptyList<Pair<Long, Int>>(), buildMomentumEntries(emptySet(), 10L).map { it.epochDay to it.value })
+    fun buildMomentumEntries_emptyHistoryStillShowsPendingToday() {
+        val entries = buildMomentumEntries(emptySet(), todayEpochDay = 10L)
+        assertEquals(listOf(10L to 0), entries.map { it.epochDay to it.value })
+        assertEquals(MomentumDayStatus.PENDING, entries.single().status)
+    }
+
+    @Test
+    fun buildMomentumEntries_todayAlreadyLoggedIsDoneNotPending() {
+        val entries = buildMomentumEntries(setOf(10L), todayEpochDay = 10L)
+        assertEquals(MomentumDayStatus.DONE, entries.last().status)
     }
 
     @Test

@@ -1483,6 +1483,34 @@ How to use:
 
 ---
 
+## Version 1.107 (2026-08-22)
+- Change summary:
+  - Bugfix: `WorkoutRepository.renameWorkout(dayNumber, workoutName)` only updated `template_days.workoutName`; each `WorkoutSessionEntity` stores its own `workoutName` **snapshot** taken at session-start/finish time, so a rename left already-logged sessions carrying the old name. Since Workout Insights groups history by `workoutName` (`trackedWorkoutNames`, `dayNumberByWorkoutName` in `InsightsScreen`), the same day then showed as two separate tracked workouts (old name and new name) even though `dayNumber` was unchanged.
+  - Fix: added `WorkoutDao.renameSessionsForDay(dayNumber, workoutName)` (`UPDATE workout_sessions SET workoutName = :workoutName WHERE dayNumber = :dayNumber`); `renameWorkout` now calls it right after updating the template, relabeling every past session for that day in one shot.
+- Why changed:
+  - Renaming a workout day should only change its display name, not fragment its logged history.
+- UX impact:
+  - Workout Insights shows one combined entry per day again after a rename. Existing installs where a rename already split history (before this fix) self-heal the next time that day is renamed again (even re-saving the same name merges old-name and new-name sessions, since the update matches by `dayNumber`).
+- Data/model impact:
+  - No schema/migration change (existing `workout_sessions.workoutName` column, new query only).
+- Migration notes (if any):
+  - None.
+
+## Version 1.106 (2026-08-22)
+- Change summary:
+  - `buildMomentumEntries` now always includes **today** as an entry, tagged with a new `MomentumDayStatus` (`DONE` / `MISS` / `PENDING`) alongside its existing `epochDay`/`value`. If today is already logged it's `DONE` (unchanged running-streak value); otherwise it's `PENDING` (value `0`, outcome not yet known) — including the previously-early-returned empty-history case, which now returns a single `PENDING` entry for today instead of an empty list.
+  - `MomentumCandleChart` and `MomentumLineChart` both take a `pendingColor` + `pendingLast: Boolean` and render the final candle/point/segment in that pending color (a blue, `Color(0xFF2563EB)`) instead of the usual green/red when today hasn't been logged yet. Once the workout is logged the entry becomes a normal green `DONE` bar on the next recomposition; if the day passes unlogged it becomes a normal red `MISS` bar the next time the graph builds (today shifts forward), with no special-casing needed since `buildMomentumEntries` is recomputed from the current date each time.
+  - The graph header's **Inspect** `TextButton` was replaced with an icon-only `IconButton` using `Icons.AutoMirrored.Rounded.KeyboardArrowRight` (the same chevron used by `SettingsNavCard`), so expanding the inspector now reads as a chevron affordance rather than a labeled button.
+  - The main card's streak summary chips gained a **Current streak** chip (using the existing `routineStreak`) placed before **Best streak**, with **Breaks this month** last. The inspector's Consistency block was reordered the same way: Current streak, Best streak, Breaks this month, Breaks last 3 months, then Active days / Streaks / Avg streak / Longest gap (unchanged).
+- Why changed:
+  - Showing today on the graph (rather than omitting it until logged) keeps the chart's rightmost entry meaningful at a glance; a neutral pending color avoids implying a miss before the day is over. Current streak is the more actionable, time-sensitive number so it now leads both streak summaries.
+- UX impact:
+  - The streak graph's last bar is blue on an unlogged today, flips to green once you log a workout, and turns red like any other miss if you let the day pass. The expand affordance is now an icon, consistent with Settings' navigation chevrons.
+- Data/model impact:
+  - `MomentumEntry` gained a required `status: MomentumDayStatus` field (no default) — all call sites updated. No persistence/schema change.
+- Migration notes (if any):
+  - None.
+
 ## Version 1.105 (2026-08-20)
 - Change summary:
   - Insights streak visualization now defaults to a new **Streak Momentum** graph (replacing the routine triangle). A pure helper `buildMomentumEntries(completedDays, todayEpochDay, windowDays=120)` produces per-calendar-day `MomentumEntry(epochDay, value)` over the recent window: each completed day carries its running streak (1,2,3,...), each missed day is `0` (so consecutive misses each show), with a leading `0` the day before the first run and trailing `0`s for confirmed misses up to yesterday (today, if still unlogged, isn't a miss). Rendered as a horizontally scrollable line or candle chart with a Y-axis (streak scale) and an x-axis of **dates** (day-of-month, via `epochDayToDayOfMonth`); candle misses draw red (a 1-unit red tick for a continuing miss, a full drop for the first miss). Auto-anchors right (latest). Best streak is the all-time max run length (`streakRunLengths`), independent of the windowed graph.

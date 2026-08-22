@@ -36,7 +36,7 @@ Workout Assist follows a repeating **7-day training template** (Day 1 → Day 7,
 ### Insights & Analytics
 - Rolling adherence ratios shown as battery-style step bars: an adjustable recent window (tap to set 5–15 days, default 7) plus a fixed **last-30-day** bar.
 - **Back-to-routine streak** — an on-plan streak toward one full cycle; shows how many days are left to get back on routine, or "You're on routine" once the streak covers a full cycle.
-- **Streak Momentum graph** — a horizontally scrollable graph that climbs 1 per workout day and drops to 0 on a missed day; opens on today and double-taps into a full-screen inspector that shows your best streak. Choose the style (momentum or classic triangle) and look (bars or stock-market candles) under Settings > Streak graph.
+- **Streak Momentum graph** — a horizontally scrollable graph that climbs 1 per workout day and drops to 0 on a missed day; today always shows too, in blue while its workout is still pending, turning green once logged (or red like any other miss if the day passes unlogged). Opens on today, and the chevron icon expands it into a full-screen inspector with your current + best streak, a streak-length breakdown, and consistency stats. Choose the style (momentum or classic triangle) and look (line or stock-market candles) under Settings > Streak graph.
 - **Workout Insights** sub-page — per-workout, date-wise exercise history (e.g. `50 x6, 60 x6x6`) with per-set edit/delete, opened from the Insights home.
 - **Progress Graphs (Beta)** — consistency rings, weekly-frequency bars, and per-exercise weight/reps line charts (native Compose Canvas).
 

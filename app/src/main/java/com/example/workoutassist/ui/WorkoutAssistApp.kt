@@ -185,7 +185,7 @@ private const val DEFAULT_THEME_DONE_CUSTOM_HEX = "#1E9E58"
 private const val DEFAULT_THEME_BANNER_ID = "flame"
 private const val DEFAULT_THEME_BANNER_CUSTOM_HEX = "#BF360C"
 internal const val CUSTOM_THEME_OPTION_ID = "custom"
-internal const val LATEST_DESIGN_VERSION = "1.105"
+internal const val LATEST_DESIGN_VERSION = "1.107"
 
 internal val WORKOUT_SESSION_START_MESSAGES = listOf(
     "Lift weights and come back !",
@@ -226,7 +226,7 @@ internal val PAGE_COMMAND_NAMES = listOf(
     AppPageCommand(name = "Workout Session", command = "workout.session", description = "Active workout session (focus mode)"),
     AppPageCommand(name = "Exercise History Peek", command = "workout.session.history", description = "Active session: double-tap the exercise title -> confirm -> temporary past-sessions overlay (back/close returns to the session)"),
     AppPageCommand(name = "Insights", command = "insights.home", description = "Insights tab (ratios + open Workout Insights + Progress Graphs)"),
-    AppPageCommand(name = "Streak Graph", command = "insights.routine", description = "Insights: streak momentum graph (Bars/Stocks toggle, double-tap to inspect); Settings > Streak graph switches to the classic triangle"),
+    AppPageCommand(name = "Streak Graph", command = "insights.routine", description = "Insights: streak momentum graph (Bars/Stocks toggle, tap the chevron icon to inspect); today shows pending (blue) until logged; Settings > Streak graph switches to the classic triangle"),
     AppPageCommand(name = "Adherence Ratios", command = "insights.ratios", description = "Insights: recent-days + last-30-day ratio bars (tap short bar to change window 5-15)"),
     AppPageCommand(name = "Workout Insights", command = "insights.workout", description = "Insights > Workout Insights (per-workout exercise history)"),
     AppPageCommand(name = "Progress Graphs", command = "graphs.progress", description = "Progress Graphs (beta), opened from Insights"),
@@ -242,7 +242,9 @@ internal val PAGE_COMMAND_NAMES = listOf(
 )
 
 internal val LATEST_VERSION_HIGHLIGHTS = listOf(
-    "The Insights streak view is now a scrollable Streak Momentum graph: it climbs 1 per workout day and drops to 0 when you miss a day, and opens on today (right-most). Tap Inspect to open a taller view with your best streak, a streak-length breakdown, and consistency stats (including how many times your streak broke this month / last 3 months). Switch the style (momentum or classic triangle) and look (line or stock-market candles) under Settings > Streak graph.",
+    "Bugfix: renaming a workout day (the pencil icon) used to leave past sessions labeled with the old name, so Workout Insights showed two split entries for the same day (old name + new name). Renaming now relabels that day's history too, so it stays one combined entry \u2014 just re-save the name once to merge any entries that already split.",
+    "The streak graph now always shows today: it's blue while today's workout is still pending, turns green once you log it, and turns red like any other miss if the day passes unlogged. The Inspect text button is now a chevron icon (matching Settings' expand affordance), and both the summary chips and the inspector's Consistency stats now read Current streak, Best streak, then Breaks.",
+    "The Insights streak view is now a scrollable Streak Momentum graph: it climbs 1 per workout day and drops to 0 when you miss a day, and opens on today (right-most). Tap the chevron to open a taller view with your best streak, a streak-length breakdown, and consistency stats (including how many times your streak broke this month / last 3 months). Switch the style (momentum or classic triangle) and look (line or stock-market candles) under Settings > Streak graph.",
     "Exiting a workout mid-session no longer counts as completed - only the Hold-to-Finish action records a done workout, so your streaks stay honest.",
     "Pick which schedule view opens by default (Compact or Calendar) in Settings > Default schedule view.",
     "Logging a set now fills weight down to later sets but keeps each set's reps independent (reps usually vary per set).",

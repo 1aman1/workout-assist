@@ -4,9 +4,21 @@ Lean Android utility app for fast workout logging during training.
 
 Primary design source: see DESIGN_VERSIONS.md and append all future design updates as version increments.
 
-## Current Product Snapshot (v1.105)
+## Current Product Snapshot (v1.107)
 
-> v1.105 is the authoritative current state for Schedule, Insights, active session, and Analytics. Older bullets below are historical and may be superseded by these notes.
+> v1.107 is the authoritative current state for Schedule, Insights, active session, and Analytics. Older bullets below are historical and may be superseded by these notes.
+
+### v1.107 current behavior
+- Bugfix: renaming a workout day now relabels that day's **past sessions** too (`WorkoutDao.renameSessionsForDay`), not just the template. Previously, a rename only touched `template_days`, so already-logged sessions kept their old `workoutName` snapshot and Workout Insights (which groups by `workoutName`) showed the same day split into an old-name entry and a new-name entry. Re-saving a rename now merges everything back into one entry (matched by `dayNumber`), including entries that had already split before this fix.
+
+## Previous Product Snapshot (v1.106)
+
+### v1.106 current behavior
+- The Streak Momentum graph always includes **today**. While today's workout hasn't been logged yet, today's bar/candle renders in a distinct **pending blue**; it turns green the moment you log a workout, or turns red like any other miss if the day passes unlogged (checked again next time the graph renders).
+- The graph header's **Inspect** text button is now a chevron icon (`>`), matching the same expand affordance used by Settings' navigation rows, so it reads as "tap to expand" rather than a labeled action.
+- The main card's streak summary chips and the inspector's Consistency metrics are both reordered to read **Current streak**, **Best streak**, then **Breaks** (this month / last 3 months), so the most time-sensitive numbers come first.
+
+## Previous Product Snapshot (v1.105)
 
 ### v1.105 current behavior
 - The Insights streak visualization defaults to a **Streak Momentum** graph: a horizontally scrollable per-calendar-day chart where each completed day climbs the streak (1,2,3…) and every missed day is a red 0, so consecutive misses are each visible. A **date** (day-of-month) x-axis sits under the bars/candles. It auto-opens on the latest (right-most) entry. Tap **Inspect** on the graph header to open a full-screen inspector with a taller chart, a Consistency metrics block, and a streak-length histogram.

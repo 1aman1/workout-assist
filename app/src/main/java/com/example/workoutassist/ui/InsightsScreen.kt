@@ -185,6 +185,9 @@ internal fun InsightsScreen(
     val momentumDayLabels = remember(momentumEntries) {
         momentumEntries.map { epochDayToDayOfMonth(it.epochDay) }
     }
+    // Today shows as a distinct "still pending" color until it's logged done or the day
+    // passes unlogged (at which point it becomes a normal miss on the next render).
+    val momentumPendingToday = momentumEntries.lastOrNull()?.status == MomentumDayStatus.PENDING
     val bestStreak = remember(completedSessionEpochDays) {
         streakRunLengths(completedSessionEpochDays).maxOrNull() ?: 0
     }
@@ -422,6 +425,7 @@ internal fun InsightsScreen(
                                 dayLabels = momentumDayLabels,
                                 title = streakTitle,
                                 stockMode = stockMode,
+                                pendingToday = momentumPendingToday,
                                 onInspect = { showMomentumInspector = true }
                             )
                         }
@@ -429,6 +433,10 @@ internal fun InsightsScreen(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
+                            StreakSummaryChip(
+                                label = "Current streak",
+                                value = "$routineStreak ${if (routineStreak == 1) "day" else "days"}"
+                            )
                             StreakSummaryChip(
                                 label = "Best streak",
                                 value = "$bestStreak ${if (bestStreak == 1) "day" else "days"}"
@@ -629,12 +637,16 @@ internal fun InsightsScreen(
                                         values = momentumSeries,
                                         upColor = Color(0xFF16A34A),
                                         downColor = Color(0xFFDC2626),
+                                        pendingColor = Color(0xFF2563EB),
+                                        pendingLast = momentumPendingToday,
                                         modifier = Modifier.height(inspectorHeight)
                                     )
                                 } else {
                                     MomentumLineChart(
                                         values = momentumSeries,
                                         lineColor = MaterialTheme.colorScheme.primary,
+                                        pendingColor = Color(0xFF2563EB),
+                                        pendingLast = momentumPendingToday,
                                         modifier = Modifier.height(inspectorHeight)
                                     )
                                 }
@@ -664,8 +676,6 @@ internal fun InsightsScreen(
                         fontWeight = FontWeight.SemiBold
                     )
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        MetricRow("Breaks this month", breaksThisMonth.toString())
-                        MetricRow("Breaks last 3 months", breaksLast3Months.toString())
                         MetricRow(
                             label = "Current streak",
                             value = "$routineStreak ${if (routineStreak == 1) "day" else "days"}"
@@ -674,6 +684,8 @@ internal fun InsightsScreen(
                             label = "Best streak",
                             value = "$bestStreak ${if (bestStreak == 1) "day" else "days"}"
                         )
+                        MetricRow("Breaks this month", breaksThisMonth.toString())
+                        MetricRow("Breaks last 3 months", breaksLast3Months.toString())
                         MetricRow("Active days", completedSessionEpochDays.size.toString())
                         MetricRow("Streaks", streakRuns.size.toString())
                         MetricRow("Avg streak", "${"%.1f".format(avgStreak)} days")
@@ -727,6 +739,7 @@ private fun StreakMomentumGraph(
     dayLabels: List<Int>,
     title: String,
     stockMode: Boolean,
+    pendingToday: Boolean,
     onInspect: () -> Unit
 ) {
     val chartScroll = rememberScrollState()
@@ -747,8 +760,11 @@ private fun StreakMomentumGraph(
                 fontWeight = FontWeight.SemiBold
             )
             if (momentumSeries.isNotEmpty()) {
-                TextButton(onClick = onInspect) {
-                    Text("Inspect")
+                IconButton(onClick = onInspect) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                        contentDescription = "Expand streak graph"
+                    )
                 }
             }
         }
@@ -778,12 +794,16 @@ private fun StreakMomentumGraph(
                                 values = momentumSeries,
                                 upColor = Color(0xFF16A34A),
                                 downColor = Color(0xFFDC2626),
+                                pendingColor = Color(0xFF2563EB),
+                                pendingLast = pendingToday,
                                 modifier = Modifier.height(chartHeight)
                             )
                         } else {
                             MomentumLineChart(
                                 values = momentumSeries,
                                 lineColor = MaterialTheme.colorScheme.primary,
+                                pendingColor = Color(0xFF2563EB),
+                                pendingLast = pendingToday,
                                 modifier = Modifier.height(chartHeight)
                             )
                         }
@@ -918,11 +938,15 @@ private fun MomentumValueAxis(
 
 // Stock-market gimmick: draw each day-over-day change in streak as a candle. A climb
 // (green) rises one step; a break (red) drops from the streak peak all the way to zero.
+// The very last candle can be "pending" (today, not yet logged) — drawn in a distinct
+// color instead of red so it doesn't look like a confirmed miss.
 @Composable
 private fun MomentumCandleChart(
     values: List<Int>,
     upColor: Color,
     downColor: Color,
+    pendingColor: Color,
+    pendingLast: Boolean,
     modifier: Modifier = Modifier
 ) {
     if (values.size < 2) return
@@ -939,12 +963,13 @@ private fun MomentumCandleChart(
         for (i in 1 until values.size) {
             val open = values[i - 1]
             val close = values[i]
+            val isPending = pendingLast && i == values.size - 1
             // A zero means a missed day: draw it red. The first miss after a run drops from
             // the streak peak; a continuing miss shows a 1-unit red tick so it stays visible.
-            val isMiss = close == 0
-            val color = if (isMiss) downColor else upColor
-            val topValue = if (isMiss) maxOf(open, 1) else maxOf(open, close)
-            val bottomValue = if (isMiss) 0 else minOf(open, close)
+            val isMiss = close == 0 && !isPending
+            val color = if (isPending) pendingColor else if (isMiss) downColor else upColor
+            val topValue = if (isPending || isMiss) maxOf(open, 1) else maxOf(open, close)
+            val bottomValue = if (isPending || isMiss) 0 else minOf(open, close)
             val topY = size.height * (1f - topValue.toFloat() / maxValue)
             val bottomY = size.height * (1f - bottomValue.toFloat() / maxValue)
             val left = (i - 1) * (cw + g)
@@ -968,6 +993,8 @@ private fun MomentumCandleChart(
 private fun MomentumLineChart(
     values: List<Int>,
     lineColor: Color,
+    pendingColor: Color,
+    pendingLast: Boolean,
     modifier: Modifier = Modifier
 ) {
     if (values.isEmpty()) return
@@ -991,19 +1018,22 @@ private fun MomentumLineChart(
             close()
         }
         drawPath(path = fill, color = lineColor.copy(alpha = 0.15f))
-        // The connecting line.
+        // The connecting line. The last segment (into today) is drawn pending-colored
+        // when today hasn't been logged yet.
         for (i in 1 until points.size) {
+            val isPending = pendingLast && i == points.size - 1
             drawLine(
-                color = lineColor,
+                color = if (isPending) pendingColor else lineColor,
                 start = points[i - 1],
                 end = points[i],
                 strokeWidth = 3.dp.toPx(),
                 cap = StrokeCap.Round
             )
         }
-        // A dot at each streak value.
-        points.forEach { p ->
-            drawCircle(color = lineColor, radius = 3.dp.toPx(), center = p)
+        // A dot at each streak value; today's dot is pending-colored while unlogged.
+        points.forEachIndexed { index, p ->
+            val isPending = pendingLast && index == points.size - 1
+            drawCircle(color = if (isPending) pendingColor else lineColor, radius = 3.dp.toPx(), center = p)
         }
     }
 }
