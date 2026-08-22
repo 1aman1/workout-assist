@@ -703,10 +703,10 @@ internal fun InsightsScreen(
                                 .weight(1f)
                                 .horizontalScroll(inspectorHScroll)
                         ) {
-                            // Below/at 100% zoom, candles/points pack in tight enough that
+                            // Below 100% zoom, candles/points pack in tight enough that
                             // their date labels would overlap each other, so hide the dates
-                            // until the user zooms in past 100% for room to show them again.
-                            val inspectorShowDates = inspectorZoom > 1f
+                            // until the user zooms back to 100% (the default) or beyond.
+                            val inspectorShowDates = inspectorZoom >= 1f
                             if (stockMode) {
                                 MomentumCandleChart(
                                     values = momentumSeries,
@@ -1073,7 +1073,14 @@ private fun MomentumCandleChart(
                 // run reads as a long blue candle with room to climb back out.
                 topValue = 1
                 bottomValue = minOf(open, close)
-            } else if (!crashMode && (isPending || isMiss)) {
+            } else if (isPending) {
+                // Not confirmed as a miss yet: tentatively continue the climb by one unit
+                // from wherever it currently stands (or start a fresh one at +1 if it's
+                // already at zero), instead of snapping down to a flat peak-to-zero "miss"
+                // shape before the day has actually passed unlogged.
+                topValue = open + 1
+                bottomValue = open
+            } else if (!crashMode && isMiss) {
                 topValue = maxOf(open, 1)
                 bottomValue = 0
             } else {
