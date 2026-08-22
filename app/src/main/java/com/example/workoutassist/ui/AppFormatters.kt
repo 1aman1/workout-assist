@@ -83,33 +83,56 @@ internal fun computeRoutineStreak(completedDays: Set<Long>, todayEpochDay: Long)
     return streak
 }
 
-// Streak-momentum series: each maximal run of consecutive completed days is emitted as
-// a 0 (the break/reset) followed by 1..runLength (the climb), so missed-day gaps read as
-// drops to zero. Example: runs of 4, 3, 4 days -> [0,1,2,3,4, 0,1,2,3, 0,1,2,3,4].
-internal fun buildStreakMomentumSeries(completedDays: Set<Long>, todayEpochDay: Long): List<Int> {
+data class MomentumEntry(val epochDay: Long, val value: Int)
+
+// Per-calendar-day streak momentum from the first (windowed) completed day up to today.
+// A completed day carries its running streak (1,2,3,...); a missed day is 0, so every
+// consecutive miss shows individually. A leading 0 (the day before the first workout in
+// the window) lets the first run rise from zero. Today, while still unlogged, is not
+// counted as a miss yet. Windowed to the most recent [windowDays] days to stay bounded.
+internal fun buildMomentumEntries(
+    completedDays: Set<Long>,
+    todayEpochDay: Long,
+    windowDays: Int = 120
+): List<MomentumEntry> {
     if (completedDays.isEmpty()) return emptyList()
+    val windowStart = todayEpochDay - (windowDays - 1).coerceAtLeast(0).toLong()
     val sortedDays = completedDays.toSortedSet().toList()
-    val series = mutableListOf<Int>()
+    val entries = mutableListOf<MomentumEntry>()
     var runLength = 0
     var previousDay: Long? = null
     for (day in sortedDays) {
-        val continuesRun = previousDay != null && day == previousDay + 1L
-        if (continuesRun) {
+        if (previousDay == null) {
+            if (day - 1L >= windowStart) entries.add(MomentumEntry(day - 1L, 0))
+            runLength = 1
+        } else if (day == previousDay + 1L) {
             runLength += 1
         } else {
-            series.add(0)
+            var missDay = previousDay + 1L
+            while (missDay < day) {
+                if (missDay >= windowStart) entries.add(MomentumEntry(missDay, 0))
+                missDay += 1L
+            }
             runLength = 1
         }
-        series.add(runLength)
+        if (day >= windowStart) entries.add(MomentumEntry(day, runLength))
         previousDay = day
     }
-    // If the most recent run has already broken (a full day was missed before today, e.g.
-    // yesterday), append the drop to zero so the latest break shows as a red tick. Today
-    // being unlogged (last day == today or yesterday) is not yet a break.
-    if (todayEpochDay - sortedDays.last() >= 2L) {
-        series.add(0)
+    // Trailing confirmed misses: days after the last workout up to yesterday.
+    var trailDay = sortedDays.last() + 1L
+    while (trailDay < todayEpochDay) {
+        if (trailDay >= windowStart) entries.add(MomentumEntry(trailDay, 0))
+        trailDay += 1L
     }
-    return series
+    return entries
+}
+
+// Day-of-month (1..31) for an epoch day, used for the momentum graph's date x-axis.
+internal fun epochDayToDayOfMonth(epochDay: Long): Int {
+    val cal = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
+    cal.clear()
+    cal.timeInMillis = epochDay * MILLIS_PER_DAY
+    return cal.get(Calendar.DAY_OF_MONTH)
 }
 
 // Lengths of each maximal run of consecutive completed days, e.g. days {1,2,3, 5} -> [3, 1].

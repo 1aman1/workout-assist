@@ -52,6 +52,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
@@ -173,6 +174,7 @@ internal fun WorkoutActivePage(
                                 selected = isFocused,
                                 enabled = true,
                                 onClick = { onFocusExercise(exercise.id) },
+                                modifier = Modifier.alpha(if (isLogged) 0.4f else 1f),
                                 label = {
                                     Text(
                                         if (isLogged) {

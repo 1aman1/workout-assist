@@ -87,42 +87,35 @@ class AppFormattersTest {
     }
 
     @Test
-    fun buildStreakMomentumSeries_emitsZeroThenClimbPerRun() {
-        // runs of 4, 3, 4 consecutive days separated by gaps. today = last active day.
-        val days = setOf(1L, 2L, 3L, 4L, 10L, 11L, 12L, 20L, 21L, 22L, 23L)
+    fun buildMomentumEntries_climbsAndShowsEachMiss() {
+        // days 1,2,3 (climb), then 4 & 5 missed, then 6 (today) -> leading 0 at day 0.
+        val entries = buildMomentumEntries(setOf(1L, 2L, 3L, 6L), todayEpochDay = 6L)
         assertEquals(
-            listOf(0, 1, 2, 3, 4, 0, 1, 2, 3, 0, 1, 2, 3, 4),
-            buildStreakMomentumSeries(days, todayEpochDay = 23L)
+            listOf(0L to 0, 1L to 1, 2L to 2, 3L to 3, 4L to 0, 5L to 0, 6L to 1),
+            entries.map { it.epochDay to it.value }
         )
     }
 
     @Test
-    fun buildStreakMomentumSeries_singleDayIsZeroThenOne() {
-        assertEquals(listOf(0, 1), buildStreakMomentumSeries(setOf(5L), todayEpochDay = 5L))
+    fun buildMomentumEntries_appendsTrailingMissesUpToYesterday() {
+        // last workout day 3, today 6 -> days 4 & 5 missed (today not counted yet).
+        val entries = buildMomentumEntries(setOf(1L, 2L, 3L), todayEpochDay = 6L)
+        assertEquals(
+            listOf(0L to 0, 1L to 1, 2L to 2, 3L to 3, 4L to 0, 5L to 0),
+            entries.map { it.epochDay to it.value }
+        )
     }
 
     @Test
-    fun buildStreakMomentumSeries_emptyIsEmpty() {
-        assertEquals(emptyList<Int>(), buildStreakMomentumSeries(emptySet(), todayEpochDay = 0L))
+    fun buildMomentumEntries_emptyIsEmpty() {
+        assertEquals(emptyList<Pair<Long, Int>>(), buildMomentumEntries(emptySet(), 10L).map { it.epochDay to it.value })
     }
 
     @Test
-    fun buildStreakMomentumSeries_sortsUnorderedInput() {
-        assertEquals(listOf(0, 1, 2, 3), buildStreakMomentumSeries(setOf(3L, 1L, 2L), todayEpochDay = 3L))
-    }
-
-    @Test
-    fun buildStreakMomentumSeries_appendsBreakWhenRecentDayMissed() {
-        // last active day 3, today 5 (day 4 = yesterday was missed) -> trailing 0 (red drop).
-        assertEquals(listOf(0, 1, 2, 3, 0), buildStreakMomentumSeries(setOf(1L, 2L, 3L), todayEpochDay = 5L))
-    }
-
-    @Test
-    fun buildStreakMomentumSeries_noBreakWhileTodayOrYesterdayActive() {
-        // today == last active day (ongoing).
-        assertEquals(listOf(0, 1, 2, 3), buildStreakMomentumSeries(setOf(1L, 2L, 3L), todayEpochDay = 3L))
-        // yesterday active, today pending (today - last == 1) -> not a break yet.
-        assertEquals(listOf(0, 1, 2, 3), buildStreakMomentumSeries(setOf(1L, 2L, 3L), todayEpochDay = 4L))
+    fun epochDayToDayOfMonth_returnsCalendarDayOfMonth() {
+        assertEquals(1, epochDayToDayOfMonth(0L))   // 1970-01-01
+        assertEquals(31, epochDayToDayOfMonth(30L))  // 1970-01-31
+        assertEquals(1, epochDayToDayOfMonth(31L))   // 1970-02-01
     }
 
     @Test

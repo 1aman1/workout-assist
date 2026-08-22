@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -22,6 +23,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -174,12 +176,28 @@ internal fun InsightsScreen(
     }
     val onRoutine = routineStreak >= cycleLength
 
-    // Momentum: streak length plotted over the full history. Each run of consecutive
-    // workout days climbs 1,2,3..., and every missed-day gap drops it back to 0.
-    val momentumSeries = remember(completedSessionEpochDays, todayEpochDay) {
-        buildStreakMomentumSeries(completedSessionEpochDays, todayEpochDay)
+    // Momentum: streak length per calendar day. Completed days climb 1,2,3...; each missed
+    // day is a 0 so consecutive misses are all visible. Dates drive the graph's x-axis.
+    val momentumEntries = remember(completedSessionEpochDays, todayEpochDay) {
+        buildMomentumEntries(completedSessionEpochDays, todayEpochDay)
     }
-    val bestStreak = remember(momentumSeries) { momentumSeries.maxOrNull() ?: 0 }
+    val momentumSeries = remember(momentumEntries) { momentumEntries.map { it.value } }
+    val momentumDayLabels = remember(momentumEntries) {
+        momentumEntries.map { epochDayToDayOfMonth(it.epochDay) }
+    }
+    val bestStreak = remember(completedSessionEpochDays) {
+        streakRunLengths(completedSessionEpochDays).maxOrNull() ?: 0
+    }
+
+    // Streak breaks (missed scheduled days). Lifted to the top level so the summary
+    // can be shown both on the main card and inside the inspector.
+    val breakDays = remember(completedSessionEpochDays, todayEpochDay) {
+        streakBreakDays(completedSessionEpochDays, todayEpochDay)
+    }
+    val breaksThisMonth = remember(breakDays, todayEpochDay) {
+        val start = startOfMonthEpochDay(todayEpochDay, 0)
+        breakDays.count { it in start..todayEpochDay }
+    }
 
     val setLogsBySessionId = remember(setLogs) {
         setLogs.groupBy { log -> log.sessionId }
@@ -401,9 +419,23 @@ internal fun InsightsScreen(
                         } else {
                             StreakMomentumGraph(
                                 momentumSeries = momentumSeries,
+                                dayLabels = momentumDayLabels,
                                 title = streakTitle,
                                 stockMode = stockMode,
                                 onInspect = { showMomentumInspector = true }
+                            )
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            StreakSummaryChip(
+                                label = "Best streak",
+                                value = "$bestStreak ${if (bestStreak == 1) "day" else "days"}"
+                            )
+                            StreakSummaryChip(
+                                label = "Breaks this month",
+                                value = breaksThisMonth.toString()
                             )
                         }
                         if (onRoutine) {
@@ -529,9 +561,9 @@ internal fun InsightsScreen(
     }
 
     if (showMomentumInspector && momentumSeries.isNotEmpty()) {
-        // Keep the inspector chart the same height as the inline graph; it scrolls
-        // horizontally to reveal the full history.
-        val inspectorHeight = 180.dp
+        // Keep the candles from getting too tall; the chart's horizontal length (one candle
+        // per day) is unchanged and scrolls to reveal the whole timeline.
+        val inspectorHeight = 200.dp
         val inspectorHScroll = rememberScrollState()
         LaunchedEffect(stockMode, inspectorHScroll.maxValue) {
             inspectorHScroll.scrollTo(inspectorHScroll.maxValue)
@@ -542,13 +574,6 @@ internal fun InsightsScreen(
         }
         val streakRuns = remember(completedSessionEpochDays) {
             streakRunLengths(completedSessionEpochDays)
-        }
-        val breakDays = remember(completedSessionEpochDays, todayEpochDay) {
-            streakBreakDays(completedSessionEpochDays, todayEpochDay)
-        }
-        val breaksThisMonth = remember(breakDays, todayEpochDay) {
-            val start = startOfMonthEpochDay(todayEpochDay, 0)
-            breakDays.count { it in start..todayEpochDay }
         }
         val breaksLast3Months = remember(breakDays, todayEpochDay) {
             val start = startOfMonthEpochDay(todayEpochDay, 2)
@@ -587,41 +612,48 @@ internal fun InsightsScreen(
                             )
                         }
                     }
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(inspectorHScroll)
+                    val inspectorAxisMax = (momentumSeries.maxOrNull() ?: 1).coerceAtLeast(1)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Column {
-                            if (stockMode) {
-                                MomentumCandleChart(
-                                    values = momentumSeries,
-                                    upColor = Color(0xFF16A34A),
-                                    downColor = Color(0xFFDC2626),
-                                    modifier = Modifier.height(inspectorHeight)
-                                )
-                            } else {
-                                MomentumLineChart(
-                                    values = momentumSeries,
-                                    lineColor = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.height(inspectorHeight)
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(4.dp))
-                            // X-axis: the streak value under each bar/candle (candles are the
-                            // day-over-day closes, so drop the leading reset zero).
-                            if (stockMode) {
-                                MomentumValueAxis(
-                                    values = momentumSeries.drop(1),
-                                    cellWidth = 12.dp,
-                                    gap = 6.dp
-                                )
-                            } else {
-                                MomentumValueAxis(
-                                    values = momentumSeries,
-                                    cellWidth = 14.dp,
-                                    gap = 6.dp
-                                )
+                        MomentumYAxis(maxValue = inspectorAxisMax, height = inspectorHeight)
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .horizontalScroll(inspectorHScroll)
+                        ) {
+                            Column {
+                                if (stockMode) {
+                                    MomentumCandleChart(
+                                        values = momentumSeries,
+                                        upColor = Color(0xFF16A34A),
+                                        downColor = Color(0xFFDC2626),
+                                        modifier = Modifier.height(inspectorHeight)
+                                    )
+                                } else {
+                                    MomentumLineChart(
+                                        values = momentumSeries,
+                                        lineColor = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.height(inspectorHeight)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                // X-axis: the date (day-of-month) under each bar/candle
+                                // (candles are day-over-day, so drop the leading baseline).
+                                if (stockMode) {
+                                    MomentumValueAxis(
+                                        values = momentumDayLabels.drop(1),
+                                        cellWidth = 12.dp,
+                                        gap = 10.dp
+                                    )
+                                } else {
+                                    MomentumValueAxis(
+                                        values = momentumDayLabels,
+                                        cellWidth = 14.dp,
+                                        gap = 6.dp
+                                    )
+                                }
                             }
                         }
                     }
@@ -692,6 +724,7 @@ internal fun InsightsScreen(
 @Composable
 private fun StreakMomentumGraph(
     momentumSeries: List<Int>,
+    dayLabels: List<Int>,
     title: String,
     stockMode: Boolean,
     onInspect: () -> Unit
@@ -703,11 +736,22 @@ private fun StreakMomentumGraph(
         chartScroll.scrollTo(chartScroll.maxValue)
     }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = title,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            if (momentumSeries.isNotEmpty()) {
+                TextButton(onClick = onInspect) {
+                    Text("Inspect")
+                }
+            }
+        }
         if (momentumSeries.isEmpty()) {
             Text(
                 text = "Finish a few workouts to see your streak momentum build up here.",
@@ -715,29 +759,69 @@ private fun StreakMomentumGraph(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         } else {
+            val chartHeight = 180.dp
+            val axisMax = (momentumSeries.maxOrNull() ?: 1).coerceAtLeast(1)
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(chartScroll)
-                    .pointerInput(Unit) {
-                        detectTapGestures(onDoubleTap = { onInspect() })
-                    }
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.Top
             ) {
-                if (stockMode) {
-                    MomentumCandleChart(
-                        values = momentumSeries,
-                        upColor = Color(0xFF16A34A),
-                        downColor = Color(0xFFDC2626),
-                        modifier = Modifier.height(180.dp)
-                    )
-                } else {
-                    MomentumLineChart(
-                        values = momentumSeries,
-                        lineColor = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.height(180.dp)
-                    )
+                MomentumYAxis(maxValue = axisMax, height = chartHeight)
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .horizontalScroll(chartScroll)
+                ) {
+                    Column {
+                        if (stockMode) {
+                            MomentumCandleChart(
+                                values = momentumSeries,
+                                upColor = Color(0xFF16A34A),
+                                downColor = Color(0xFFDC2626),
+                                modifier = Modifier.height(chartHeight)
+                            )
+                        } else {
+                            MomentumLineChart(
+                                values = momentumSeries,
+                                lineColor = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.height(chartHeight)
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(2.dp))
+                        if (stockMode) {
+                            MomentumValueAxis(values = dayLabels.drop(1), cellWidth = 12.dp, gap = 10.dp)
+                        } else {
+                            MomentumValueAxis(values = dayLabels, cellWidth = 14.dp, gap = 6.dp)
+                        }
+                    }
                 }
             }
+        }
+    }
+}
+
+// Compact highlighted stat shown on the main streak card (Best streak / Breaks this month).
+@Composable
+private fun RowScope.StreakSummaryChip(label: String, value: String) {
+    Card(
+        modifier = Modifier.weight(1f),
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+        )
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+            Text(
+                text = value,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
@@ -762,6 +846,48 @@ private fun MetricRow(label: String, value: String) {
     }
 }
 
+// Fixed left value-axis (streak counts) for the momentum charts. Sits outside the
+// horizontal scroll so the scale stays visible while the chart scrolls.
+@Composable
+private fun MomentumYAxis(maxValue: Int, height: Dp, modifier: Modifier = Modifier) {
+    val m = maxValue.coerceAtLeast(1)
+    val ticks = remember(m) { momentumYTicks(m) }
+    val textHeight = 14.dp
+    Box(
+        modifier = modifier
+            .height(height)
+            .width(22.dp)
+    ) {
+        ticks.forEach { tick ->
+            val frac = tick.toFloat() / m
+            val y = (height * (1f - frac) - textHeight * 0.5f).coerceIn(0.dp, height - textHeight)
+            Text(
+                text = tick.toString(),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .offset(y = y)
+            )
+        }
+    }
+}
+
+// Evenly spaced streak values (max .. 0) used as Y-axis ticks. Small ranges show every
+// integer; larger ranges are thinned to about five labels.
+private fun momentumYTicks(maxValue: Int): List<Int> {
+    val m = maxValue.coerceAtLeast(1)
+    if (m <= 6) return (m downTo 0).toList()
+    val step = kotlin.math.ceil(m / 5.0).toInt().coerceAtLeast(1)
+    val ticks = sortedSetOf(0, m)
+    var v = step
+    while (v < m) {
+        ticks.add(v)
+        v += step
+    }
+    return ticks.toList().sortedDescending()
+}
+
 // Numeric x-axis for the inspector: the streak value under each bar/candle, using the
 // same per-item width and gap as the chart so the labels line up.
 @Composable
@@ -779,8 +905,11 @@ private fun MomentumValueAxis(
             Box(modifier = Modifier.width(cellWidth), contentAlignment = Alignment.Center) {
                 Text(
                     text = value.toString(),
+                    modifier = Modifier.wrapContentWidth(unbounded = true),
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    softWrap = false
                 )
             }
         }
@@ -800,7 +929,7 @@ private fun MomentumCandleChart(
     val maxValue = (values.maxOrNull() ?: 1).coerceAtLeast(1)
     val candleCount = values.size - 1
     val candleWidth = 12.dp
-    val gap = 6.dp
+    val gap = 10.dp
     val chartWidth = candleWidth * candleCount + gap * (candleCount - 1).coerceAtLeast(0)
     Canvas(modifier = modifier.width(chartWidth)) {
         val cw = candleWidth.toPx()
@@ -810,10 +939,12 @@ private fun MomentumCandleChart(
         for (i in 1 until values.size) {
             val open = values[i - 1]
             val close = values[i]
-            val isUp = close >= open
-            val color = if (isUp) upColor else downColor
-            val topValue = maxOf(open, close)
-            val bottomValue = minOf(open, close)
+            // A zero means a missed day: draw it red. The first miss after a run drops from
+            // the streak peak; a continuing miss shows a 1-unit red tick so it stays visible.
+            val isMiss = close == 0
+            val color = if (isMiss) downColor else upColor
+            val topValue = if (isMiss) maxOf(open, 1) else maxOf(open, close)
+            val bottomValue = if (isMiss) 0 else minOf(open, close)
             val topY = size.height * (1f - topValue.toFloat() / maxValue)
             val bottomY = size.height * (1f - bottomValue.toFloat() / maxValue)
             val left = (i - 1) * (cw + g)

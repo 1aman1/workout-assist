@@ -242,7 +242,7 @@ internal val PAGE_COMMAND_NAMES = listOf(
 )
 
 internal val LATEST_VERSION_HIGHLIGHTS = listOf(
-    "The Insights streak view is now a scrollable Streak Momentum graph: it climbs 1 per workout day and drops to 0 when you miss a day, and opens on today (right-most). Double-tap it to open a taller, scrollable inspector that shows your best streak. Switch the style (momentum or classic triangle) and look (line or stock-market candles) under Settings > Streak graph.",
+    "The Insights streak view is now a scrollable Streak Momentum graph: it climbs 1 per workout day and drops to 0 when you miss a day, and opens on today (right-most). Tap Inspect to open a taller view with your best streak, a streak-length breakdown, and consistency stats (including how many times your streak broke this month / last 3 months). Switch the style (momentum or classic triangle) and look (line or stock-market candles) under Settings > Streak graph.",
     "Exiting a workout mid-session no longer counts as completed - only the Hold-to-Finish action records a done workout, so your streaks stay honest.",
     "Pick which schedule view opens by default (Compact or Calendar) in Settings > Default schedule view.",
     "Logging a set now fills weight down to later sets but keeps each set's reps independent (reps usually vary per set).",
