@@ -139,6 +139,8 @@ private const val KEY_THEME_STATUS_CUSTOM_HEX = "theme_status_custom_hex"
 private const val KEY_THEME_DONE_CUSTOM_HEX = "theme_done_custom_hex"
 private const val KEY_THEME_BANNER = "theme_banner"
 private const val KEY_THEME_BANNER_CUSTOM_HEX = "theme_banner_custom_hex"
+private const val KEY_THEME_PENDING_CANDLE = "theme_pending_candle"
+private const val KEY_THEME_PENDING_CANDLE_CUSTOM_HEX = "theme_pending_candle_custom_hex"
 private const val KEY_PRODUCTION_RESET_20260707_DONE = "production_reset_20260707_done"
 private const val KEY_HISTORY_PREFILL_20260708_DONE = "history_prefill_20260708_done"
 private const val DEFAULT_PAGE_LABEL_SCHEDULE = "Compact"
@@ -176,6 +178,7 @@ private const val KEY_ROUTINE_WINDOW = "insights_routine_window"
 private const val KEY_DEFAULT_SCHEDULE_CALENDAR = "default_schedule_calendar"
 private const val KEY_CLASSIC_STREAK_GRAPH = "classic_streak_graph"
 private const val KEY_MOMENTUM_STOCK_MODE = "momentum_stock_mode"
+private const val KEY_MOMENTUM_CRASH_MODE = "momentum_crash_mode"
 private const val DEFAULT_THEME_BACKGROUND_ID = "white"
 private const val DEFAULT_THEME_STATUS_ID = "turquoise"
 private const val DEFAULT_THEME_DONE_ID = "green"
@@ -184,8 +187,10 @@ private const val DEFAULT_THEME_STATUS_CUSTOM_HEX = "#1CCBCB"
 private const val DEFAULT_THEME_DONE_CUSTOM_HEX = "#1E9E58"
 private const val DEFAULT_THEME_BANNER_ID = "flame"
 private const val DEFAULT_THEME_BANNER_CUSTOM_HEX = "#BF360C"
+private const val DEFAULT_THEME_PENDING_CANDLE_ID = "blue_candle"
+private const val DEFAULT_THEME_PENDING_CANDLE_CUSTOM_HEX = "#2563EB"
 internal const val CUSTOM_THEME_OPTION_ID = "custom"
-internal const val LATEST_DESIGN_VERSION = "1.105"
+internal const val LATEST_DESIGN_VERSION = "1.109"
 
 internal val WORKOUT_SESSION_START_MESSAGES = listOf(
     "Lift weights and come back !",
@@ -220,13 +225,19 @@ private val BANNER_THEME_OPTIONS = listOf(
     ThemeColorOption(id = "amber", label = "Amber", color = Color(0xFFEF6C00))
 )
 
+private val PENDING_CANDLE_THEME_OPTIONS = listOf(
+    ThemeColorOption(id = "blue_candle", label = "Blue candle", color = Color(0xFF2563EB)),
+    ThemeColorOption(id = "sky_candle", label = "Sky candle", color = Color(0xFF0EA5E9)),
+    ThemeColorOption(id = "indigo_candle", label = "Indigo candle", color = Color(0xFF4F46E5))
+)
+
 internal val PAGE_COMMAND_NAMES = listOf(
     AppPageCommand(name = "Schedule", command = "workout.schedule", description = "Workout tab: merged plan/history (Compact default, Calendar toggle)"),
     AppPageCommand(name = "Day Detail", command = "workout.day", description = "Workout day detail (start/edit a day)"),
     AppPageCommand(name = "Workout Session", command = "workout.session", description = "Active workout session (focus mode)"),
     AppPageCommand(name = "Exercise History Peek", command = "workout.session.history", description = "Active session: double-tap the exercise title -> confirm -> temporary past-sessions overlay (back/close returns to the session)"),
     AppPageCommand(name = "Insights", command = "insights.home", description = "Insights tab (ratios + open Workout Insights + Progress Graphs)"),
-    AppPageCommand(name = "Streak Graph", command = "insights.routine", description = "Insights: streak momentum graph (Bars/Stocks toggle, double-tap to inspect); Settings > Streak graph switches to the classic triangle"),
+    AppPageCommand(name = "Streak Graph", command = "insights.routine", description = "Insights: streak momentum graph (Bars/Stocks toggle, tap the chevron icon to inspect); today shows pending (blue) until logged; Settings > Streak graph switches to the classic triangle"),
     AppPageCommand(name = "Adherence Ratios", command = "insights.ratios", description = "Insights: recent-days + last-30-day ratio bars (tap short bar to change window 5-15)"),
     AppPageCommand(name = "Workout Insights", command = "insights.workout", description = "Insights > Workout Insights (per-workout exercise history)"),
     AppPageCommand(name = "Progress Graphs", command = "graphs.progress", description = "Progress Graphs (beta), opened from Insights"),
@@ -242,7 +253,11 @@ internal val PAGE_COMMAND_NAMES = listOf(
 )
 
 internal val LATEST_VERSION_HIGHLIGHTS = listOf(
-    "The Insights streak view is now a scrollable Streak Momentum graph: it climbs 1 per workout day and drops to 0 when you miss a day, and opens on today (right-most). Tap Inspect to open a taller view with your best streak, a streak-length breakdown, and consistency stats (including how many times your streak broke this month / last 3 months). Switch the style (momentum or classic triangle) and look (line or stock-market candles) under Settings > Streak graph.",
+    "Settings > Streak graph has a new 'Falling miss gaps' toggle: when on, a miss run crashes progressively below zero (0, -1, -2, ...) like a stock chart instead of flatlining at 0, and a fresh streak after the gap always restarts the climb at 1 rather than recovering back up through the negative numbers. Works with both the line and stock-candle looks. Today's pending candle (while it's still crashed and unlogged) now stretches from that negative depth up to +1, showing the possibility of recovery as one long blue candle. The pending color is now themeable too: Settings > Theme has a new 'Pending candle' role (Blue candle / Sky candle / Indigo candle, or a custom color). The chevron-expanded streak graph inspector no longer auto-zooms its Y-axis to squeeze the whole range into view - it now uses a fixed scale like a stock chart and scrolls both ways (time and value); it opens anchored on today's value and the date axis, and you can scroll up to see higher peaks. A zoom in/out control (50%-250%) above the chart scales both axes together. The compact card is now pinned to today and no longer manually draggable, so it can't be left scrolled away from today. In the inspector, zooming now re-anchors on today too (not just opening it), and the chart area is bigger (a wider, taller dialog). The date under each candle/point now sits right on the zero axis line itself (instead of a separate row below the chart), flipping to the opposite side of the line whenever the candle/point would otherwise overlap it - below the axis by default, above it when a candle dips below zero. The compact card's y-axis is now pinned to a fixed -5..+5 range too (instead of auto-fitting to the data), staying anchored on today. In the inspector, date labels auto-hide at 100% zoom or below (where they'd start overlapping each other) and reappear once you zoom in past 100%.",
+    "The Workout Insights and Progress Graphs cards now open the same way the streak graph does: a title row with a chevron icon on the right, instead of a separate full-width Open button.",
+    "Bugfix: renaming a workout day (the pencil icon) used to leave past sessions labeled with the old name, so Workout Insights showed two split entries for the same day (old name + new name). Renaming now relabels that day's history too, so it stays one combined entry \u2014 just re-save the name once to merge any entries that already split.",
+    "The streak graph now always shows today: it's blue while today's workout is still pending, turns green once you log it, and turns red like any other miss if the day passes unlogged. The Inspect text button is now a chevron icon (matching Settings' expand affordance), and both the summary chips and the inspector's Consistency stats now read Current streak, Best streak, then Breaks.",
+    "The Insights streak view is now a scrollable Streak Momentum graph: it climbs 1 per workout day and drops to 0 when you miss a day, and opens on today (right-most). Tap the chevron to open a taller view with your best streak, a streak-length breakdown, and consistency stats (including how many times your streak broke this month / last 3 months). Switch the style (momentum or classic triangle) and look (line or stock-market candles) under Settings > Streak graph.",
     "Exiting a workout mid-session no longer counts as completed - only the Hold-to-Finish action records a done workout, so your streaks stay honest.",
     "Pick which schedule view opens by default (Compact or Calendar) in Settings > Default schedule view.",
     "Logging a set now fills weight down to later sets but keeps each set's reps independent (reps usually vary per set).",
@@ -563,6 +578,9 @@ fun WorkoutAssistApp() {
     var momentumStockMode by remember {
         mutableStateOf(prefs.getBoolean(KEY_MOMENTUM_STOCK_MODE, false))
     }
+    var momentumCrashMode by remember {
+        mutableStateOf(prefs.getBoolean(KEY_MOMENTUM_CRASH_MODE, false))
+    }
     var backgroundThemeOptionId by remember {
         mutableStateOf(
             prefs.getString(KEY_THEME_BACKGROUND, DEFAULT_THEME_BACKGROUND_ID) ?: DEFAULT_THEME_BACKGROUND_ID
@@ -581,6 +599,12 @@ fun WorkoutAssistApp() {
     var bannerThemeOptionId by remember {
         mutableStateOf(
             prefs.getString(KEY_THEME_BANNER, DEFAULT_THEME_BANNER_ID) ?: DEFAULT_THEME_BANNER_ID
+        )
+    }
+    var pendingCandleThemeOptionId by remember {
+        mutableStateOf(
+            prefs.getString(KEY_THEME_PENDING_CANDLE, DEFAULT_THEME_PENDING_CANDLE_ID)
+                ?: DEFAULT_THEME_PENDING_CANDLE_ID
         )
     }
     var backgroundThemeCustomHex by remember {
@@ -605,6 +629,12 @@ fun WorkoutAssistApp() {
         mutableStateOf(
             prefs.getString(KEY_THEME_BANNER_CUSTOM_HEX, DEFAULT_THEME_BANNER_CUSTOM_HEX)
                 ?: DEFAULT_THEME_BANNER_CUSTOM_HEX
+        )
+    }
+    var pendingCandleThemeCustomHex by remember {
+        mutableStateOf(
+            prefs.getString(KEY_THEME_PENDING_CANDLE_CUSTOM_HEX, DEFAULT_THEME_PENDING_CANDLE_CUSTOM_HEX)
+                ?: DEFAULT_THEME_PENDING_CANDLE_CUSTOM_HEX
         )
     }
 
@@ -703,6 +733,10 @@ fun WorkoutAssistApp() {
         hexValue = bannerThemeCustomHex,
         fallback = Color(0xFFBF360C)
     )
+    val pendingCandleThemeCustomColor = parseThemeHexColorOrDefault(
+        hexValue = pendingCandleThemeCustomHex,
+        fallback = Color(0xFF2563EB)
+    )
     val backgroundThemeOptions = remember(backgroundThemeCustomColor) {
         BACKGROUND_THEME_OPTIONS + ThemeColorOption(
             id = CUSTOM_THEME_OPTION_ID,
@@ -731,6 +765,13 @@ fun WorkoutAssistApp() {
             color = bannerThemeCustomColor
         )
     }
+    val pendingCandleThemeOptions = remember(pendingCandleThemeCustomColor) {
+        PENDING_CANDLE_THEME_OPTIONS + ThemeColorOption(
+            id = CUSTOM_THEME_OPTION_ID,
+            label = "Custom",
+            color = pendingCandleThemeCustomColor
+        )
+    }
     val backgroundThemeColor = resolveThemeColorOption(
         options = backgroundThemeOptions,
         selectedId = backgroundThemeOptionId,
@@ -750,6 +791,11 @@ fun WorkoutAssistApp() {
         options = bannerThemeOptions,
         selectedId = bannerThemeOptionId,
         fallbackId = DEFAULT_THEME_BANNER_ID
+    ).color
+    val pendingCandleThemeColor = resolveThemeColorOption(
+        options = pendingCandleThemeOptions,
+        selectedId = pendingCandleThemeOptionId,
+        fallbackId = DEFAULT_THEME_PENDING_CANDLE_ID
     ).color
 
     val secondaryContainerColor = mixWithWhite(statusThemeColor, 0.72f)
@@ -982,6 +1028,8 @@ fun WorkoutAssistApp() {
                                 },
                                 useClassicStreakGraph = useClassicStreakGraph,
                                 stockMode = momentumStockMode,
+                                crashMode = momentumCrashMode,
+                                pendingColor = pendingCandleThemeColor,
                                 onOpenGraphs = { showGraphsPage = true }
                             )
                         }
@@ -995,6 +1043,7 @@ fun WorkoutAssistApp() {
                             statusThemeOptionId = statusThemeOptionId,
                             doneThemeOptionId = doneThemeOptionId,
                             bannerThemeOptionId = bannerThemeOptionId,
+                            pendingCandleThemeOptionId = pendingCandleThemeOptionId,
                             onBackgroundThemeOptionChanged = { selectedId ->
                                 backgroundThemeOptionId = selectedId
                                 prefs.edit().putString(KEY_THEME_BACKGROUND, selectedId).apply()
@@ -1011,14 +1060,20 @@ fun WorkoutAssistApp() {
                                 bannerThemeOptionId = selectedId
                                 prefs.edit().putString(KEY_THEME_BANNER, selectedId).apply()
                             },
+                            onPendingCandleThemeOptionChanged = { selectedId ->
+                                pendingCandleThemeOptionId = selectedId
+                                prefs.edit().putString(KEY_THEME_PENDING_CANDLE, selectedId).apply()
+                            },
                             backgroundThemeOptions = backgroundThemeOptions,
                             statusThemeOptions = statusThemeOptions,
                             doneThemeOptions = doneThemeOptions,
                             bannerThemeOptions = bannerThemeOptions,
+                            pendingCandleThemeOptions = pendingCandleThemeOptions,
                             backgroundCustomColor = backgroundThemeCustomColor,
                             statusCustomColor = statusThemeCustomColor,
                             doneCustomColor = doneThemeCustomColor,
                             bannerCustomColor = bannerThemeCustomColor,
+                            pendingCandleCustomColor = pendingCandleThemeCustomColor,
                             onBackgroundCustomColorChanged = { selectedColor ->
                                 val hex = colorToHexRgb(selectedColor)
                                 backgroundThemeCustomHex = hex
@@ -1053,6 +1108,15 @@ fun WorkoutAssistApp() {
                                 prefs.edit()
                                     .putString(KEY_THEME_BANNER_CUSTOM_HEX, hex)
                                     .putString(KEY_THEME_BANNER, CUSTOM_THEME_OPTION_ID)
+                                    .apply()
+                            },
+                            onPendingCandleCustomColorChanged = { selectedColor ->
+                                val hex = colorToHexRgb(selectedColor)
+                                pendingCandleThemeCustomHex = hex
+                                pendingCandleThemeOptionId = CUSTOM_THEME_OPTION_ID
+                                prefs.edit()
+                                    .putString(KEY_THEME_PENDING_CANDLE_CUSTOM_HEX, hex)
+                                    .putString(KEY_THEME_PENDING_CANDLE, CUSTOM_THEME_OPTION_ID)
                                     .apply()
                             },
                             labels = AppLabels(
@@ -1149,6 +1213,11 @@ fun WorkoutAssistApp() {
                             onMomentumStockModeChanged = { enabled ->
                                 momentumStockMode = enabled
                                 prefs.edit().putBoolean(KEY_MOMENTUM_STOCK_MODE, enabled).apply()
+                            },
+                            momentumCrashMode = momentumCrashMode,
+                            onMomentumCrashModeChanged = { enabled ->
+                                momentumCrashMode = enabled
+                                prefs.edit().putBoolean(KEY_MOMENTUM_CRASH_MODE, enabled).apply()
                             }
                         )
                     }

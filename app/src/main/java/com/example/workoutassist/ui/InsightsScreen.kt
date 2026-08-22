@@ -23,7 +23,6 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -35,6 +34,8 @@ import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.LocalFireDepartment
+import androidx.compose.material.icons.rounded.ZoomIn
+import androidx.compose.material.icons.rounded.ZoomOut
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -67,15 +68,19 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.example.workoutassist.data.SetLogEntity
 import com.example.workoutassist.data.WorkoutDayModel
 import com.example.workoutassist.data.WorkoutRepository
 import com.example.workoutassist.data.WorkoutSessionEntity
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 private data class FinishedWorkoutSessionSnapshot(
     val sessionId: Long,
@@ -120,6 +125,8 @@ internal fun InsightsScreen(
     onRoutineWindowChange: (Int) -> Unit = {},
     useClassicStreakGraph: Boolean = false,
     stockMode: Boolean = false,
+    crashMode: Boolean = false,
+    pendingColor: Color = Color(0xFF2563EB),
     onOpenGraphs: () -> Unit = {}
 ) {
     val scope = rememberCoroutineScope()
@@ -181,10 +188,18 @@ internal fun InsightsScreen(
     val momentumEntries = remember(completedSessionEpochDays, todayEpochDay) {
         buildMomentumEntries(completedSessionEpochDays, todayEpochDay)
     }
-    val momentumSeries = remember(momentumEntries) { momentumEntries.map { it.value } }
+    // Crash mode ("gimmick"): miss runs fall progressively below zero instead of
+    // flatlining at 0, like a stock crashing further each day it doesn't recover.
+    val displayMomentumEntries = remember(momentumEntries, crashMode) {
+        if (crashMode) applyMissCrashDepth(momentumEntries) else momentumEntries
+    }
+    val momentumSeries = remember(displayMomentumEntries) { displayMomentumEntries.map { it.value } }
     val momentumDayLabels = remember(momentumEntries) {
         momentumEntries.map { epochDayToDayOfMonth(it.epochDay) }
     }
+    // Today shows as a distinct "still pending" color until it's logged done or the day
+    // passes unlogged (at which point it becomes a normal miss on the next render).
+    val momentumPendingToday = momentumEntries.lastOrNull()?.status == MomentumDayStatus.PENDING
     val bestStreak = remember(completedSessionEpochDays) {
         streakRunLengths(completedSessionEpochDays).maxOrNull() ?: 0
     }
@@ -422,6 +437,9 @@ internal fun InsightsScreen(
                                 dayLabels = momentumDayLabels,
                                 title = streakTitle,
                                 stockMode = stockMode,
+                                crashMode = crashMode,
+                                pendingColor = pendingColor,
+                                pendingToday = momentumPendingToday,
                                 onInspect = { showMomentumInspector = true }
                             )
                         }
@@ -429,6 +447,10 @@ internal fun InsightsScreen(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
+                            StreakSummaryChip(
+                                label = "Current streak",
+                                value = "$routineStreak ${if (routineStreak == 1) "day" else "days"}"
+                            )
                             StreakSummaryChip(
                                 label = "Best streak",
                                 value = "$bestStreak ${if (bestStreak == 1) "day" else "days"}"
@@ -471,27 +493,22 @@ internal fun InsightsScreen(
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
                 ) {
-                    Column(
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
                             text = workoutInsightsTitle,
+                            modifier = Modifier.weight(1f),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold
                         )
-                        OutlinedButton(
-                            onClick = { showWorkoutInsights = true },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Text("Open")
-                            Spacer(modifier = Modifier.width(8.dp))
+                        IconButton(onClick = { showWorkoutInsights = true }) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                                contentDescription = null
+                                contentDescription = "Open $workoutInsightsTitle"
                             )
                         }
                     }
@@ -503,27 +520,22 @@ internal fun InsightsScreen(
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
                 ) {
-                    Column(
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
                             text = "Progress Graphs (Beta)",
+                            modifier = Modifier.weight(1f),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold
                         )
-                        OutlinedButton(
-                            onClick = onOpenGraphs,
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Text("Open")
-                            Spacer(modifier = Modifier.width(8.dp))
+                        IconButton(onClick = onOpenGraphs) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                                contentDescription = null
+                                contentDescription = "Open Progress Graphs"
                             )
                         }
                     }
@@ -561,12 +573,32 @@ internal fun InsightsScreen(
     }
 
     if (showMomentumInspector && momentumSeries.isNotEmpty()) {
-        // Keep the candles from getting too tall; the chart's horizontal length (one candle
-        // per day) is unchanged and scrolls to reveal the whole timeline.
-        val inspectorHeight = 200.dp
+        // Unlike the compact card (which auto-zooms the Y-axis to squeeze the whole range
+        // into one view), the inspector uses a fixed dp-per-streak-unit scale, like a stock
+        // chart, and pans in both directions: horizontally through time (unchanged) and
+        // vertically through the value range, instead of shrinking everything to fit.
+        val inspectorViewportHeight = 340.dp
+        val baseInspectorUnitHeight = 26.dp
+        val baseInspectorCandleWidth = 12.dp
+        val baseInspectorCandleGap = 10.dp
+        val baseInspectorBarWidth = 14.dp
+        val baseInspectorBarGap = 6.dp
+        val inspectorZoomMin = 0.5f
+        val inspectorZoomMax = 2.5f
+        val inspectorZoomStep = 0.25f
+        var inspectorZoom by remember { mutableStateOf(1f) }
         val inspectorHScroll = rememberScrollState()
-        LaunchedEffect(stockMode, inspectorHScroll.maxValue) {
+        val inspectorVScroll = rememberScrollState()
+        // Re-anchor on today whenever the data, mode, or zoom level changes (zooming resizes
+        // the content, so without this the view could land somewhere other than today) - the
+        // same "always anchored on today" guarantee as the compact card, just pannable here.
+        LaunchedEffect(stockMode, inspectorZoom, inspectorHScroll.maxValue) {
             inspectorHScroll.scrollTo(inspectorHScroll.maxValue)
+        }
+        LaunchedEffect(momentumSeries, stockMode, inspectorZoom, inspectorVScroll.maxValue) {
+            // Land on the bottom of the value range (today's baseline + the date axis),
+            // same "anchored on now" feel as the horizontal scroll; scroll up to see peaks.
+            inspectorVScroll.scrollTo(inspectorVScroll.maxValue)
         }
         // How many streaks were 1, 2, ... 7+ days long (a length-frequency histogram).
         val streakHistogram = remember(completedSessionEpochDays) {
@@ -583,8 +615,14 @@ internal fun InsightsScreen(
             longestStreakGap(completedSessionEpochDays, todayEpochDay)
         }
         val avgStreak = if (streakRuns.isEmpty()) 0.0 else streakRuns.average()
-        Dialog(onDismissRequest = { showMomentumInspector = false }) {
+        Dialog(
+            onDismissRequest = { showMomentumInspector = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
             Card(
+                modifier = Modifier
+                    .fillMaxWidth(0.96f)
+                    .padding(vertical = 24.dp),
                 shape = RoundedCornerShape(18.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
@@ -612,48 +650,89 @@ internal fun InsightsScreen(
                             )
                         }
                     }
-                    val inspectorAxisMax = (momentumSeries.maxOrNull() ?: 1).coerceAtLeast(1)
+                    // Zoom the fixed chart scale in/out (both axes together) instead of
+                    // relying on auto-fit; pinned above the pannable chart area.
                     Row(
                         modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(
+                            onClick = { inspectorZoom = (inspectorZoom - inspectorZoomStep).coerceAtLeast(inspectorZoomMin) },
+                            enabled = inspectorZoom > inspectorZoomMin
+                        ) {
+                            Icon(imageVector = Icons.Rounded.ZoomOut, contentDescription = "Zoom out")
+                        }
+                        Text(
+                            text = "${(inspectorZoom * 100).roundToInt()}%",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        IconButton(
+                            onClick = { inspectorZoom = (inspectorZoom + inspectorZoomStep).coerceAtMost(inspectorZoomMax) },
+                            enabled = inspectorZoom < inspectorZoomMax
+                        ) {
+                            Icon(imageVector = Icons.Rounded.ZoomIn, contentDescription = "Zoom in")
+                        }
+                    }
+                    val inspectorAxisMax = (momentumSeries.maxOrNull() ?: 1).coerceAtLeast(1)
+                    val inspectorAxisMin = (momentumSeries.minOrNull() ?: 0).coerceAtMost(0)
+                    val inspectorRange = (inspectorAxisMax - inspectorAxisMin).coerceAtLeast(1)
+                    // Fixed scale (times the current zoom level): content grows taller/wider
+                    // as the range/zoom grows, instead of being squashed into a fixed view.
+                    val inspectorContentHeight = baseInspectorUnitHeight * inspectorZoom * inspectorRange
+                    val inspectorCandleWidth = baseInspectorCandleWidth * inspectorZoom
+                    val inspectorCandleGap = baseInspectorCandleGap * inspectorZoom
+                    val inspectorBarWidth = baseInspectorBarWidth * inspectorZoom
+                    val inspectorBarGap = baseInspectorBarGap * inspectorZoom
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(inspectorViewportHeight)
+                            .verticalScroll(inspectorVScroll),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        MomentumYAxis(maxValue = inspectorAxisMax, height = inspectorHeight)
+                        MomentumYAxis(
+                            minValue = inspectorAxisMin,
+                            maxValue = inspectorAxisMax,
+                            height = inspectorContentHeight,
+                            verticalInset = MomentumDateLabelGutter
+                        )
                         Box(
                             modifier = Modifier
                                 .weight(1f)
                                 .horizontalScroll(inspectorHScroll)
                         ) {
-                            Column {
-                                if (stockMode) {
-                                    MomentumCandleChart(
-                                        values = momentumSeries,
-                                        upColor = Color(0xFF16A34A),
-                                        downColor = Color(0xFFDC2626),
-                                        modifier = Modifier.height(inspectorHeight)
-                                    )
-                                } else {
-                                    MomentumLineChart(
-                                        values = momentumSeries,
-                                        lineColor = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.height(inspectorHeight)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.height(4.dp))
-                                // X-axis: the date (day-of-month) under each bar/candle
-                                // (candles are day-over-day, so drop the leading baseline).
-                                if (stockMode) {
-                                    MomentumValueAxis(
-                                        values = momentumDayLabels.drop(1),
-                                        cellWidth = 12.dp,
-                                        gap = 10.dp
-                                    )
-                                } else {
-                                    MomentumValueAxis(
-                                        values = momentumDayLabels,
-                                        cellWidth = 14.dp,
-                                        gap = 6.dp
-                                    )
-                                }
+                            // Below/at 100% zoom, candles/points pack in tight enough that
+                            // their date labels would overlap each other, so hide the dates
+                            // until the user zooms in past 100% for room to show them again.
+                            val inspectorShowDates = inspectorZoom > 1f
+                            if (stockMode) {
+                                MomentumCandleChart(
+                                    values = momentumSeries,
+                                    dayLabels = momentumDayLabels.drop(1),
+                                    upColor = Color(0xFF16A34A),
+                                    downColor = Color(0xFFDC2626),
+                                    pendingColor = pendingColor,
+                                    pendingLast = momentumPendingToday,
+                                    crashMode = crashMode,
+                                    candleWidth = inspectorCandleWidth,
+                                    gap = inspectorCandleGap,
+                                    contentHeight = inspectorContentHeight,
+                                    showDateLabels = inspectorShowDates
+                                )
+                            } else {
+                                MomentumLineChart(
+                                    values = momentumSeries,
+                                    dayLabels = momentumDayLabels,
+                                    lineColor = MaterialTheme.colorScheme.primary,
+                                    pendingColor = pendingColor,
+                                    pendingLast = momentumPendingToday,
+                                    barWidth = inspectorBarWidth,
+                                    gap = inspectorBarGap,
+                                    contentHeight = inspectorContentHeight,
+                                    showDateLabels = inspectorShowDates
+                                )
                             }
                         }
                     }
@@ -664,8 +743,6 @@ internal fun InsightsScreen(
                         fontWeight = FontWeight.SemiBold
                     )
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        MetricRow("Breaks this month", breaksThisMonth.toString())
-                        MetricRow("Breaks last 3 months", breaksLast3Months.toString())
                         MetricRow(
                             label = "Current streak",
                             value = "$routineStreak ${if (routineStreak == 1) "day" else "days"}"
@@ -674,6 +751,8 @@ internal fun InsightsScreen(
                             label = "Best streak",
                             value = "$bestStreak ${if (bestStreak == 1) "day" else "days"}"
                         )
+                        MetricRow("Breaks this month", breaksThisMonth.toString())
+                        MetricRow("Breaks last 3 months", breaksLast3Months.toString())
                         MetricRow("Active days", completedSessionEpochDays.size.toString())
                         MetricRow("Streaks", streakRuns.size.toString())
                         MetricRow("Avg streak", "${"%.1f".format(avgStreak)} days")
@@ -727,11 +806,15 @@ private fun StreakMomentumGraph(
     dayLabels: List<Int>,
     title: String,
     stockMode: Boolean,
+    crashMode: Boolean,
+    pendingColor: Color,
+    pendingToday: Boolean,
     onInspect: () -> Unit
 ) {
     val chartScroll = rememberScrollState()
-    // Anchor the view on the latest (right-most) entry so today's trend shows first;
-    // the user can still scroll left through history.
+    // The compact card is always anchored on today (right-most) and isn't user-draggable,
+    // so it never drifts away and "gets lost" scrolled into old history; the chevron opens
+    // the inspector, which is the dedicated place to pan/zoom through the full timeline.
     LaunchedEffect(momentumSeries, stockMode, chartScroll.maxValue) {
         chartScroll.scrollTo(chartScroll.maxValue)
     }
@@ -747,8 +830,11 @@ private fun StreakMomentumGraph(
                 fontWeight = FontWeight.SemiBold
             )
             if (momentumSeries.isNotEmpty()) {
-                TextButton(onClick = onInspect) {
-                    Text("Inspect")
+                IconButton(onClick = onInspect) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                        contentDescription = "Expand streak graph"
+                    )
                 }
             }
         }
@@ -760,39 +846,51 @@ private fun StreakMomentumGraph(
             )
         } else {
             val chartHeight = 180.dp
-            val axisMax = (momentumSeries.maxOrNull() ?: 1).coerceAtLeast(1)
+            // The compact card no longer auto-fits its y-scale to the full data range (that
+            // squashed everything down whenever a big streak or crash appeared); it now uses
+            // a fixed -5..+5 window, matching the inspector's "fixed scale, scroll to see
+            // more" feel, and stays anchored on today (right-most) via `chartScroll` above.
+            val compactRange = -5..5
+            val axisMin = compactRange.first
+            val axisMax = compactRange.last
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.Top
             ) {
-                MomentumYAxis(maxValue = axisMax, height = chartHeight)
+                MomentumYAxis(
+                    minValue = axisMin,
+                    maxValue = axisMax,
+                    height = chartHeight,
+                    verticalInset = MomentumDateLabelGutter
+                )
                 Row(
                     modifier = Modifier
                         .weight(1f)
-                        .horizontalScroll(chartScroll)
+                        .horizontalScroll(chartScroll, enabled = false)
                 ) {
-                    Column {
-                        if (stockMode) {
-                            MomentumCandleChart(
-                                values = momentumSeries,
-                                upColor = Color(0xFF16A34A),
-                                downColor = Color(0xFFDC2626),
-                                modifier = Modifier.height(chartHeight)
-                            )
-                        } else {
-                            MomentumLineChart(
-                                values = momentumSeries,
-                                lineColor = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.height(chartHeight)
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(2.dp))
-                        if (stockMode) {
-                            MomentumValueAxis(values = dayLabels.drop(1), cellWidth = 12.dp, gap = 10.dp)
-                        } else {
-                            MomentumValueAxis(values = dayLabels, cellWidth = 14.dp, gap = 6.dp)
-                        }
+                    if (stockMode) {
+                        MomentumCandleChart(
+                            values = momentumSeries,
+                            dayLabels = dayLabels.drop(1),
+                            upColor = Color(0xFF16A34A),
+                            downColor = Color(0xFFDC2626),
+                            pendingColor = pendingColor,
+                            pendingLast = pendingToday,
+                            crashMode = crashMode,
+                            contentHeight = chartHeight,
+                            fixedRange = compactRange
+                        )
+                    } else {
+                        MomentumLineChart(
+                            values = momentumSeries,
+                            dayLabels = dayLabels,
+                            lineColor = MaterialTheme.colorScheme.primary,
+                            pendingColor = pendingColor,
+                            pendingLast = pendingToday,
+                            contentHeight = chartHeight,
+                            fixedRange = compactRange
+                        )
                     }
                 }
             }
@@ -847,20 +945,31 @@ private fun MetricRow(label: String, value: String) {
 }
 
 // Fixed left value-axis (streak counts) for the momentum charts. Sits outside the
-// horizontal scroll so the scale stays visible while the chart scrolls.
+// horizontal scroll so the scale stays visible while the chart scrolls. `verticalInset`
+// must match the chart's own top/bottom label gutter so the tick marks line up with the
+// actual candle/point positions.
 @Composable
-private fun MomentumYAxis(maxValue: Int, height: Dp, modifier: Modifier = Modifier) {
-    val m = maxValue.coerceAtLeast(1)
-    val ticks = remember(m) { momentumYTicks(m) }
+private fun MomentumYAxis(
+    minValue: Int,
+    maxValue: Int,
+    height: Dp,
+    verticalInset: Dp = 0.dp,
+    modifier: Modifier = Modifier
+) {
+    val lo = minValue.coerceAtMost(0)
+    val hi = maxValue.coerceAtLeast(lo + 1)
+    val range = (hi - lo).toFloat()
+    val ticks = remember(lo, hi) { momentumYTicks(lo, hi) }
     val textHeight = 14.dp
+    val totalHeight = height + verticalInset * 2
     Box(
         modifier = modifier
-            .height(height)
+            .height(totalHeight)
             .width(22.dp)
     ) {
         ticks.forEach { tick ->
-            val frac = tick.toFloat() / m
-            val y = (height * (1f - frac) - textHeight * 0.5f).coerceIn(0.dp, height - textHeight)
+            val frac = (tick - lo) / range
+            val y = (verticalInset + height * (1f - frac) - textHeight * 0.5f).coerceIn(0.dp, totalHeight - textHeight)
             Text(
                 text = tick.toString(),
                 style = MaterialTheme.typography.labelSmall,
@@ -873,80 +982,110 @@ private fun MomentumYAxis(maxValue: Int, height: Dp, modifier: Modifier = Modifi
     }
 }
 
-// Evenly spaced streak values (max .. 0) used as Y-axis ticks. Small ranges show every
-// integer; larger ranges are thinned to about five labels.
-private fun momentumYTicks(maxValue: Int): List<Int> {
-    val m = maxValue.coerceAtLeast(1)
-    if (m <= 6) return (m downTo 0).toList()
-    val step = kotlin.math.ceil(m / 5.0).toInt().coerceAtLeast(1)
-    val ticks = sortedSetOf(0, m)
-    var v = step
-    while (v < m) {
+// Evenly spaced streak values (max .. min) used as Y-axis ticks. Small ranges show every
+// integer; larger ranges are thinned to about five labels. Zero is always included so the
+// baseline reads clearly once crash mode pushes misses below it.
+private fun momentumYTicks(minValue: Int, maxValue: Int): List<Int> {
+    val lo = minValue.coerceAtMost(0)
+    val hi = maxValue.coerceAtLeast(lo + 1)
+    val range = hi - lo
+    if (range <= 6) return (hi downTo lo).toList()
+    val step = kotlin.math.ceil(range / 5.0).toInt().coerceAtLeast(1)
+    val ticks = sortedSetOf(lo, hi, 0)
+    var v = lo + step
+    while (v < hi) {
         ticks.add(v)
         v += step
     }
     return ticks.toList().sortedDescending()
 }
 
-// Numeric x-axis for the inspector: the streak value under each bar/candle, using the
-// same per-item width and gap as the chart so the labels line up.
-@Composable
-private fun MomentumValueAxis(
-    values: List<Int>,
-    cellWidth: Dp,
-    gap: Dp,
-    modifier: Modifier = Modifier
-) {
-    Row(
-        modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(gap)
-    ) {
-        values.forEach { value ->
-            Box(modifier = Modifier.width(cellWidth), contentAlignment = Alignment.Center) {
-                Text(
-                    text = value.toString(),
-                    modifier = Modifier.wrapContentWidth(unbounded = true),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    softWrap = false
-                )
-            }
-        }
-    }
-}
+// Space reserved above/below the zero axis inside the chart canvas for the date labels
+// that now sit directly on the axis line (see `MomentumCandleChart`/`MomentumLineChart`).
+private val MomentumDateLabelGutter = 16.dp
 
 // Stock-market gimmick: draw each day-over-day change in streak as a candle. A climb
 // (green) rises one step; a break (red) drops from the streak peak all the way to zero.
+// The very last candle can be "pending" (today, not yet logged) — drawn in a distinct
+// color instead of red so it doesn't look like a confirmed miss.
 @Composable
 private fun MomentumCandleChart(
     values: List<Int>,
+    dayLabels: List<Int>,
     upColor: Color,
     downColor: Color,
+    pendingColor: Color,
+    pendingLast: Boolean,
+    contentHeight: Dp,
+    crashMode: Boolean = false,
+    candleWidth: Dp = 12.dp,
+    gap: Dp = 10.dp,
+    labelGutter: Dp = MomentumDateLabelGutter,
+    // When set, pins the y-scale to this range instead of auto-fitting to the data (values
+    // outside it are clamped/cropped, like scrolling a stock chart at a fixed price scale).
+    fixedRange: IntRange? = null,
+    // At low zoom, candles get too narrow for their date labels to fit without overlapping
+    // their neighbors, so callers hide the labels below a zoom threshold.
+    showDateLabels: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     if (values.size < 2) return
-    val maxValue = (values.maxOrNull() ?: 1).coerceAtLeast(1)
+    val maxValue = fixedRange?.last ?: (values.maxOrNull() ?: 1).coerceAtLeast(1)
+    val minValue = fixedRange?.first ?: (values.minOrNull() ?: 0).coerceAtMost(0)
+    val range = (maxValue - minValue).coerceAtLeast(1)
+    val baselineColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
+    val labelStyle = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant)
+    val textMeasurer = rememberTextMeasurer()
     val candleCount = values.size - 1
-    val candleWidth = 12.dp
-    val gap = 10.dp
     val chartWidth = candleWidth * candleCount + gap * (candleCount - 1).coerceAtLeast(0)
-    Canvas(modifier = modifier.width(chartWidth)) {
+    Canvas(modifier = modifier.height(contentHeight + labelGutter * 2).width(chartWidth)) {
         val cw = candleWidth.toPx()
         val g = gap.toPx()
+        val gutterPx = labelGutter.toPx()
+        val innerHeight = size.height - gutterPx * 2
         val radius = CornerRadius(3.dp.toPx(), 3.dp.toPx())
         val minBody = 3.dp.toPx()
+        val labelGapPx = 2.dp.toPx()
+        fun toY(value: Int) = gutterPx + innerHeight * (1f - (value - minValue).toFloat() / range)
+        val zeroY = toY(0)
+        if (minValue < 0) {
+            drawLine(
+                color = baselineColor,
+                start = Offset(0f, zeroY),
+                end = Offset(size.width, zeroY),
+                strokeWidth = 1.dp.toPx()
+            )
+        }
         for (i in 1 until values.size) {
             val open = values[i - 1]
             val close = values[i]
-            // A zero means a missed day: draw it red. The first miss after a run drops from
-            // the streak peak; a continuing miss shows a 1-unit red tick so it stays visible.
-            val isMiss = close == 0
-            val color = if (isMiss) downColor else upColor
-            val topValue = if (isMiss) maxOf(open, 1) else maxOf(open, close)
-            val bottomValue = if (isMiss) 0 else minOf(open, close)
-            val topY = size.height * (1f - topValue.toFloat() / maxValue)
-            val bottomY = size.height * (1f - bottomValue.toFloat() / maxValue)
+            val isPending = pendingLast && i == values.size - 1
+            // A non-positive close means a missed day: draw it red (or crash-mode negative).
+            // The first miss after a run drops from the streak peak; a continuing miss (in
+            // classic mode) shows a 1-unit red tick so it stays visible.
+            val isMiss = close <= 0 && !isPending
+            val color = if (isPending) pendingColor else if (isMiss) downColor else upColor
+            var topValue: Int
+            var bottomValue: Int
+            if (isPending && crashMode) {
+                // Show the possibility of recovery: stretch from the deepest point the
+                // crash reached so far up to +1 (a fresh streak start), so a long miss
+                // run reads as a long blue candle with room to climb back out.
+                topValue = 1
+                bottomValue = minOf(open, close)
+            } else if (!crashMode && (isPending || isMiss)) {
+                topValue = maxOf(open, 1)
+                bottomValue = 0
+            } else {
+                topValue = maxOf(open, close)
+                bottomValue = minOf(open, close)
+            }
+            if (fixedRange != null) {
+                topValue = topValue.coerceIn(minValue, maxValue)
+                bottomValue = bottomValue.coerceIn(minValue, maxValue)
+            }
+            val topY = toY(topValue)
+            val bottomY = toY(bottomValue)
             val left = (i - 1) * (cw + g)
             var bodyTop = topY
             var bodyHeight = bottomY - topY
@@ -960,6 +1099,22 @@ private fun MomentumCandleChart(
                 size = Size(cw, bodyHeight),
                 cornerRadius = radius
             )
+            // The date sits right on the zero axis, under the candle by default; if the
+            // candle dips below zero (crash mode) it flips above the axis instead, so the
+            // label never overlaps the body.
+            val label = dayLabels.getOrNull(i - 1)?.toString()
+            if (showDateLabels && label != null) {
+                val layout = textMeasurer.measure(label, style = labelStyle)
+                val labelAbove = bottomValue < 0
+                val labelX = (left + cw / 2f - layout.size.width / 2f)
+                    .coerceIn(0f, (size.width - layout.size.width).coerceAtLeast(0f))
+                val labelY = if (labelAbove) {
+                    zeroY - labelGapPx - layout.size.height
+                } else {
+                    zeroY + labelGapPx
+                }
+                drawText(layout, topLeft = Offset(labelX, labelY))
+            }
         }
     }
 }
@@ -967,43 +1122,92 @@ private fun MomentumCandleChart(
 @Composable
 private fun MomentumLineChart(
     values: List<Int>,
+    dayLabels: List<Int>,
     lineColor: Color,
+    pendingColor: Color,
+    pendingLast: Boolean,
+    contentHeight: Dp,
+    barWidth: Dp = 14.dp,
+    gap: Dp = 6.dp,
+    labelGutter: Dp = MomentumDateLabelGutter,
+    // When set, pins the y-scale to this range instead of auto-fitting to the data (values
+    // outside it are clamped/cropped, like scrolling a stock chart at a fixed price scale).
+    fixedRange: IntRange? = null,
+    // At low zoom, points get too close together for their date labels to fit without
+    // overlapping their neighbors, so callers hide the labels below a zoom threshold.
+    showDateLabels: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     if (values.isEmpty()) return
-    val maxValue = (values.maxOrNull() ?: 1).coerceAtLeast(1)
-    val barWidth = 14.dp
-    val gap = 6.dp
+    val maxValue = fixedRange?.last ?: (values.maxOrNull() ?: 1).coerceAtLeast(1)
+    val minValue = fixedRange?.first ?: (values.minOrNull() ?: 0).coerceAtMost(0)
+    val range = (maxValue - minValue).coerceAtLeast(1)
+    val baselineColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
+    val labelStyle = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant)
+    val textMeasurer = rememberTextMeasurer()
     val chartWidth = barWidth * values.size + gap * (values.size - 1).coerceAtLeast(0)
-    Canvas(modifier = modifier.width(chartWidth)) {
+    Canvas(modifier = modifier.height(contentHeight + labelGutter * 2).width(chartWidth)) {
+        val gutterPx = labelGutter.toPx()
+        val innerHeight = size.height - gutterPx * 2
+        val innerBottom = gutterPx + innerHeight
+        val labelGapPx = 2.dp.toPx()
         val stride = (barWidth + gap).toPx()
         val half = barWidth.toPx() / 2f
         val points = values.mapIndexed { index, value ->
+            val clamped = if (fixedRange != null) value.coerceIn(minValue, maxValue) else value
             val x = index * stride + half
-            val y = size.height * (1f - value.toFloat() / maxValue)
+            val y = gutterPx + innerHeight * (1f - (clamped - minValue).toFloat() / range)
             Offset(x, y)
+        }
+        val zeroY = gutterPx + innerHeight * (1f - (0 - minValue).toFloat() / range)
+        if (minValue < 0) {
+            drawLine(
+                color = baselineColor,
+                start = Offset(0f, zeroY),
+                end = Offset(size.width, zeroY),
+                strokeWidth = 1.dp.toPx()
+            )
         }
         // Soft fill under the line.
         val fill = Path().apply {
-            moveTo(points.first().x, size.height)
+            moveTo(points.first().x, innerBottom)
             points.forEach { lineTo(it.x, it.y) }
-            lineTo(points.last().x, size.height)
+            lineTo(points.last().x, innerBottom)
             close()
         }
         drawPath(path = fill, color = lineColor.copy(alpha = 0.15f))
-        // The connecting line.
+        // The connecting line. The last segment (into today) is drawn pending-colored
+        // when today hasn't been logged yet.
         for (i in 1 until points.size) {
+            val isPending = pendingLast && i == points.size - 1
             drawLine(
-                color = lineColor,
+                color = if (isPending) pendingColor else lineColor,
                 start = points[i - 1],
                 end = points[i],
                 strokeWidth = 3.dp.toPx(),
                 cap = StrokeCap.Round
             )
         }
-        // A dot at each streak value.
-        points.forEach { p ->
-            drawCircle(color = lineColor, radius = 3.dp.toPx(), center = p)
+        // A dot at each streak value; today's dot is pending-colored while unlogged. The
+        // date sits on the zero axis, under the point by default, flipping above it when
+        // the value dips below zero so the label never overlaps the line/dot.
+        points.forEachIndexed { index, p ->
+            val isPending = pendingLast && index == points.size - 1
+            drawCircle(color = if (isPending) pendingColor else lineColor, radius = 3.dp.toPx(), center = p)
+            val label = dayLabels.getOrNull(index)?.toString()
+            if (showDateLabels && label != null) {
+                val layout = textMeasurer.measure(label, style = labelStyle)
+                val pointValue = if (fixedRange != null) values[index].coerceIn(minValue, maxValue) else values[index]
+                val labelAbove = pointValue < 0
+                val labelX = (p.x - layout.size.width / 2f)
+                    .coerceIn(0f, (size.width - layout.size.width).coerceAtLeast(0f))
+                val labelY = if (labelAbove) {
+                    zeroY - labelGapPx - layout.size.height
+                } else {
+                    zeroY + labelGapPx
+                }
+                drawText(layout, topLeft = Offset(labelX, labelY))
+            }
         }
     }
 }

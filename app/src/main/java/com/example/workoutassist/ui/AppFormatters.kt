@@ -83,46 +83,61 @@ internal fun computeRoutineStreak(completedDays: Set<Long>, todayEpochDay: Long)
     return streak
 }
 
-data class MomentumEntry(val epochDay: Long, val value: Int)
+// PENDING marks today when it hasn't been logged yet (outcome unknown); it renders in a
+// distinct "still open" color instead of the DONE (green) or MISS (red) colors.
+enum class MomentumDayStatus { DONE, MISS, PENDING }
+
+data class MomentumEntry(val epochDay: Long, val value: Int, val status: MomentumDayStatus)
 
 // Per-calendar-day streak momentum from the first (windowed) completed day up to today.
 // A completed day carries its running streak (1,2,3,...); a missed day is 0, so every
 // consecutive miss shows individually. A leading 0 (the day before the first workout in
-// the window) lets the first run rise from zero. Today, while still unlogged, is not
-// counted as a miss yet. Windowed to the most recent [windowDays] days to stay bounded.
+// the window) lets the first run rise from zero. Today always appears: if logged it's a
+// normal DONE entry, otherwise it's a PENDING entry (not yet counted as a miss — that only
+// happens once the day passes unlogged). Windowed to the most recent [windowDays] days.
 internal fun buildMomentumEntries(
     completedDays: Set<Long>,
     todayEpochDay: Long,
     windowDays: Int = 120
 ): List<MomentumEntry> {
-    if (completedDays.isEmpty()) return emptyList()
     val windowStart = todayEpochDay - (windowDays - 1).coerceAtLeast(0).toLong()
+    if (completedDays.isEmpty()) {
+        return listOf(MomentumEntry(todayEpochDay, 0, MomentumDayStatus.PENDING))
+    }
     val sortedDays = completedDays.toSortedSet().toList()
     val entries = mutableListOf<MomentumEntry>()
     var runLength = 0
     var previousDay: Long? = null
     for (day in sortedDays) {
         if (previousDay == null) {
-            if (day - 1L >= windowStart) entries.add(MomentumEntry(day - 1L, 0))
+            if (day - 1L >= windowStart) {
+                entries.add(MomentumEntry(day - 1L, 0, MomentumDayStatus.MISS))
+            }
             runLength = 1
         } else if (day == previousDay + 1L) {
             runLength += 1
         } else {
             var missDay = previousDay + 1L
             while (missDay < day) {
-                if (missDay >= windowStart) entries.add(MomentumEntry(missDay, 0))
+                if (missDay >= windowStart) {
+                    entries.add(MomentumEntry(missDay, 0, MomentumDayStatus.MISS))
+                }
                 missDay += 1L
             }
             runLength = 1
         }
-        if (day >= windowStart) entries.add(MomentumEntry(day, runLength))
+        if (day >= windowStart) entries.add(MomentumEntry(day, runLength, MomentumDayStatus.DONE))
         previousDay = day
     }
     // Trailing confirmed misses: days after the last workout up to yesterday.
     var trailDay = sortedDays.last() + 1L
     while (trailDay < todayEpochDay) {
-        if (trailDay >= windowStart) entries.add(MomentumEntry(trailDay, 0))
+        if (trailDay >= windowStart) entries.add(MomentumEntry(trailDay, 0, MomentumDayStatus.MISS))
         trailDay += 1L
+    }
+    // Today: still pending unless it was already logged (handled by the main loop above).
+    if (sortedDays.last() != todayEpochDay) {
+        entries.add(MomentumEntry(todayEpochDay, 0, MomentumDayStatus.PENDING))
     }
     return entries
 }
@@ -133,6 +148,29 @@ internal fun epochDayToDayOfMonth(epochDay: Long): Int {
     cal.clear()
     cal.timeInMillis = epochDay * MILLIS_PER_DAY
     return cal.get(Calendar.DAY_OF_MONTH)
+}
+
+// "Crash" gimmick: instead of every missed day flatlining at 0, consecutive misses fall
+// increasingly below zero (0, -1, -2, ...), like a stock price crashing further each day
+// it doesn't recover. A new run always restarts the climb at 1 — it never "recovers" back
+// up through the negative depth first. PENDING (today, not yet logged) continues at the
+// current miss depth so its bar doesn't jump before the day's outcome is known.
+internal fun applyMissCrashDepth(entries: List<MomentumEntry>): List<MomentumEntry> {
+    var depth = 0
+    return entries.map { entry ->
+        when (entry.status) {
+            MomentumDayStatus.DONE -> {
+                depth = 0
+                entry
+            }
+            MomentumDayStatus.MISS -> {
+                val value = -depth
+                depth += 1
+                entry.copy(value = value)
+            }
+            MomentumDayStatus.PENDING -> entry.copy(value = -depth)
+        }
+    }
 }
 
 // Lengths of each maximal run of consecutive completed days, e.g. days {1,2,3, 5} -> [3, 1].

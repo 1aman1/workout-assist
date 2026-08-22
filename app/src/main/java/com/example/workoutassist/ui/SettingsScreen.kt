@@ -121,6 +121,11 @@ internal fun SettingsScreen(
     statusThemeOptionId: String,
     doneThemeOptionId: String,
     bannerThemeOptionId: String,
+    pendingCandleThemeOptionId: String,
+    onPendingCandleThemeOptionChanged: (String) -> Unit,
+    pendingCandleThemeOptions: List<ThemeColorOption>,
+    pendingCandleCustomColor: Color,
+    onPendingCandleCustomColorChanged: (Color) -> Unit,
     onBackgroundThemeOptionChanged: (String) -> Unit,
     onStatusThemeOptionChanged: (String) -> Unit,
     onDoneThemeOptionChanged: (String) -> Unit,
@@ -145,6 +150,8 @@ internal fun SettingsScreen(
     onUseClassicStreakGraphChanged: (Boolean) -> Unit,
     momentumStockMode: Boolean,
     onMomentumStockModeChanged: (Boolean) -> Unit,
+    momentumCrashMode: Boolean,
+    onMomentumCrashModeChanged: (Boolean) -> Unit,
     onExportBackup: () -> Unit,
     onImportBackup: () -> Unit
 ) {
@@ -399,6 +406,14 @@ internal fun SettingsScreen(
                                             customColor = bannerCustomColor,
                                             onOptionSelected = onBannerThemeOptionChanged,
                                             onCustomColorChanged = onBannerCustomColorChanged
+                                        )
+
+                                        ThemeRole.PENDING_CANDLE -> ThemeSwatchPicker(
+                                            options = pendingCandleThemeOptions,
+                                            selectedOptionId = pendingCandleThemeOptionId,
+                                            customColor = pendingCandleCustomColor,
+                                            onOptionSelected = onPendingCandleThemeOptionChanged,
+                                            onCustomColorChanged = onPendingCandleCustomColorChanged
                                         )
                                     }
                                 }
@@ -662,6 +677,27 @@ internal fun SettingsScreen(
                                             onCheckedChange = onMomentumStockModeChanged
                                         )
                                     }
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "Falling miss gaps",
+                                                style = MaterialTheme.typography.bodyLarge
+                                            )
+                                            Text(
+                                                text = "Misses crash progressively below zero (0, -1, -2, ...) like a stock chart, instead of flatlining at 0. A new streak after the gap always restarts at 1.",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                        Switch(
+                                            checked = momentumCrashMode,
+                                            onCheckedChange = onMomentumCrashModeChanged
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -759,7 +795,8 @@ private enum class ThemeRole(val title: String) {
     BACKGROUND("Background"),
     STATUS("Status (Exercise cards)"),
     DONE("Done / Actions"),
-    BANNER("Missed banner")
+    BANNER("Missed banner"),
+    PENDING_CANDLE("Pending candle")
 }
 
 @Composable

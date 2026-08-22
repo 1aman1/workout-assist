@@ -163,6 +163,9 @@ class WorkoutRepository(private val dao: WorkoutDao) {
     suspend fun renameWorkout(dayNumber: Int, workoutName: String) {
         val clean = workoutName.trim().ifEmpty { "Day $dayNumber Workout" }
         dao.updateWorkoutName(dayNumber, clean)
+        // Also relabel this day's past sessions so Workout Insights keeps showing one
+        // combined history for the day instead of splitting old-name / new-name entries.
+        dao.renameSessionsForDay(dayNumber, clean)
     }
 
     suspend fun addExercise(dayNumber: Int, draft: ExerciseDraft) {

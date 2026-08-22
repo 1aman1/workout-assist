@@ -69,6 +69,11 @@ interface WorkoutDao {
     @Query("UPDATE template_days SET workoutName = :workoutName WHERE dayNumber = :dayNumber")
     suspend fun updateWorkoutName(dayNumber: Int, workoutName: String): Int
 
+    // Keep past sessions' recorded name in sync with a template rename, so Insights history
+    // (grouped by workoutName) doesn't fragment into an old-name and new-name entry.
+    @Query("UPDATE workout_sessions SET workoutName = :workoutName WHERE dayNumber = :dayNumber")
+    suspend fun renameSessionsForDay(dayNumber: Int, workoutName: String): Int
+
     @Query("UPDATE template_days SET completedForDateEpochDay = :completedForDateEpochDay WHERE dayNumber = :dayNumber")
     suspend fun updateWorkoutDone(dayNumber: Int, completedForDateEpochDay: Long?): Int
 
