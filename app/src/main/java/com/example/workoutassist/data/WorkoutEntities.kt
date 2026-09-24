@@ -59,7 +59,13 @@ data class WorkoutSessionEntity(
     val dayNumber: Int,
     val workoutName: String,
     val startedAt: Long,
-    val finishedAt: Long?
+    val finishedAt: Long?,
+    // False for a substitute activity logged instead of the due day (an alternate
+    // template day, or a freeform one-off) - it counts toward the streak but doesn't
+    // move the day-in-cycle pointer, so the originally due day stays owed for next time.
+    val advancesCycle: Boolean = true,
+    // True when workoutName is a freeform one-off activity, not a template day's name.
+    val isCustomActivity: Boolean = false
 )
 
 @Entity(

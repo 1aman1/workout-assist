@@ -469,7 +469,10 @@ class WorkoutRepository(private val dao: WorkoutDao) {
 
     // Records a completed workout on a past (or any) date using its planned reps/weights.
     // Enforces one workout per day by replacing anything already on that date.
-    suspend fun logBackdatedWorkout(day: WorkoutDayModel, dateEpochDay: Long) {
+    // `advancesCycle = false` logs it as a substitute for the day that's actually due
+    // (e.g. doing day 5's workout instead of the due day 3), so it counts toward the
+    // streak but the due day stays owed instead of the cycle jumping past it.
+    suspend fun logBackdatedWorkout(day: WorkoutDayModel, dateEpochDay: Long, advancesCycle: Boolean = true) {
         removeWorkoutOnDate(dateEpochDay)
         val whenMillis = epochDayToLocalMiddayMillis(dateEpochDay)
         val sessionId = dao.insertSession(
@@ -477,7 +480,8 @@ class WorkoutRepository(private val dao: WorkoutDao) {
                 dayNumber = day.dayNumber,
                 workoutName = day.workoutName,
                 startedAt = whenMillis,
-                finishedAt = whenMillis
+                finishedAt = whenMillis,
+                advancesCycle = advancesCycle
             )
         )
         day.exercises.forEach { exercise ->
@@ -499,6 +503,24 @@ class WorkoutRepository(private val dao: WorkoutDao) {
                 )
             }
         }
+    }
+
+    // Records a one-off activity that isn't on the schedule at all (e.g. "Badminton").
+    // Never advances the cycle: `fallbackDayNumber` (the day that's actually due) is only
+    // stored to satisfy the dayNumber FK, so that day stays owed for next time.
+    suspend fun logCustomActivity(name: String, fallbackDayNumber: Int, dateEpochDay: Long) {
+        removeWorkoutOnDate(dateEpochDay)
+        val whenMillis = epochDayToLocalMiddayMillis(dateEpochDay)
+        dao.insertSession(
+            WorkoutSessionEntity(
+                dayNumber = fallbackDayNumber,
+                workoutName = name,
+                startedAt = whenMillis,
+                finishedAt = whenMillis,
+                advancesCycle = false,
+                isCustomActivity = true
+            )
+        )
     }
 
     // Clears any completed workout recorded on the given date.

@@ -1,10 +1,15 @@
 package com.example.workoutassist.ui
 
+import android.Manifest
 import android.app.Activity
 import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import com.example.workoutassist.notifications.BackupReminderScheduler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -13,7 +18,6 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -179,6 +183,7 @@ private const val KEY_DEFAULT_SCHEDULE_CALENDAR = "default_schedule_calendar"
 private const val KEY_CLASSIC_STREAK_GRAPH = "classic_streak_graph"
 private const val KEY_MOMENTUM_STOCK_MODE = "momentum_stock_mode"
 private const val KEY_MOMENTUM_CRASH_MODE = "momentum_crash_mode"
+private const val KEY_BACKUP_REMINDER_ENABLED = "backup_reminder_enabled"
 private const val DEFAULT_THEME_BACKGROUND_ID = "white"
 private const val DEFAULT_THEME_STATUS_ID = "turquoise"
 private const val DEFAULT_THEME_DONE_ID = "green"
@@ -190,7 +195,7 @@ private const val DEFAULT_THEME_BANNER_CUSTOM_HEX = "#BF360C"
 private const val DEFAULT_THEME_PENDING_CANDLE_ID = "blue_candle"
 private const val DEFAULT_THEME_PENDING_CANDLE_CUSTOM_HEX = "#2563EB"
 internal const val CUSTOM_THEME_OPTION_ID = "custom"
-internal const val LATEST_DESIGN_VERSION = "1.109"
+internal const val LATEST_DESIGN_VERSION = "1.111"
 
 internal val WORKOUT_SESSION_START_MESSAGES = listOf(
     "Lift weights and come back !",
@@ -253,7 +258,10 @@ internal val PAGE_COMMAND_NAMES = listOf(
 )
 
 internal val LATEST_VERSION_HIGHLIGHTS = listOf(
-    "Fixed the streak candle chart: today's still-pending candle (while a streak is already going, not crashed) now continues the climb by one unit past the current streak instead of snapping down into a flat peak-to-zero shape - a streak of 2 now shows 0, 1, 2, then a blue 3 for today, instead of an odd-looking blue tick back at the bottom. Also fixed the inspector's zoom-based date labels so they show at the default 100% zoom too, only hiding below 100% (previously they were hidden at exactly 100% as well).",    "Settings > Streak graph has a new 'Falling miss gaps' toggle: when on, a miss run crashes progressively below zero (0, -1, -2, ...) like a stock chart instead of flatlining at 0, and a fresh streak after the gap always restarts the climb at 1 rather than recovering back up through the negative numbers. Works with both the line and stock-candle looks. Today's pending candle (while it's still crashed and unlogged) now stretches from that negative depth up to +1, showing the possibility of recovery as one long blue candle. The pending color is now themeable too: Settings > Theme has a new 'Pending candle' role (Blue candle / Sky candle / Indigo candle, or a custom color). The chevron-expanded streak graph inspector no longer auto-zooms its Y-axis to squeeze the whole range into view - it now uses a fixed scale like a stock chart and scrolls both ways (time and value); it opens anchored on today's value and the date axis, and you can scroll up to see higher peaks. A zoom in/out control (50%-250%) above the chart scales both axes together. The compact card is now pinned to today and no longer manually draggable, so it can't be left scrolled away from today. In the inspector, zooming now re-anchors on today too (not just opening it), and the chart area is bigger (a wider, taller dialog). The date under each candle/point now sits right on the zero axis line itself (instead of a separate row below the chart), flipping to the opposite side of the line whenever the candle/point would otherwise overlap it - below the axis by default, above it when a candle dips below zero. The compact card's y-axis is now pinned to a fixed -5..+5 range too (instead of auto-fitting to the data), staying anchored on today. In the inspector, date labels auto-hide at 100% zoom or below (where they'd start overlapping each other) and reappear once you zoom in past 100%.",
+    "Settings > Data has a new 'Weekly reminder' toggle: turn it on and a notification arrives every Sunday nudging you to back up. Tapping it (or its one button) opens the app straight to Settings > Backup & Restore.",
+    "Today's due card has a new icon (next to the pulsing emoji) to log something else instead: pick a different scheduled day's workout, or type a freeform activity name (with your recent custom activities offered as quick-tap chips). Either way it counts as done on today's streak/momentum graph, but it does NOT advance the gym day-cycle - the originally-due day stays owed and will show up again next time.",
+    "Fixed the streak candle chart's pending-candle continuation (previous highlight) so it works correctly with 'Falling miss gaps' turned on too - it was only checking the toggle, not whether a crash was actually in progress, so it wrongly collapsed an ordinary ongoing streak's pending candle to a tiny 1-unit tick near zero instead of continuing the climb.",
+    "Removed the horizontal swipe-to-switch-tabs gesture - it was conflicting with the streak graph's own horizontal scroll/zoom/pan interactions on the Insights tab. Use the bottom navigation bar to switch between Workout, Insights, and Settings.",    "Fixed the streak candle chart: today's still-pending candle (while a streak is already going, not crashed) now continues the climb by one unit past the current streak instead of snapping down into a flat peak-to-zero shape - a streak of 2 now shows 0, 1, 2, then a blue 3 for today, instead of an odd-looking blue tick back at the bottom. Also fixed the inspector's zoom-based date labels so they show at the default 100% zoom too, only hiding below 100% (previously they were hidden at exactly 100% as well).",    "Settings > Streak graph has a new 'Falling miss gaps' toggle: when on, a miss run crashes progressively below zero (0, -1, -2, ...) like a stock chart instead of flatlining at 0, and a fresh streak after the gap always restarts the climb at 1 rather than recovering back up through the negative numbers. Works with both the line and stock-candle looks. Today's pending candle (while it's still crashed and unlogged) now stretches from that negative depth up to +1, showing the possibility of recovery as one long blue candle. The pending color is now themeable too: Settings > Theme has a new 'Pending candle' role (Blue candle / Sky candle / Indigo candle, or a custom color). The chevron-expanded streak graph inspector no longer auto-zooms its Y-axis to squeeze the whole range into view - it now uses a fixed scale like a stock chart and scrolls both ways (time and value); it opens anchored on today's value and the date axis, and you can scroll up to see higher peaks. A zoom in/out control (50%-250%) above the chart scales both axes together. The compact card is now pinned to today and no longer manually draggable, so it can't be left scrolled away from today. In the inspector, zooming now re-anchors on today too (not just opening it), and the chart area is bigger (a wider, taller dialog). The date under each candle/point now sits right on the zero axis line itself (instead of a separate row below the chart), flipping to the opposite side of the line whenever the candle/point would otherwise overlap it - below the axis by default, above it when a candle dips below zero. The compact card's y-axis is now pinned to a fixed -5..+5 range too (instead of auto-fitting to the data), staying anchored on today. In the inspector, date labels auto-hide at 100% zoom or below (where they'd start overlapping each other) and reappear once you zoom in past 100%.",
     "The Workout Insights and Progress Graphs cards now open the same way the streak graph does: a title row with a chevron icon on the right, instead of a separate full-width Open button.",
     "Bugfix: renaming a workout day (the pencil icon) used to leave past sessions labeled with the old name, so Workout Insights showed two split entries for the same day (old name + new name). Renaming now relabels that day's history too, so it stays one combined entry \u2014 just re-save the name once to merge any entries that already split.",
     "The streak graph now always shows today: it's blue while today's workout is still pending, turns green once you log it, and turns red like any other miss if the day passes unlogged. The Inspect text button is now a chevron icon (matching Settings' expand affordance), and both the summary chips and the inspector's Consistency stats now read Current streak, Best streak, then Breaks.",
@@ -397,7 +405,10 @@ internal val LATEST_VERSION_HIGHLIGHTS = listOf(
 )
 
 @Composable
-fun WorkoutAssistApp() {
+fun WorkoutAssistApp(
+    openBackupSettingsSignal: Boolean = false,
+    onOpenBackupSettingsHandled: () -> Unit = {}
+) {
     val context = LocalContext.current
     val activity = context as? Activity
     val scope = rememberCoroutineScope()
@@ -461,14 +472,44 @@ fun WorkoutAssistApp() {
     }
     val lastCompletedDayNumber = remember(sessions) {
         sessions.asSequence()
-            .filter { it.finishedAt != null }
+            .filter { it.finishedAt != null && it.advancesCycle }
             .maxByOrNull { it.finishedAt!! }
             ?.dayNumber
+    }
+    val recentCustomActivityNames = remember(sessions) {
+        sessions.asSequence()
+            .filter { it.isCustomActivity }
+            .sortedByDescending { it.finishedAt ?: it.startedAt }
+            .map { it.workoutName }
+            .distinct()
+            .take(6)
+            .toList()
+    }
+    // Dates logged via a freeform custom activity have no matching WorkoutDayModel to open.
+    val customActivityEpochDays = remember(sessions) {
+        sessions.asSequence()
+            .filter { it.isCustomActivity && it.finishedAt != null }
+            .map { timestampMillisToEpochDay(it.finishedAt!!) }
+            .toSet()
     }
     val lastCompletedEpochDay = remember(completedSessionEpochDays) {
         completedSessionEpochDays.maxOrNull()
     }
     val todayDateEpochDay = currentDateEpochDay()
+    // The day-in-cycle that's actually due today (same modulo logic as ScheduleScreen's
+    // computeNextDueDay), used as the dayNumber FK fallback when logging a custom activity.
+    val todaysDueDayNumber = remember(days, lastCompletedDayNumber) {
+        val cycle = days.sortedBy { it.dayNumber }
+        if (cycle.isEmpty()) {
+            null
+        } else {
+            val startIndex = lastCompletedDayNumber
+                ?.let { dayNumber -> cycle.indexOfFirst { it.dayNumber == dayNumber } }
+                ?: -1
+            val n = cycle.size
+            cycle[(((startIndex + 1) % n) + n) % n].dayNumber
+        }
+    }
 
     // Auto-advance past a skipped rest day: if the next due day is a rest day and its
     // scheduled date has already passed, log an (empty) rest session for it so the
@@ -581,6 +622,10 @@ fun WorkoutAssistApp() {
     var momentumCrashMode by remember {
         mutableStateOf(prefs.getBoolean(KEY_MOMENTUM_CRASH_MODE, false))
     }
+    var backupReminderEnabled by remember {
+        mutableStateOf(prefs.getBoolean(KEY_BACKUP_REMINDER_ENABLED, false))
+    }
+    var settingsJumpToBackup by remember { mutableStateOf(false) }
     var backgroundThemeOptionId by remember {
         mutableStateOf(
             prefs.getString(KEY_THEME_BACKGROUND, DEFAULT_THEME_BACKGROUND_ID) ?: DEFAULT_THEME_BACKGROUND_ID
@@ -636,6 +681,47 @@ fun WorkoutAssistApp() {
             prefs.getString(KEY_THEME_PENDING_CANDLE_CUSTOM_HEX, DEFAULT_THEME_PENDING_CANDLE_CUSTOM_HEX)
                 ?: DEFAULT_THEME_PENDING_CANDLE_CUSTOM_HEX
         )
+    }
+
+    // Self-heal: re-arm the weekly reminder on every launch if the user left it on
+    // (WorkManager's KEEP policy makes this a no-op when it's already scheduled).
+    LaunchedEffect(backupReminderEnabled) {
+        if (backupReminderEnabled) {
+            BackupReminderScheduler.schedule(context)
+        }
+    }
+
+    LaunchedEffect(openBackupSettingsSignal) {
+        if (openBackupSettingsSignal) {
+            selectedTab = RootTab.SETTINGS
+            settingsJumpToBackup = true
+            onOpenBackupSettingsHandled()
+        }
+    }
+
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) {
+        // Whether granted or not, honor the toggle: WorkManager still schedules the work,
+        // the worker itself just silently skips posting if permission is still missing.
+        BackupReminderScheduler.schedule(context)
+    }
+
+    fun setBackupReminderEnabled(enabled: Boolean) {
+        backupReminderEnabled = enabled
+        prefs.edit().putBoolean(KEY_BACKUP_REMINDER_ENABLED, enabled).apply()
+        if (enabled) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS)
+                    != PackageManager.PERMISSION_GRANTED
+            ) {
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            } else {
+                BackupReminderScheduler.schedule(context)
+            }
+        } else {
+            BackupReminderScheduler.cancel(context)
+        }
     }
 
     val exportBackupLauncher = rememberLauncherForActivityResult(
@@ -880,13 +966,6 @@ fun WorkoutAssistApp() {
                 selectedTab == RootTab.SETTINGS ||
                     (selectedTab == RootTab.WORKOUT && currentScreen == AppScreen.DAY_DETAIL)
 
-            // Horizontal swipe switches between the root tabs (Workout <-> Insights <-> Settings)
-            // from their home screens. Disabled during a session, in day detail, and over the
-            // graphs overlay, which have their own horizontal interactions.
-            val tabSwipeEnabled = !isWorkoutSessionActive &&
-                !(selectedTab == RootTab.WORKOUT && currentScreen == AppScreen.DAY_DETAIL) &&
-                !showGraphsPage
-
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -895,31 +974,6 @@ fun WorkoutAssistApp() {
                         top = if (suppressRootTopInset) 0.dp else innerPadding.calculateTopPadding(),
                         end = innerPadding.calculateEndPadding(layoutDirection),
                         bottom = innerPadding.calculateBottomPadding()
-                    )
-                    .then(
-                        if (tabSwipeEnabled) {
-                            Modifier.pointerInput(selectedTab) {
-                                var totalDrag = 0f
-                                val threshold = 72.dp.toPx()
-                                detectHorizontalDragGestures(
-                                    onDragStart = { totalDrag = 0f },
-                                    onDragEnd = {
-                                        val order = RootTab.entries
-                                        val index = selectedTab.ordinal
-                                        if (totalDrag <= -threshold && index < order.lastIndex) {
-                                            selectedTab = order[index + 1]
-                                        } else if (totalDrag >= threshold && index > 0) {
-                                            selectedTab = order[index - 1]
-                                        }
-                                    },
-                                    onHorizontalDrag = { _, dragAmount ->
-                                        totalDrag += dragAmount
-                                    }
-                                )
-                            }
-                        } else {
-                            Modifier
-                        }
                     )
             ) {
                 AnimatedContent(
@@ -956,10 +1010,28 @@ fun WorkoutAssistApp() {
                                         completedSessionEpochDays = completedSessionEpochDays,
                                         completedWorkoutByDate = completedWorkoutByDate,
                                         completedDayNumberByDate = completedDayNumberByDate,
+                                        recentCustomActivityNames = recentCustomActivityNames,
+                                        customActivityEpochDays = customActivityEpochDays,
                                         onLogBackdatedWorkout = { dayNumber, epochDay ->
                                             val day = days.firstOrNull { it.dayNumber == dayNumber }
                                             if (day != null) {
                                                 scope.launch { repository.logBackdatedWorkout(day, epochDay) }
+                                            }
+                                        },
+                                        onLogAlternateToday = { dayNumber ->
+                                            val day = days.firstOrNull { it.dayNumber == dayNumber }
+                                            if (day != null) {
+                                                scope.launch {
+                                                    repository.logBackdatedWorkout(day, todayDateEpochDay, advancesCycle = false)
+                                                }
+                                            }
+                                        },
+                                        onLogCustomActivityToday = { name ->
+                                            val fallbackDayNumber = todaysDueDayNumber
+                                                ?: days.minByOrNull { it.dayNumber }?.dayNumber
+                                                ?: 1
+                                            scope.launch {
+                                                repository.logCustomActivity(name, fallbackDayNumber, todayDateEpochDay)
                                             }
                                         },
                                         onRemoveWorkoutOnDate = { epochDay ->
@@ -1218,7 +1290,13 @@ fun WorkoutAssistApp() {
                             onMomentumCrashModeChanged = { enabled ->
                                 momentumCrashMode = enabled
                                 prefs.edit().putBoolean(KEY_MOMENTUM_CRASH_MODE, enabled).apply()
-                            }
+                            },
+                            backupReminderEnabled = backupReminderEnabled,
+                            onBackupReminderEnabledChanged = { enabled ->
+                                setBackupReminderEnabled(enabled)
+                            },
+                            jumpToBackupSection = settingsJumpToBackup,
+                            onJumpToBackupSectionHandled = { settingsJumpToBackup = false }
                         )
                     }
                 }

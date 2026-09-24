@@ -144,6 +144,8 @@ private fun buildBackupJson(scheduleTitle: String, snapshot: BackupSnapshot): St
                             .put("workoutName", session.workoutName)
                             .put("startedAt", session.startedAt)
                             .put("finishedAt", session.finishedAt)
+                            .put("advancesCycle", session.advancesCycle)
+                            .put("isCustomActivity", session.isCustomActivity)
                     )
                 }
             }
@@ -289,7 +291,9 @@ private fun JSONArray?.toSessions(): List<WorkoutSessionEntity> {
                         null
                     } else {
                         session.getLong("finishedAt")
-                    }
+                    },
+                    advancesCycle = session.optBoolean("advancesCycle", true),
+                    isCustomActivity = session.optBoolean("isCustomActivity", false)
                 )
             )
         }

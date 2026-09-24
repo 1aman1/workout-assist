@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -153,7 +155,11 @@ internal fun SettingsScreen(
     momentumCrashMode: Boolean,
     onMomentumCrashModeChanged: (Boolean) -> Unit,
     onExportBackup: () -> Unit,
-    onImportBackup: () -> Unit
+    onImportBackup: () -> Unit,
+    backupReminderEnabled: Boolean,
+    onBackupReminderEnabledChanged: (Boolean) -> Unit,
+    jumpToBackupSection: Boolean = false,
+    onJumpToBackupSectionHandled: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val appVersion = remember(context) { currentAppVersionName(context) }
@@ -186,6 +192,15 @@ internal fun SettingsScreen(
 
     BackHandler(enabled = settingsView != SettingsView.ROOT) {
         settingsView = SettingsView.ROOT
+    }
+
+    val backupSectionBringIntoViewRequester = remember { BringIntoViewRequester() }
+    LaunchedEffect(jumpToBackupSection) {
+        if (jumpToBackupSection) {
+            settingsView = SettingsView.ROOT
+            backupSectionBringIntoViewRequester.bringIntoView()
+            onJumpToBackupSectionHandled()
+        }
     }
 
     val settingsGradient = Brush.verticalGradient(
@@ -303,6 +318,7 @@ internal fun SettingsScreen(
 
                     SettingsSectionHeader("Data")
                     Card(
+                        modifier = Modifier.bringIntoViewRequester(backupSectionBringIntoViewRequester),
                         shape = RoundedCornerShape(18.dp),
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
@@ -336,6 +352,29 @@ internal fun SettingsScreen(
                                 shape = RoundedCornerShape(12.dp)
                             ) {
                                 Text("Import from file")
+                            }
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Weekly reminder",
+                                        style = MaterialTheme.typography.bodyLarge
+                                    )
+                                    Text(
+                                        text = "A Sunday notification nudges you to export a backup.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Switch(
+                                    checked = backupReminderEnabled,
+                                    onCheckedChange = onBackupReminderEnabledChanged
+                                )
                             }
                         }
                     }

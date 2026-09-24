@@ -23,6 +23,7 @@ Workout Assist follows a repeating **7-day training template** (Day 1 → Day 7,
   - **Compact** — a tidy timeline that skips missed days and collapses runs of missed days into thin red "domino" pips between cards. It always extends the current cycle forward to its last day.
   - **Calendar** — expands to show every day, rendering missed days as red cards you can tap to **backfill** a workout you did (or a rest day).
 - **Today is always in view**; tap today to start it, tap a past done workout to open it, double-tap a done day to remove it (with confirm).
+- **Log something else today** — the due-today card has an icon button to log an activity other than the day that's actually due (pick a different scheduled day's workout, or type a freeform custom activity, with recent custom names offered as quick suggestions). It counts as done for the streak, but doesn't advance the day-in-cycle — the originally-due day stays owed for next time.
 - **Rest days are smart** — mark a rest day done with a tap, and if a rest day passes untouched the cycle auto-advances so it's never stuck or wrongly shown as "missed."
 
 ### In-session logging
@@ -44,7 +45,7 @@ Workout Assist follows a repeating **7-day training template** (Day 1 → Day 7,
 - **Themes** — four role-based colors (Background / Status / Done / Missed-banner) picked from tappable swatches, plus a custom **HSV gradient color picker**.
 - **Editable labels** — rename all page and subpage titles, the Compact/Calendar toggle, the bottom tabs, the missed-day banner text, and the Back-to-routine stat texts in Settings → Labels.
 - **View preferences** — choose the default schedule view (Compact or Calendar) in Settings → Appearance, and switch the streak visualization between the momentum graph and the classic triangle (plus bars vs. stock-market candles) in Settings → Streak graph.
-- **Backup & Restore** — export/import all local data as JSON with clear success/failure feedback.
+- **Backup & Restore** — export/import all local data as JSON with clear success/failure feedback. An optional **weekly reminder** (Settings → Data) posts a Sunday notification with one button that opens straight to this section.
 
 ---
 

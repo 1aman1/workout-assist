@@ -1067,7 +1067,11 @@ private fun MomentumCandleChart(
             val color = if (isPending) pendingColor else if (isMiss) downColor else upColor
             var topValue: Int
             var bottomValue: Int
-            if (isPending && crashMode) {
+            if (isPending && crashMode && close < 0) {
+                // Only stretch into the "recovery" shape once the crash depth has actually
+                // gone negative (i.e. we're mid-crash). Gating on the depth itself (not just
+                // the crash-mode toggle) keeps an ordinary ongoing streak's pending candle on
+                // the "continue the climb" branch below instead of collapsing to a 1-unit tick.
                 // Show the possibility of recovery: stretch from the deepest point the
                 // crash reached so far up to +1 (a fresh streak start), so a long miss
                 // run reads as a long blue candle with room to climb back out.

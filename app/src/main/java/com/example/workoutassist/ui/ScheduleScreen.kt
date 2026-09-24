@@ -10,6 +10,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,19 +26,25 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.MilitaryTech
+import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -179,7 +186,8 @@ private fun ScheduleEntryCard(
     modifier: Modifier = Modifier,
     isRestDay: Boolean = false,
     onClick: () -> Unit,
-    onDoubleClick: (() -> Unit)? = null
+    onDoubleClick: (() -> Unit)? = null,
+    onLogSomethingElse: (() -> Unit)? = null
 ) {
     val isDone = entry.status == DayStatus.DONE
     val isFuture = entry.status == DayStatus.FUTURE
@@ -317,6 +325,16 @@ private fun ScheduleEntryCard(
                     modifier = Modifier.scale(pulseScale)
                 )
             }
+            if (entry.status == DayStatus.DUE && onLogSomethingElse != null) {
+                Spacer(modifier = Modifier.width(4.dp))
+                IconButton(onClick = onLogSomethingElse, modifier = Modifier.size(32.dp)) {
+                    Icon(
+                        imageVector = Icons.Rounded.MoreHoriz,
+                        contentDescription = "Log something else today",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
         }
     }
 }
@@ -430,7 +448,11 @@ internal fun ScheduleScreen(
     completedSessionEpochDays: Set<Long>,
     completedWorkoutByDate: Map<Long, String>,
     completedDayNumberByDate: Map<Long, Int>,
+    recentCustomActivityNames: List<String> = emptyList(),
+    customActivityEpochDays: Set<Long> = emptySet(),
     onLogBackdatedWorkout: (Int, Long) -> Unit,
+    onLogAlternateToday: (Int) -> Unit = {},
+    onLogCustomActivityToday: (String) -> Unit = {},
     onRemoveWorkoutOnDate: (Long) -> Unit,
     onDaySelected: (Int) -> Unit
 ) {
@@ -441,6 +463,7 @@ internal fun ScheduleScreen(
     var expanded by remember { mutableStateOf(defaultCalendarView) }
     var editDateTarget by remember { mutableStateOf<Long?>(null) }
     var removeConfirmDate by remember { mutableStateOf<Long?>(null) }
+    var logSomethingElse by remember { mutableStateOf(false) }
     // Set when the user toggles Compact/Calendar, so the transition can reveal the
     // change (scroll up to show missed days on expand, ease back to today on collapse).
     var justToggled by remember { mutableStateOf(false) }
@@ -643,13 +666,21 @@ internal fun ScheduleScreen(
                                                     } else {
                                                         onDaySelected(entry.dayNumber)
                                                     }
-                                                    DayStatus.DONE -> if (entry.dayNumber > 0) onDaySelected(entry.dayNumber)
+                                                    // Custom activities have no matching day plan to open.
+                                                    DayStatus.DONE -> if (entry.dayNumber > 0 && entry.epochDay !in customActivityEpochDays) {
+                                                        onDaySelected(entry.dayNumber)
+                                                    }
                                                     DayStatus.FUTURE -> if (entry.dayNumber > 0) onDaySelected(entry.dayNumber)
                                                     else -> Unit
                                                 }
                                             },
                                             onDoubleClick = if (entry.status == DayStatus.DONE) {
                                                 { removeConfirmDate = entry.epochDay }
+                                            } else {
+                                                null
+                                            },
+                                            onLogSomethingElse = if (entry.status == DayStatus.DUE) {
+                                                { logSomethingElse = true }
                                             } else {
                                                 null
                                             }
@@ -742,6 +773,86 @@ internal fun ScheduleScreen(
                             TextButton(onClick = { editDateTarget = null }) {
                                 Text("Cancel")
                             }
+                        }
+                    }
+                )
+            }
+
+            if (logSomethingElse) {
+                var customName by remember { mutableStateOf("") }
+                val dueDay = nextDueDay
+                AlertDialog(
+                    onDismissRequest = { logSomethingElse = false },
+                    title = { Text("Log something else !") },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                text = "Different day",
+                                style = MaterialTheme.typography.labelLarge
+                            )
+                            orderedDays
+                                .filter { dueDay == null || it.dayNumber != dueDay.dayNumber }
+                                .forEach { day ->
+                                    OutlinedButton(
+                                        onClick = {
+                                            onLogAlternateToday(day.dayNumber)
+                                            logSomethingElse = false
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(12.dp)
+                                    ) {
+                                        Text("Day ${day.dayNumber} - ${day.workoutName}")
+                                    }
+                                }
+                            HorizontalDivider(
+                                modifier = Modifier.padding(vertical = 4.dp),
+                                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.28f)
+                            )
+                            Text(
+                                text = "Custom activity",
+                                style = MaterialTheme.typography.labelLarge
+                            )
+                            if (recentCustomActivityNames.isNotEmpty()) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    recentCustomActivityNames.forEach { name ->
+                                        AssistChip(
+                                            onClick = { customName = name },
+                                            label = { Text(name) }
+                                        )
+                                    }
+                                }
+                            }
+                            OutlinedTextField(
+                                value = customName,
+                                onValueChange = { customName = it },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                                label = { Text("Activity name") }
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                val trimmed = customName.trim()
+                                if (trimmed.isNotEmpty()) {
+                                    onLogCustomActivityToday(trimmed)
+                                    logSomethingElse = false
+                                }
+                            },
+                            enabled = customName.isNotBlank()
+                        ) {
+                            Text("Log")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { logSomethingElse = false }) {
+                            Text("Cancel")
                         }
                     }
                 )
