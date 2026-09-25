@@ -181,7 +181,11 @@ internal fun InsightsScreen(
     val routineStreak = remember(completedSessionEpochDays, todayEpochDay) {
         computeRoutineStreak(completedSessionEpochDays, todayEpochDay)
     }
-    val onRoutine = routineStreak >= cycleLength
+    // Recomputed directly against the chosen window (not just streak >= window) so
+    // widening the window to reach back over a real gap drops the banner immediately.
+    val onRoutine = remember(completedSessionEpochDays, todayEpochDay, cycleLength) {
+        isRoutineWindowUnbroken(completedSessionEpochDays, todayEpochDay, cycleLength)
+    }
 
     // Momentum: streak length per calendar day. Completed days climb 1,2,3...; each missed
     // day is a 0 so consecutive misses are all visible. Dates drive the graph's x-axis.

@@ -83,6 +83,20 @@ internal fun computeRoutineStreak(completedDays: Set<Long>, todayEpochDay: Long)
     return streak
 }
 
+// Whether every day in the most recent [windowDays]-day window has a completed session.
+// Computed directly against the window (instead of just comparing the streak length to
+// it) so widening the window to reach back over a real gap drops the banner right away.
+internal fun isRoutineWindowUnbroken(
+    completedDays: Set<Long>,
+    todayEpochDay: Long,
+    windowDays: Int
+): Boolean {
+    if (windowDays <= 0) return false
+    val endDay = if (todayEpochDay in completedDays) todayEpochDay else todayEpochDay - 1L
+    val startDay = endDay - (windowDays - 1).toLong()
+    return (startDay..endDay).all { day -> day in completedDays }
+}
+
 // PENDING marks today when it hasn't been logged yet (outcome unknown); it renders in a
 // distinct "still open" color instead of the DONE (green) or MISS (red) colors.
 enum class MomentumDayStatus { DONE, MISS, PENDING }
