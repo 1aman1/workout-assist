@@ -37,6 +37,7 @@ import androidx.compose.material.icons.rounded.LocalFireDepartment
 import androidx.compose.material.icons.rounded.ZoomIn
 import androidx.compose.material.icons.rounded.ZoomOut
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
@@ -116,12 +117,12 @@ internal fun InsightsScreen(
     workoutInsightsTitle: String = "Workout Insights",
     routineTitle: String = "routine",
     streakTitle: String = "Streak momentum",
-    daysToRoutineText: String = "days to get back on routine",
     bannerColor: Color = Color(0xFFBF360C),
     shortWindowDays: Int = 7,
     onShortWindowChange: (Int) -> Unit = {},
     routineWindowOverride: Int = 0,
     onRoutineWindowChange: (Int) -> Unit = {},
+    lookbackTitle: String = "Retro",
     useClassicStreakGraph: Boolean = false,
     stockMode: Boolean = false,
     crashMode: Boolean = false,
@@ -135,6 +136,9 @@ internal fun InsightsScreen(
     var showWorkoutInsights by remember { mutableStateOf(false) }
     var showWindowPicker by remember { mutableStateOf(false) }
     var showRoutineWindowPicker by remember { mutableStateOf(false) }
+    var lookbackWeeks by remember { mutableStateOf(4) }
+    var showLookbackWeeksPicker by remember { mutableStateOf(false) }
+    var showLookbackInspector by remember { mutableStateOf(false) }
     // Full-screen inspector so a tall streak graph can be examined with 2D scrolling.
     var showMomentumInspector by remember { mutableStateOf(false) }
     // Nested popup for the inspector's consistency/streak-length metrics, kept out of the
@@ -169,11 +173,28 @@ internal fun InsightsScreen(
             .toSet()
     }
 
-    val doneShort = remember(completedSessionEpochDays, todayEpochDay, shortWindowDays) {
-        completedInWindow(completedSessionEpochDays, todayEpochDay, shortWindowDays.coerceIn(5, 15))
+    // Rest days are template days with no exercises; they auto-log a session but aren't a
+    // real activity. The "Last N days" counts should reflect only activity days: a gym
+    // workout or a custom activity.
+    val restDayNumbers = remember(days) {
+        days.asSequence().filter { it.exercises.isEmpty() }.map { it.dayNumber }.toSet()
     }
-    val doneLast30 = remember(completedSessionEpochDays, todayEpochDay) {
-        completedInWindow(completedSessionEpochDays, todayEpochDay, 30)
+    val activitySessionEpochDays = remember(sessions, restDayNumbers) {
+        sessions
+            .asSequence()
+            .mapNotNull { session ->
+                val finishedAt = session.finishedAt ?: return@mapNotNull null
+                val isActivity = session.isCustomActivity || session.dayNumber !in restDayNumbers
+                if (isActivity) timestampMillisToEpochDay(finishedAt) else null
+            }
+            .toSet()
+    }
+
+    val doneShort = remember(activitySessionEpochDays, todayEpochDay, shortWindowDays) {
+        completedInWindow(activitySessionEpochDays, todayEpochDay, shortWindowDays.coerceIn(5, 15))
+    }
+    val doneLast30 = remember(activitySessionEpochDays, todayEpochDay) {
+        completedInWindow(activitySessionEpochDays, todayEpochDay, 30)
     }
     // Back-to-routine metric: consecutive most-recent days that each have a session
     // (a rest day auto-logs, so a day only breaks the streak if a scheduled workout is
@@ -228,6 +249,36 @@ internal fun InsightsScreen(
     val breaksThisMonth = remember(breakDays, todayEpochDay) {
         val start = startOfMonthEpochDay(todayEpochDay, 0)
         breakDays.count { it in start..todayEpochDay }
+    }
+
+    // Workout lookback grid: which prelisted template day was last done in each of the
+    // last [lookbackWeeks] rolling 7-day weeks. Custom activities and frozen days are not
+    // sessions tied to a template day, so they never appear here - only real workouts do.
+    val lookbackWorkoutDays = remember(days) { days.sortedBy { it.dayNumber } }
+    val lookbackWeekRanges = remember(todayEpochDay, lookbackWeeks) {
+        val safeWeeks = lookbackWeeks.coerceIn(3, 8)
+        (0 until safeWeeks).map { weekIndex ->
+            val end = todayEpochDay - weekIndex * 7L
+            (end - 6L)..end
+        }
+    }
+    val lookbackEpochDaysByDayNumber = remember(sessions) {
+        sessions
+            .asSequence()
+            .filter { session -> !session.isCustomActivity && session.finishedAt != null }
+            .groupBy({ session -> session.dayNumber }) { session ->
+                timestampMillisToEpochDay(session.finishedAt!!)
+            }
+    }
+    val lookbackCellsByDayNumber = remember(
+        lookbackWorkoutDays,
+        lookbackEpochDaysByDayNumber,
+        lookbackWeekRanges
+    ) {
+        lookbackWorkoutDays.associate { day ->
+            val epochDays = lookbackEpochDaysByDayNumber[day.dayNumber].orEmpty()
+            day.dayNumber to lookbackWeekRanges.map { range -> epochDays.filter { it in range }.maxOrNull() }
+        }
     }
 
     val setLogsBySessionId = remember(setLogs) {
@@ -482,18 +533,67 @@ internal fun InsightsScreen(
                         HorizontalDivider()
 
                         RatioBatteryBar(
-                            label = "Last $shortWindowDays days",
+                            label = "Activity last $shortWindowDays days",
                             filled = doneShort,
                             total = shortWindowDays,
                             remainingColor = bannerColor,
                             onDoubleTap = { showWindowPicker = true }
                         )
                         RatioBatteryBar(
-                            label = "Last 30 days",
+                            label = "Activity last 30 days",
                             filled = doneLast30,
                             total = 30,
                             remainingColor = bannerColor
                         )
+                    }
+                }
+
+                if (lookbackWorkoutDays.isNotEmpty()) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(18.dp),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = lookbackTitle,
+                                    modifier = Modifier.weight(1f),
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                TextButton(
+                                    onClick = { showLookbackInspector = true },
+                                    colors = ButtonDefaults.textButtonColors(
+                                        contentColor = MaterialTheme.colorScheme.onSurface
+                                    )
+                                ) {
+                                    Text("Expand")
+                                    Spacer(modifier = Modifier.width(2.dp))
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                                        contentDescription = "Expand $lookbackTitle"
+                                    )
+                                }
+                            }
+                            HorizontalDivider()
+                            WorkoutLookbackGraph(
+                                workoutDays = lookbackWorkoutDays,
+                                weekRanges = lookbackWeekRanges,
+                                cellsByDayNumber = lookbackCellsByDayNumber,
+                                compact = true,
+                                onDoubleTap = { showLookbackWeeksPicker = true }
+                            )
+                        }
                     }
                 }
 
@@ -556,10 +656,10 @@ internal fun InsightsScreen(
 
     if (showWindowPicker) {
         NumberWheelDialog(
-            title = "Recent-days window",
+            title = "Insights \u2192 Activity window",
             value = shortWindowDays,
             range = 5..15,
-            valueText = { days -> "$days days" },
+            valueText = { days -> "Last $days days" },
             onDismiss = { showWindowPicker = false },
             onConfirm = { newWindow ->
                 onShortWindowChange(newWindow)
@@ -570,16 +670,78 @@ internal fun InsightsScreen(
 
     if (showRoutineWindowPicker) {
         NumberWheelDialog(
-            title = "Routine target days",
+            title = "Insights \u2192 Routine length",
             value = cycleLength,
             range = 5..15,
-            valueText = { days -> "$days days" },
+            valueText = { days -> "$days-day cycle" },
             onDismiss = { showRoutineWindowPicker = false },
             onConfirm = { newTarget ->
                 onRoutineWindowChange(newTarget)
                 showRoutineWindowPicker = false
             }
         )
+    }
+
+    if (showLookbackWeeksPicker) {
+        NumberWheelDialog(
+            title = "Insights \u2192 Workout lookback",
+            value = lookbackWeeks,
+            range = 3..8,
+            valueText = { weeks -> "Last $weeks weeks" },
+            onDismiss = { showLookbackWeeksPicker = false },
+            onConfirm = { newWeeks ->
+                lookbackWeeks = newWeeks
+                showLookbackWeeksPicker = false
+            }
+        )
+    }
+
+    if (showLookbackInspector && lookbackWorkoutDays.isNotEmpty()) {
+        Dialog(
+            onDismissRequest = { showLookbackInspector = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth(0.96f)
+                    .padding(vertical = 24.dp),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = lookbackTitle,
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        IconButton(onClick = { showLookbackInspector = false }) {
+                            Icon(
+                                imageVector = Icons.Rounded.Close,
+                                contentDescription = "Close"
+                            )
+                        }
+                    }
+                    WorkoutLookbackGraph(
+                        workoutDays = lookbackWorkoutDays,
+                        weekRanges = lookbackWeekRanges,
+                        cellsByDayNumber = lookbackCellsByDayNumber,
+                        compact = false,
+                        onDoubleTap = { showLookbackWeeksPicker = true }
+                    )
+                }
+            }
+        }
     }
 
     if (showMomentumInspector && momentumSeries.isNotEmpty()) {
@@ -895,7 +1057,14 @@ private fun StreakMomentumGraph(
                 fontWeight = FontWeight.SemiBold
             )
             if (momentumSeries.isNotEmpty()) {
-                IconButton(onClick = onInspect) {
+                TextButton(
+                    onClick = onInspect,
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.onSurface
+                    )
+                ) {
+                    Text("Expand")
+                    Spacer(modifier = Modifier.width(2.dp))
                     Icon(
                         imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
                         contentDescription = "Expand streak graph"
@@ -1522,6 +1691,158 @@ private fun RatioBatteryBar(
                             shape = RoundedCornerShape(3.dp)
                         )
                 )
+            }
+        }
+    }
+}
+
+// Grid: rows are rolling 7-day weeks (most recent first), columns are the template's
+// prelisted workout days (1..N). A cell shows the day-of-month it was last done that
+// week, or a dash if skipped that week - making a lagging vs. on-pace workout obvious
+// from its column's dash/fill ratio. In compact mode (main card) the left-side week
+// dates and the legend are hidden to reduce clutter; the expanded popup shows both.
+@Composable
+private fun WorkoutLookbackGraph(
+    workoutDays: List<WorkoutDayModel>,
+    weekRanges: List<LongRange>,
+    cellsByDayNumber: Map<Int, List<Long?>>,
+    compact: Boolean,
+    onDoubleTap: () -> Unit
+) {
+    val onPaceColor = Color(0xFF2E7D32)
+    val partialColor = Color(0xFFFF8F00)
+    val laggingColor = MaterialTheme.colorScheme.error
+    val weekLabelWidth = 76.dp
+    val cellWidth = 52.dp
+    val gridWidth = (if (compact) 0.dp else weekLabelWidth) + cellWidth * workoutDays.size
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .pointerInput(Unit) {
+                detectTapGestures(onDoubleTap = { onDoubleTap() })
+            },
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Text(
+            text = "When each workout was last done \u00b7 last ${weekRanges.size} weeks \u00b7 double-tap to change",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (!compact) {
+                    Spacer(modifier = Modifier.width(weekLabelWidth))
+                }
+                workoutDays.forEach { day ->
+                    val hits = cellsByDayNumber[day.dayNumber].orEmpty().count { it != null }
+                    val total = weekRanges.size
+                    val paceColor = when {
+                        total == 0 -> MaterialTheme.colorScheme.onSurfaceVariant
+                        hits == total -> onPaceColor
+                        hits == 0 -> laggingColor
+                        else -> partialColor
+                    }
+                    Text(
+                        text = "D${day.dayNumber}",
+                        modifier = Modifier.width(cellWidth),
+                        textAlign = TextAlign.Center,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = paceColor
+                    )
+                }
+            }
+            weekRanges.forEachIndexed { rowIndex, range ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (!compact) {
+                        Text(
+                            text = formatMonthDay(range.first),
+                            modifier = Modifier.width(weekLabelWidth),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    workoutDays.forEach { day ->
+                        val epochDay = cellsByDayNumber[day.dayNumber]?.getOrNull(rowIndex)
+                        Box(
+                            modifier = Modifier
+                                .width(cellWidth)
+                                .height(32.dp)
+                                .padding(2.dp)
+                                .background(
+                                    color = if (epochDay != null) {
+                                        MaterialTheme.colorScheme.primaryContainer
+                                    } else {
+                                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                                    },
+                                    shape = RoundedCornerShape(6.dp)
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = epochDay?.let { epochDayToDayOfMonth(it).toString() } ?: "–",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = if (epochDay != null) FontWeight.SemiBold else FontWeight.Normal,
+                                color = if (epochDay != null) {
+                                    MaterialTheme.colorScheme.onPrimaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+            HorizontalDivider(
+                modifier = Modifier.width(gridWidth),
+                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+            )
+            // Totals row: k/n where k = weeks this workout was done, n = weeks shown.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (!compact) {
+                    Text(
+                        text = "Done",
+                        modifier = Modifier.width(weekLabelWidth),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                workoutDays.forEach { day ->
+                    val hits = cellsByDayNumber[day.dayNumber].orEmpty().count { it != null }
+                    val total = weekRanges.size
+                    val paceColor = when {
+                        total == 0 -> MaterialTheme.colorScheme.onSurfaceVariant
+                        hits == total -> onPaceColor
+                        hits == 0 -> laggingColor
+                        else -> partialColor
+                    }
+                    Text(
+                        text = "$hits/$total",
+                        modifier = Modifier.width(cellWidth),
+                        textAlign = TextAlign.Center,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = paceColor
+                    )
+                }
+            }
+        }
+        if (!compact) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                workoutDays.forEach { day ->
+                    Text(
+                        text = "D${day.dayNumber} · ${day.workoutName}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
     }

@@ -11,6 +11,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -804,17 +805,16 @@ internal fun ScheduleScreen(
                     onDismissRequest = { editDateTarget = null },
                     title = { Text(formatDateShort(editDate)) },
                     text = {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Column(
+                            modifier = Modifier.verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
                             if (doneName != null) {
                                 Text(
                                     text = "Logged: $doneName",
                                     style = MaterialTheme.typography.bodyMedium
                                 )
                             } else {
-                                Text(
-                                    text = "Mark a workout you did on this day:",
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
                                 orderedDays
                                     .forEach { day ->
                                         OutlinedButton(

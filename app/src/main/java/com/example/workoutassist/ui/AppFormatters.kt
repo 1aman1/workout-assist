@@ -34,6 +34,13 @@ internal fun formatDateShort(epochDay: Long): String {
     return formatter.format(Date(epochDay * MILLIS_PER_DAY))
 }
 
+// Month-then-day, e.g. "Oct-07"; used for the Retro week labels (week start only).
+internal fun formatMonthDay(epochDay: Long): String {
+    val formatter = SimpleDateFormat("MMM-dd", Locale.ENGLISH)
+    formatter.timeZone = TimeZone.getTimeZone("UTC")
+    return formatter.format(Date(epochDay * MILLIS_PER_DAY))
+}
+
 internal fun formatStopwatch(totalSeconds: Int): String {
     val safe = totalSeconds.coerceAtLeast(0)
     return "%d:%02d".format(safe / 60, safe % 60)

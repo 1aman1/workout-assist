@@ -121,8 +121,7 @@ internal data class AppLabels(
     val pageCommandsTitle: String,
     val missedBannerText: String,
     val routineTitle: String,
-    val streakTitle: String,
-    val daysToRoutineText: String
+    val streakTitle: String
 )
 
 internal const val DEFAULT_SCHEDULE_TITLE = "Your plan"
@@ -170,8 +169,6 @@ private const val KEY_TITLE_ROUTINE = "title_routine"
 private const val DEFAULT_TITLE_ROUTINE = "routine"
 private const val KEY_TITLE_STREAK = "title_streak"
 private const val DEFAULT_TITLE_STREAK = "Streak momentum"
-private const val KEY_TEXT_DAYS_TO_ROUTINE = "text_days_to_routine"
-private const val DEFAULT_TEXT_DAYS_TO_ROUTINE = "days to get back on routine"
 private const val KEY_INSIGHTS_SHORT_WINDOW = "insights_short_window"
 private const val DEFAULT_INSIGHTS_SHORT_WINDOW = 7
 private const val MIN_INSIGHTS_SHORT_WINDOW = 5
@@ -638,9 +635,6 @@ fun WorkoutAssistApp() {
     }
     var streakTitleLabel by remember {
         mutableStateOf(prefs.getString(KEY_TITLE_STREAK, DEFAULT_TITLE_STREAK) ?: DEFAULT_TITLE_STREAK)
-    }
-    var daysToRoutineTextLabel by remember {
-        mutableStateOf(prefs.getString(KEY_TEXT_DAYS_TO_ROUTINE, DEFAULT_TEXT_DAYS_TO_ROUTINE) ?: DEFAULT_TEXT_DAYS_TO_ROUTINE)
     }
     var insightsShortWindow by remember {
         mutableStateOf(prefs.getInt(KEY_INSIGHTS_SHORT_WINDOW, DEFAULT_INSIGHTS_SHORT_WINDOW))
@@ -1184,7 +1178,6 @@ fun WorkoutAssistApp() {
                                 workoutInsightsTitle = workoutInsightsTitleLabel,
                                 routineTitle = routineTitleLabel,
                                 streakTitle = streakTitleLabel,
-                                daysToRoutineText = daysToRoutineTextLabel,
                                 bannerColor = bannerThemeColor,
                                 shortWindowDays = insightsShortWindow,
                                 onShortWindowChange = { newWindow ->
@@ -1330,8 +1323,7 @@ fun WorkoutAssistApp() {
                                 pageCommandsTitle = pageCommandsTitleLabel,
                                 missedBannerText = missedBannerTextLabel,
                                 routineTitle = routineTitleLabel,
-                                streakTitle = streakTitleLabel,
-                                daysToRoutineText = daysToRoutineTextLabel
+                                streakTitle = streakTitleLabel
                             ),
                             onLabelsSaved = { updated ->
                                 val cleanPlanTitle = updated.planTitle.trim().ifEmpty { DEFAULT_SCHEDULE_TITLE }
@@ -1349,7 +1341,6 @@ fun WorkoutAssistApp() {
                                 val cleanMissedBanner = updated.missedBannerText.trim().ifEmpty { DEFAULT_TITLE_MISSED_BANNER }
                                 val cleanRoutineTitle = updated.routineTitle.trim().ifEmpty { DEFAULT_TITLE_ROUTINE }
                                 val cleanStreakTitle = updated.streakTitle.trim().ifEmpty { DEFAULT_TITLE_STREAK }
-                                val cleanDaysToRoutine = updated.daysToRoutineText.trim().ifEmpty { DEFAULT_TEXT_DAYS_TO_ROUTINE }
                                 scheduleTitle = cleanPlanTitle
                                 schedulePageLabel = cleanSchedule
                                 infinityPageLabel = cleanInfinity
@@ -1365,7 +1356,6 @@ fun WorkoutAssistApp() {
                                 missedBannerTextLabel = cleanMissedBanner
                                 routineTitleLabel = cleanRoutineTitle
                                 streakTitleLabel = cleanStreakTitle
-                                daysToRoutineTextLabel = cleanDaysToRoutine
                                 prefs.edit()
                                     .putString(KEY_SCHEDULE_TITLE, cleanPlanTitle)
                                     .putString(KEY_PAGE_LABEL_SCHEDULE, cleanSchedule)
@@ -1382,7 +1372,6 @@ fun WorkoutAssistApp() {
                                     .putString(KEY_TITLE_MISSED_BANNER, cleanMissedBanner)
                                     .putString(KEY_TITLE_ROUTINE, cleanRoutineTitle)
                                     .putString(KEY_TITLE_STREAK, cleanStreakTitle)
-                                    .putString(KEY_TEXT_DAYS_TO_ROUTINE, cleanDaysToRoutine)
                                     .apply()
                             },
                             onExportBackup = {

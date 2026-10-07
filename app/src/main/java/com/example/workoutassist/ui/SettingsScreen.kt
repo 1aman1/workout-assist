@@ -190,7 +190,6 @@ internal fun SettingsScreen(
     var missedBannerTextInput by remember(labels) { mutableStateOf(labels.missedBannerText) }
     var routineTitleInput by remember(labels) { mutableStateOf(labels.routineTitle) }
     var streakTitleInput by remember(labels) { mutableStateOf(labels.streakTitle) }
-    var daysToRoutineTextInput by remember(labels) { mutableStateOf(labels.daysToRoutineText) }
 
     BackHandler(enabled = settingsView != SettingsView.ROOT) {
         settingsView = SettingsView.ROOT
@@ -600,13 +599,6 @@ internal fun SettingsScreen(
                                         singleLine = true,
                                         modifier = Modifier.fillMaxWidth()
                                     )
-                                    OutlinedTextField(
-                                        value = daysToRoutineTextInput,
-                                        onValueChange = { daysToRoutineTextInput = it },
-                                        label = { Text("Days-to-routine text") },
-                                        singleLine = true,
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
 
                                     Button(
                                         onClick = {
@@ -626,8 +618,7 @@ internal fun SettingsScreen(
                                                     pageCommandsTitle = pageCommandsTitleInput,
                                                     missedBannerText = missedBannerTextInput,
                                                     routineTitle = routineTitleInput,
-                                                    streakTitle = streakTitleInput,
-                                                    daysToRoutineText = daysToRoutineTextInput
+                                                    streakTitle = streakTitleInput
                                                 )
                                             )
                                         },
@@ -645,8 +636,7 @@ internal fun SettingsScreen(
                                             pageCommandsTitleInput.isNotBlank() &&
                                             missedBannerTextInput.isNotBlank() &&
                                             routineTitleInput.isNotBlank() &&
-                                            streakTitleInput.isNotBlank() &&
-                                            daysToRoutineTextInput.isNotBlank(),
+                                            streakTitleInput.isNotBlank(),
                                         modifier = Modifier.fillMaxWidth(),
                                         shape = RoundedCornerShape(12.dp)
                                     ) {
