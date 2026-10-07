@@ -18,8 +18,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.relocation.BringIntoViewRequester
-import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -128,6 +126,11 @@ internal fun SettingsScreen(
     pendingCandleThemeOptions: List<ThemeColorOption>,
     pendingCandleCustomColor: Color,
     onPendingCandleCustomColorChanged: (Color) -> Unit,
+    frozenThemeOptionId: String,
+    onFrozenThemeOptionChanged: (String) -> Unit,
+    frozenThemeOptions: List<ThemeColorOption>,
+    frozenCustomColor: Color,
+    onFrozenCustomColorChanged: (Color) -> Unit,
     onBackgroundThemeOptionChanged: (String) -> Unit,
     onStatusThemeOptionChanged: (String) -> Unit,
     onDoneThemeOptionChanged: (String) -> Unit,
@@ -156,10 +159,10 @@ internal fun SettingsScreen(
     onMomentumCrashModeChanged: (Boolean) -> Unit,
     onExportBackup: () -> Unit,
     onImportBackup: () -> Unit,
-    backupReminderEnabled: Boolean,
-    onBackupReminderEnabledChanged: (Boolean) -> Unit,
-    jumpToBackupSection: Boolean = false,
-    onJumpToBackupSectionHandled: () -> Unit = {}
+    autoBackupEnabled: Boolean,
+    onAutoBackupEnabledChanged: (Boolean) -> Unit,
+    autoBackupFolderLabel: String?,
+    onChooseAutoBackupFolder: () -> Unit
 ) {
     val context = LocalContext.current
     val appVersion = remember(context) { currentAppVersionName(context) }
@@ -188,19 +191,9 @@ internal fun SettingsScreen(
     var routineTitleInput by remember(labels) { mutableStateOf(labels.routineTitle) }
     var streakTitleInput by remember(labels) { mutableStateOf(labels.streakTitle) }
     var daysToRoutineTextInput by remember(labels) { mutableStateOf(labels.daysToRoutineText) }
-    var onRoutineTextInput by remember(labels) { mutableStateOf(labels.onRoutineText) }
 
     BackHandler(enabled = settingsView != SettingsView.ROOT) {
         settingsView = SettingsView.ROOT
-    }
-
-    val backupSectionBringIntoViewRequester = remember { BringIntoViewRequester() }
-    LaunchedEffect(jumpToBackupSection) {
-        if (jumpToBackupSection) {
-            settingsView = SettingsView.ROOT
-            backupSectionBringIntoViewRequester.bringIntoView()
-            onJumpToBackupSectionHandled()
-        }
     }
 
     val settingsGradient = Brush.verticalGradient(
@@ -318,7 +311,6 @@ internal fun SettingsScreen(
 
                     SettingsSectionHeader("Data")
                     Card(
-                        modifier = Modifier.bringIntoViewRequester(backupSectionBringIntoViewRequester),
                         shape = RoundedCornerShape(18.dp),
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
@@ -362,19 +354,32 @@ internal fun SettingsScreen(
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = "Weekly reminder",
+                                        text = "Auto backup",
                                         style = MaterialTheme.typography.bodyLarge
                                     )
                                     Text(
-                                        text = "A Sunday notification nudges you to export a backup.",
+                                        text = if (autoBackupFolderLabel != null) {
+                                            "Exports weekly (overwriting) to: $autoBackupFolderLabel"
+                                        } else {
+                                            "Pick a folder to export a backup to automatically every week."
+                                        },
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                                 Switch(
-                                    checked = backupReminderEnabled,
-                                    onCheckedChange = onBackupReminderEnabledChanged
+                                    checked = autoBackupEnabled,
+                                    onCheckedChange = onAutoBackupEnabledChanged
                                 )
+                            }
+                            if (autoBackupEnabled) {
+                                OutlinedButton(
+                                    onClick = onChooseAutoBackupFolder,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Text("Change backup folder")
+                                }
                             }
                         }
                     }
@@ -453,6 +458,14 @@ internal fun SettingsScreen(
                                             customColor = pendingCandleCustomColor,
                                             onOptionSelected = onPendingCandleThemeOptionChanged,
                                             onCustomColorChanged = onPendingCandleCustomColorChanged
+                                        )
+
+                                        ThemeRole.FROZEN -> ThemeSwatchPicker(
+                                            options = frozenThemeOptions,
+                                            selectedOptionId = frozenThemeOptionId,
+                                            customColor = frozenCustomColor,
+                                            onOptionSelected = onFrozenThemeOptionChanged,
+                                            onCustomColorChanged = onFrozenCustomColorChanged
                                         )
                                     }
                                 }
@@ -594,13 +607,6 @@ internal fun SettingsScreen(
                                         singleLine = true,
                                         modifier = Modifier.fillMaxWidth()
                                     )
-                                    OutlinedTextField(
-                                        value = onRoutineTextInput,
-                                        onValueChange = { onRoutineTextInput = it },
-                                        label = { Text("On-routine text") },
-                                        singleLine = true,
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
 
                                     Button(
                                         onClick = {
@@ -621,8 +627,7 @@ internal fun SettingsScreen(
                                                     missedBannerText = missedBannerTextInput,
                                                     routineTitle = routineTitleInput,
                                                     streakTitle = streakTitleInput,
-                                                    daysToRoutineText = daysToRoutineTextInput,
-                                                    onRoutineText = onRoutineTextInput
+                                                    daysToRoutineText = daysToRoutineTextInput
                                                 )
                                             )
                                         },
@@ -641,8 +646,7 @@ internal fun SettingsScreen(
                                             missedBannerTextInput.isNotBlank() &&
                                             routineTitleInput.isNotBlank() &&
                                             streakTitleInput.isNotBlank() &&
-                                            daysToRoutineTextInput.isNotBlank() &&
-                                            onRoutineTextInput.isNotBlank(),
+                                            daysToRoutineTextInput.isNotBlank(),
                                         modifier = Modifier.fillMaxWidth(),
                                         shape = RoundedCornerShape(12.dp)
                                     ) {
@@ -835,7 +839,8 @@ private enum class ThemeRole(val title: String) {
     STATUS("Status (Exercise cards)"),
     DONE("Done / Actions"),
     BANNER("Missed banner"),
-    PENDING_CANDLE("Pending candle")
+    PENDING_CANDLE("Pending candle"),
+    FROZEN("Frozen streak day")
 }
 
 @Composable

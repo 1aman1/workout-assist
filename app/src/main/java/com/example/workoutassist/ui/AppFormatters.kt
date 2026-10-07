@@ -83,23 +83,14 @@ internal fun computeRoutineStreak(completedDays: Set<Long>, todayEpochDay: Long)
     return streak
 }
 
-// Whether every day in the most recent [windowDays]-day window has a completed session.
-// Computed directly against the window (instead of just comparing the streak length to
-// it) so widening the window to reach back over a real gap drops the banner right away.
-internal fun isRoutineWindowUnbroken(
-    completedDays: Set<Long>,
-    todayEpochDay: Long,
-    windowDays: Int
-): Boolean {
-    if (windowDays <= 0) return false
-    val endDay = if (todayEpochDay in completedDays) todayEpochDay else todayEpochDay - 1L
-    val startDay = endDay - (windowDays - 1).toLong()
-    return (startDay..endDay).all { day -> day in completedDays }
-}
-
 // PENDING marks today when it hasn't been logged yet (outcome unknown); it renders in a
-// distinct "still open" color instead of the DONE (green) or MISS (red) colors.
-enum class MomentumDayStatus { DONE, MISS, PENDING }
+// distinct "still open" color instead of the DONE (green) or MISS (red) colors. FROZEN is a
+// missed day the user bridged by spending an earned streak freeze - it keeps the streak
+// climbing and renders blue (neither a real workout nor a confirmed miss).
+enum class MomentumDayStatus { DONE, MISS, PENDING, FROZEN }
+
+// A sustained run of this many real workout days earns one streak freeze.
+internal const val FREEZE_EARN_EVERY = 10
 
 data class MomentumEntry(val epochDay: Long, val value: Int, val status: MomentumDayStatus)
 
@@ -112,13 +103,17 @@ data class MomentumEntry(val epochDay: Long, val value: Int, val status: Momentu
 internal fun buildMomentumEntries(
     completedDays: Set<Long>,
     todayEpochDay: Long,
-    windowDays: Int = 120
+    windowDays: Int = 120,
+    frozenDays: Set<Long> = emptySet()
 ): List<MomentumEntry> {
     val windowStart = todayEpochDay - (windowDays - 1).coerceAtLeast(0).toLong()
-    if (completedDays.isEmpty()) {
+    // Frozen days bridge the streak, so they climb alongside real workout days; only their
+    // color (status) distinguishes them.
+    val activeDays = completedDays + frozenDays
+    if (activeDays.isEmpty()) {
         return listOf(MomentumEntry(todayEpochDay, 0, MomentumDayStatus.PENDING))
     }
-    val sortedDays = completedDays.toSortedSet().toList()
+    val sortedDays = activeDays.toSortedSet().toList()
     val entries = mutableListOf<MomentumEntry>()
     var runLength = 0
     var previousDay: Long? = null
@@ -140,7 +135,10 @@ internal fun buildMomentumEntries(
             }
             runLength = 1
         }
-        if (day >= windowStart) entries.add(MomentumEntry(day, runLength, MomentumDayStatus.DONE))
+        if (day >= windowStart) {
+            val status = if (day in frozenDays) MomentumDayStatus.FROZEN else MomentumDayStatus.DONE
+            entries.add(MomentumEntry(day, runLength, status))
+        }
         previousDay = day
     }
     // Trailing confirmed misses: days after the last workout up to yesterday.
@@ -183,8 +181,43 @@ internal fun applyMissCrashDepth(entries: List<MomentumEntry>): List<MomentumEnt
                 entry.copy(value = value)
             }
             MomentumDayStatus.PENDING -> entry.copy(value = -depth)
+            MomentumDayStatus.FROZEN -> {
+                depth = 0
+                entry
+            }
         }
     }
+}
+
+// Total streak freezes earned: one per [FREEZE_EARN_EVERY] consecutive real workout days in
+// each completed run. Computed from raw completed days only (never frozen days) so bridging
+// a gap can't itself farm more freezes.
+internal fun earnedStreakFreezes(completedDays: Set<Long>): Int =
+    streakRunLengths(completedDays).sumOf { it / FREEZE_EARN_EVERY }
+
+// Missed days a freeze may be spent on: a single isolated gap flanked by real workout days,
+// or yesterday when today hasn't been logged yet. Only a one-day lapse is ever eligible, so
+// a multi-day absence can never be bridged (keeps the streak honest, no leniency).
+internal fun freezeEligibleDays(
+    completedDays: Set<Long>,
+    frozenDays: Set<Long>,
+    todayEpochDay: Long
+): List<Long> {
+    if (completedDays.isEmpty()) return emptyList()
+    val result = mutableListOf<Long>()
+    var day = completedDays.min() + 1L
+    val lastCandidate = todayEpochDay - 1L
+    while (day <= lastCandidate) {
+        val isGap = day !in completedDays && day !in frozenDays
+        if (isGap) {
+            val prevReal = (day - 1L) in completedDays
+            val nextReal = (day + 1L) in completedDays ||
+                (day + 1L == todayEpochDay && todayEpochDay !in completedDays)
+            if (prevReal && nextReal) result.add(day)
+        }
+        day += 1L
+    }
+    return result
 }
 
 // Lengths of each maximal run of consecutive completed days, e.g. days {1,2,3, 5} -> [3, 1].
@@ -234,6 +267,42 @@ internal fun streakBreakDays(completedDays: Set<Long>, todayEpochDay: Long): Lis
         breaks.add(lastDay + 1L)
     }
     return breaks
+}
+
+// For each momentum entry that is the last day of a run (streak or miss gap) right before
+// it's confirmed to reverse into the other direction, the run length that just ended -
+// e.g. the last day of a broken 8-day streak maps to 8, and the last day of a 4-day miss
+// gap right before a workout resumes it maps to 4. Used to label the streak graph's
+// "reversal" candle with its run length. Aligned 1:1 with the input list (null = no label).
+// The first entry is never labeled (there's no prior run for it to be reversing from), and
+// a run isn't labeled until the next day confirms the reversal (a trailing PENDING day
+// doesn't count - the outcome isn't known yet).
+internal fun momentumReversalRunLengths(entries: List<MomentumEntry>): List<Int?> {
+    val labels = arrayOfNulls<Int>(entries.size)
+    var runLength = 0
+    var runIsStreak = false
+    for (i in entries.indices) {
+        when (entries[i].status) {
+            MomentumDayStatus.DONE, MomentumDayStatus.FROZEN -> {
+                runLength = if (runIsStreak) runLength + 1 else 1
+                runIsStreak = true
+            }
+            MomentumDayStatus.MISS -> {
+                runLength = if (!runIsStreak) runLength + 1 else 1
+                runIsStreak = false
+            }
+            MomentumDayStatus.PENDING -> continue
+        }
+        if (i == 0) continue
+        val next = entries.getOrNull(i + 1) ?: continue
+        val reversed = if (runIsStreak) {
+            next.status == MomentumDayStatus.MISS
+        } else {
+            next.status == MomentumDayStatus.DONE || next.status == MomentumDayStatus.FROZEN
+        }
+        if (reversed) labels[i] = runLength
+    }
+    return labels.toList()
 }
 
 // The longest gap (in days) between streaks, including any ongoing gap since the last

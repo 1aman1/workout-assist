@@ -16,8 +16,8 @@ android {
         applicationId = "com.example.workoutassist"
         minSdk = 24
         targetSdk = 36
-        versionCode = 66
-        versionName = "1.89"
+        versionCode = 75
+        versionName = "1.98"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

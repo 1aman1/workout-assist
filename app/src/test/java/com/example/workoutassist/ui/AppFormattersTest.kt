@@ -200,6 +200,44 @@ class AppFormattersTest {
     }
 
     @Test
+    fun momentumReversalRunLengths_labelsLastDayOfBrokenStreak() {
+        // days 1..3 climb (3-day streak), then day 4 confirmed missed -> day 3 labeled 3.
+        val entries = buildMomentumEntries(setOf(1L, 2L, 3L), todayEpochDay = 5L)
+        val labels = momentumReversalRunLengths(entries)
+        val labelByDay = entries.map { it.epochDay }.zip(labels).toMap()
+        assertEquals(3, labelByDay[3L])
+        assertEquals(null, labelByDay[1L])
+        assertEquals(null, labelByDay[2L])
+    }
+
+    @Test
+    fun momentumReversalRunLengths_labelsLastDayOfEndedGap() {
+        // day 1 logged, days 2-4 missed (3-day gap), day 5 logged again -> day 4 labeled 3.
+        val entries = buildMomentumEntries(setOf(1L, 5L), todayEpochDay = 5L)
+        val labels = momentumReversalRunLengths(entries)
+        val labelByDay = entries.map { it.epochDay }.zip(labels).toMap()
+        assertEquals(3, labelByDay[4L])
+        assertEquals(null, labelByDay[5L])
+    }
+
+    @Test
+    fun momentumReversalRunLengths_pendingTodayIsNotLabeledYet() {
+        // day 1..3 climb, today (4) still pending -> no confirmed reversal yet.
+        val entries = buildMomentumEntries(setOf(1L, 2L, 3L), todayEpochDay = 4L)
+        val labels = momentumReversalRunLengths(entries)
+        assertEquals(entries.size, labels.size)
+        assertEquals(emptyList<Int?>(), labels.filterNotNull())
+    }
+
+    @Test
+    fun momentumReversalRunLengths_firstEntryIsNeverLabeled() {
+        // first entry is a leading placeholder day - never a genuine reversal.
+        val entries = buildMomentumEntries(setOf(1L), todayEpochDay = 2L)
+        val labels = momentumReversalRunLengths(entries)
+        assertEquals(null, labels.first())
+    }
+
+    @Test
     fun longestStreakGap_findsBiggestInnerGap() {
         assertEquals(3, longestStreakGap(setOf(1L, 5L, 6L), 6L))
     }

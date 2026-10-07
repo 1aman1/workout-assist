@@ -36,6 +36,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -46,7 +47,20 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+
+// Drives a hold-to-confirm fill from 0f to 1f using real per-frame elapsed time instead of
+// Animatable.animateTo/AnimationSpec, since the latter honors the device's "animator
+// duration scale" setting and collapses to a single instant frame when that's 0 (making
+// the fill look static instead of sweeping left-to-right).
+internal suspend fun Animatable<Float, *>.animateRealTime(durationMillis: Int) {
+    val startNanos = withFrameNanos { it }
+    do {
+        val elapsedMillis = (withFrameNanos { it } - startNanos) / 1_000_000L
+        snapTo((elapsedMillis.toFloat() / durationMillis).coerceIn(0f, 1f))
+    } while (elapsedMillis < durationMillis)
+}
 
 @Composable
 internal fun TopBarStopwatch(
@@ -124,21 +138,21 @@ internal fun HoldToConfirmButton(
                 detectTapGestures(
                     onPress = {
                         holding = true
-                        val animJob = scope.launch {
-                            progress.animateTo(
-                                targetValue = 1f,
-                                animationSpec = tween(durationMillis = holdMillis, easing = LinearEasing)
-                            )
+                        val animJob = scope.launch { progress.animateRealTime(holdMillis) }
+                        // Gated on real elapsed time (not the animation's completion), since a
+                        // system animator-duration-scale of 0 would otherwise finish instantly.
+                        val confirmJob = scope.launch {
+                            delay(holdMillis.toLong())
                             holding = false
                             onConfirm()
-                            progress.snapTo(0f)
                         }
                         tryAwaitRelease()
-                        if (animJob.isActive) {
-                            animJob.cancel()
+                        animJob.cancel()
+                        if (confirmJob.isActive) {
+                            confirmJob.cancel()
                             holding = false
-                            scope.launch { progress.snapTo(0f) }
                         }
+                        scope.launch { progress.snapTo(0f) }
                     }
                 )
             },

@@ -4,13 +4,34 @@ Lean Android utility app for fast workout logging during training.
 
 Primary design source: see DESIGN_VERSIONS.md and append all future design updates as version increments.
 
-## Current Product Snapshot (v1.111)
+## Current Product Snapshot (v1.114)
 
-> v1.111 is the authoritative current state for Schedule, Insights, active session, and Analytics. Older bullets below are historical and may be superseded by these notes.
+> v1.114 is the authoritative current state for Schedule, Insights, active session, and Analytics. Older bullets below are historical and may be superseded by these notes.
+
+### v1.114 current behavior
+- Removed the **"You're on routine"** banner (shown below the streak summary chips once the Back-to-routine streak reached a full cycle): the `onRoutine` check, its "On-routine text" Settings > Labels field, and the now-unused `isRoutineWindowUnbroken` helper are all gone. The Back-to-routine streak stat itself (current streak chip, classic triangle view, `routineTitle`) is unchanged.
+
+## Previous Product Snapshot (v1.113)
+
+> v1.113 is the authoritative current state for Schedule, Insights, active session, and Analytics. Older bullets below are historical and may be superseded by these notes.
+
+### v1.113 current behavior
+- The Streak Momentum graph (both the compact card and the inspector, in either Bars/line mode or Stock-market candle mode) now labels the **reversal day** of each ended run directly on the chart: the last day of a broken streak is stamped with its run length (e.g. `8` on the 8th day of an 8-day streak right before it breaks), and the last day of an ended miss/gap run is stamped with the gap length (e.g. `4` on the last day of a 4-day gap right before a workout resumes it). The streak-count label sits above the candle/point for a broken streak and below it for an ended gap, drawn in the same color as that candle/point. A run is only labeled once the next day confirms the reversal — a still-pending today never gets a premature label.
+- New pure helper `momentumReversalRunLengths(entries)` in `AppFormatters.kt` computes this, aligned 1:1 with the existing momentum entries list; `MomentumCandleChart`/`MomentumLineChart` gained a `reversalLabels: List<Int?>` parameter threaded from `InsightsScreen`'s existing `momentumEntries` state.
+
+## Previous Product Snapshot (v1.112)
+
+> v1.112 is the authoritative current state for Schedule, Insights, active session, and Analytics. Older bullets below are historical and may be superseded by these notes.
+
+### v1.112 current behavior
+- Settings > Data's old **Weekly reminder** notification toggle was replaced with an **Auto backup** toggle. Turning it on (for the first time) opens the system folder picker (`ActivityResultContracts.OpenDocumentTree`); once a folder is chosen, a persistable URI permission is taken and a `WorkManager` periodic job silently exports a backup JSON into that folder every 7 days, **overwriting** the same fixed filename (`workout-assist-auto-backup.json`) each time — no notification, no user interaction needed. A "Change backup folder" button appears once enabled to re-pick the destination at any time. Turning the toggle off cancels the scheduled work but keeps the remembered folder so re-enabling doesn't require picking again.
+- New `com.example.workoutassist.backup` package (replaces the old `com.example.workoutassist.notifications` package): `AutoBackupScheduler` (enqueues a 7-day `PeriodicWorkRequest` with `ExistingPeriodicWorkPolicy.KEEP`) and `AutoBackupWorker` (a `CoroutineWorker` that reads the saved folder URI + schedule title straight from `SharedPreferences`, resolves or creates the fixed-name document under that folder via `DocumentsContract`, and reuses the existing `exportBackupToUri()` to write the JSON). This removed the need for the `POST_NOTIFICATIONS` permission, `MainActivity`'s `singleTask` launch mode, and its notification deep-link (`onNewIntent`/`newBackupSettingsIntent`) entirely, since the feature is now fully silent.
+
+## Previous Product Snapshot (v1.111)
 
 ### v1.111 current behavior
-- Settings > Data has a new **Weekly reminder** toggle. When on, a `WorkManager` periodic job posts a notification every **Sunday at 10:00** nudging the user to back up. The notification has one action ("Open Backup Settings") plus a tappable body — either way it opens the app straight to **Settings > Backup & Restore** (scrolled into view via `BringIntoViewRequester`, resetting out of any Settings subpage first). Turning the toggle on requests the Android 13+ `POST_NOTIFICATIONS` runtime permission if needed; the reminder is scheduled either way (WorkManager) but silently won't post until permission is granted. Turning it off cancels the scheduled work.
-- New `com.example.workoutassist.notifications` package: `BackupReminderScheduler` (computes the initial delay to the next Sunday 10:00 and enqueues a 7-day `PeriodicWorkRequest` with `ExistingPeriodicWorkPolicy.KEEP`, so re-enabling / relaunching the app doesn't duplicate the schedule) and `BackupReminderWorker` (creates the notification channel and posts the reminder). `MainActivity` is now `launchMode="singleTask"` and exposes `newBackupSettingsIntent()` plus an `onNewIntent` handler so tapping the notification deep-links into Settings even if the app is already running.
+- ~~Settings > Data has a new **Weekly reminder** toggle. When on, a `WorkManager` periodic job posts a notification every **Sunday at 10:00** nudging the user to back up. The notification has one action ("Open Backup Settings") plus a tappable body — either way it opens the app straight to **Settings > Backup & Restore** (scrolled into view via `BringIntoViewRequester`, resetting out of any Settings subpage first). Turning the toggle on requests the Android 13+ `POST_NOTIFICATIONS` runtime permission if needed; the reminder is scheduled either way (WorkManager) but silently won't post until permission is granted. Turning it off cancels the scheduled work.~~ (Replaced in v1.112 by the Auto backup toggle above.)
+- ~~New `com.example.workoutassist.notifications` package: `BackupReminderScheduler` (computes the initial delay to the next Sunday 10:00 and enqueues a 7-day `PeriodicWorkRequest` with `ExistingPeriodicWorkPolicy.KEEP`, so re-enabling / relaunching the app doesn't duplicate the schedule) and `BackupReminderWorker` (creates the notification channel and posts the reminder). `MainActivity` is now `launchMode="singleTask"` and exposes `newBackupSettingsIntent()` plus an `onNewIntent` handler so tapping the notification deep-links into Settings even if the app is already running.~~ (Removed in v1.112.)
 
 ## Previous Product Snapshot (v1.110)
 

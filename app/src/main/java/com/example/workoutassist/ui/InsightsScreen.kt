@@ -117,7 +117,6 @@ internal fun InsightsScreen(
     routineTitle: String = "routine",
     streakTitle: String = "Streak momentum",
     daysToRoutineText: String = "days to get back on routine",
-    onRoutineText: String = "You're on routine",
     bannerColor: Color = Color(0xFFBF360C),
     shortWindowDays: Int = 7,
     onShortWindowChange: (Int) -> Unit = {},
@@ -127,6 +126,8 @@ internal fun InsightsScreen(
     stockMode: Boolean = false,
     crashMode: Boolean = false,
     pendingColor: Color = Color(0xFF2563EB),
+    frozenColor: Color = FreezeBlue,
+    frozenDays: Set<Long> = emptySet(),
     onOpenGraphs: () -> Unit = {}
 ) {
     val scope = rememberCoroutineScope()
@@ -136,6 +137,9 @@ internal fun InsightsScreen(
     var showRoutineWindowPicker by remember { mutableStateOf(false) }
     // Full-screen inspector so a tall streak graph can be examined with 2D scrolling.
     var showMomentumInspector by remember { mutableStateOf(false) }
+    // Nested popup for the inspector's consistency/streak-length metrics, kept out of the
+    // main inspector to leave more room for the chart itself.
+    var showMomentumStats by remember { mutableStateOf(false) }
 
     val finishedSessionSamples = remember(sessions) {
         sessions
@@ -178,19 +182,14 @@ internal fun InsightsScreen(
     val cycleLength = remember(days, routineWindowOverride) {
         routineWindowOverride.takeIf { it in 5..15 } ?: (days.size.takeIf { it > 0 } ?: 7)
     }
-    val routineStreak = remember(completedSessionEpochDays, todayEpochDay) {
-        computeRoutineStreak(completedSessionEpochDays, todayEpochDay)
-    }
-    // Recomputed directly against the chosen window (not just streak >= window) so
-    // widening the window to reach back over a real gap drops the banner immediately.
-    val onRoutine = remember(completedSessionEpochDays, todayEpochDay, cycleLength) {
-        isRoutineWindowUnbroken(completedSessionEpochDays, todayEpochDay, cycleLength)
+    val routineStreak = remember(completedSessionEpochDays, frozenDays, todayEpochDay) {
+        computeRoutineStreak(completedSessionEpochDays + frozenDays, todayEpochDay)
     }
 
     // Momentum: streak length per calendar day. Completed days climb 1,2,3...; each missed
     // day is a 0 so consecutive misses are all visible. Dates drive the graph's x-axis.
-    val momentumEntries = remember(completedSessionEpochDays, todayEpochDay) {
-        buildMomentumEntries(completedSessionEpochDays, todayEpochDay)
+    val momentumEntries = remember(completedSessionEpochDays, frozenDays, todayEpochDay) {
+        buildMomentumEntries(completedSessionEpochDays, todayEpochDay, frozenDays = frozenDays)
     }
     // Crash mode ("gimmick"): miss runs fall progressively below zero instead of
     // flatlining at 0, like a stock crashing further each day it doesn't recover.
@@ -198,20 +197,33 @@ internal fun InsightsScreen(
         if (crashMode) applyMissCrashDepth(momentumEntries) else momentumEntries
     }
     val momentumSeries = remember(displayMomentumEntries) { displayMomentumEntries.map { it.value } }
+    val momentumStatuses = remember(displayMomentumEntries) { displayMomentumEntries.map { it.status } }
+    val momentumReversalLabels = remember(momentumEntries) { momentumReversalRunLengths(momentumEntries) }
     val momentumDayLabels = remember(momentumEntries) {
         momentumEntries.map { epochDayToDayOfMonth(it.epochDay) }
     }
     // Today shows as a distinct "still pending" color until it's logged done or the day
     // passes unlogged (at which point it becomes a normal miss on the next render).
     val momentumPendingToday = momentumEntries.lastOrNull()?.status == MomentumDayStatus.PENDING
-    val bestStreak = remember(completedSessionEpochDays) {
-        streakRunLengths(completedSessionEpochDays).maxOrNull() ?: 0
+    val bestStreak = remember(completedSessionEpochDays, frozenDays) {
+        streakRunLengths(completedSessionEpochDays + frozenDays).maxOrNull() ?: 0
     }
 
+    // Streak freezes: earned from sustained real runs, spent from the Schedule tab by
+    // tapping a missed day. These stats are shown read-only in the inspector below.
+    val earnedFreezes = remember(completedSessionEpochDays) {
+        earnedStreakFreezes(completedSessionEpochDays)
+    }
+    val freezesUsed = remember(frozenDays, todayEpochDay) {
+        frozenDays.count { it <= todayEpochDay }
+    }
+    val freezesAvailable = (earnedFreezes - freezesUsed).coerceAtLeast(0)
+
     // Streak breaks (missed scheduled days). Lifted to the top level so the summary
-    // can be shown both on the main card and inside the inspector.
-    val breakDays = remember(completedSessionEpochDays, todayEpochDay) {
-        streakBreakDays(completedSessionEpochDays, todayEpochDay)
+    // can be shown both on the main card and inside the inspector. Frozen days bridge the
+    // streak, so they no longer count as breaks.
+    val breakDays = remember(completedSessionEpochDays, frozenDays, todayEpochDay) {
+        streakBreakDays(completedSessionEpochDays + frozenDays, todayEpochDay)
     }
     val breaksThisMonth = remember(breakDays, todayEpochDay) {
         val start = startOfMonthEpochDay(todayEpochDay, 0)
@@ -438,11 +450,14 @@ internal fun InsightsScreen(
                         } else {
                             StreakMomentumGraph(
                                 momentumSeries = momentumSeries,
+                                momentumStatuses = momentumStatuses,
+                                reversalLabels = momentumReversalLabels,
                                 dayLabels = momentumDayLabels,
                                 title = streakTitle,
                                 stockMode = stockMode,
                                 crashMode = crashMode,
                                 pendingColor = pendingColor,
+                                frozenColor = frozenColor,
                                 pendingToday = momentumPendingToday,
                                 onInspect = { showMomentumInspector = true }
                             )
@@ -464,15 +479,6 @@ internal fun InsightsScreen(
                                 value = breaksThisMonth.toString()
                             )
                         }
-                        if (onRoutine) {
-                            Text(
-                                text = onRoutineText,
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-
                         HorizontalDivider()
 
                         RatioBatteryBar(
@@ -714,10 +720,13 @@ internal fun InsightsScreen(
                             if (stockMode) {
                                 MomentumCandleChart(
                                     values = momentumSeries,
+                                    statuses = momentumStatuses,
+                                    reversalLabels = momentumReversalLabels,
                                     dayLabels = momentumDayLabels.drop(1),
                                     upColor = Color(0xFF16A34A),
                                     downColor = Color(0xFFDC2626),
                                     pendingColor = pendingColor,
+                                    frozenColor = frozenColor,
                                     pendingLast = momentumPendingToday,
                                     crashMode = crashMode,
                                     candleWidth = inspectorCandleWidth,
@@ -728,9 +737,12 @@ internal fun InsightsScreen(
                             } else {
                                 MomentumLineChart(
                                     values = momentumSeries,
+                                    statuses = momentumStatuses,
+                                    reversalLabels = momentumReversalLabels,
                                     dayLabels = momentumDayLabels,
                                     lineColor = MaterialTheme.colorScheme.primary,
                                     pendingColor = pendingColor,
+                                    frozenColor = frozenColor,
                                     pendingLast = momentumPendingToday,
                                     barWidth = inspectorBarWidth,
                                     gap = inspectorBarGap,
@@ -741,58 +753,104 @@ internal fun InsightsScreen(
                         }
                     }
                     HorizontalDivider()
-                    Text(
-                        text = "Consistency",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        MetricRow(
-                            label = "Current streak",
-                            value = "$routineStreak ${if (routineStreak == 1) "day" else "days"}"
-                        )
-                        MetricRow(
-                            label = "Best streak",
-                            value = "$bestStreak ${if (bestStreak == 1) "day" else "days"}"
-                        )
-                        MetricRow("Breaks this month", breaksThisMonth.toString())
-                        MetricRow("Breaks last 3 months", breaksLast3Months.toString())
-                        MetricRow("Active days", completedSessionEpochDays.size.toString())
-                        MetricRow("Streaks", streakRuns.size.toString())
-                        MetricRow("Avg streak", "${"%.1f".format(avgStreak)} days")
-                        MetricRow(
-                            label = "Longest gap",
-                            value = "$longestGap ${if (longestGap == 1) "day" else "days"}"
-                        )
+                    OutlinedButton(
+                        onClick = { showMomentumStats = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("View streak stats")
                     }
-                    HorizontalDivider()
-                    Text(
-                        text = "Streak lengths",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        streakHistogram.forEachIndexed { index, count ->
-                            val days = index + 1
-                            val label = when {
-                                days >= 7 -> "7+ days"
-                                days == 1 -> "1 day"
-                                else -> "$days days"
+                }
+            }
+        }
+
+        if (showMomentumStats) {
+            Dialog(onDismissRequest = { showMomentumStats = false }) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState())
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Streak stats",
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            IconButton(onClick = { showMomentumStats = false }) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Close,
+                                    contentDescription = "Close"
+                                )
                             }
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    text = label,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    text = count.toString(),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.SemiBold
-                                )
+                        }
+                        Text(
+                            text = "Consistency",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            MetricRow(
+                                label = "Current streak",
+                                value = "$routineStreak ${if (routineStreak == 1) "day" else "days"}"
+                            )
+                            MetricRow(
+                                label = "Best streak",
+                                value = "$bestStreak ${if (bestStreak == 1) "day" else "days"}"
+                            )
+                            MetricRow("Breaks this month", breaksThisMonth.toString())
+                            MetricRow("Breaks last 3 months", breaksLast3Months.toString())
+                            MetricRow("Active days", completedSessionEpochDays.size.toString())
+                            MetricRow("Streaks", streakRuns.size.toString())
+                            MetricRow("Avg streak", "${"%.1f".format(avgStreak)} days")
+                            MetricRow(
+                                label = "Longest gap",
+                                value = "$longestGap ${if (longestGap == 1) "day" else "days"}"
+                            )
+                            MetricRow("Freezes earned", earnedFreezes.toString())
+                            MetricRow("Freezes available", freezesAvailable.toString())
+                            MetricRow("Freezes used", freezesUsed.toString())
+                        }
+                        HorizontalDivider()
+                        Text(
+                            text = "Streak lengths",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            streakHistogram.forEachIndexed { index, count ->
+                                val days = index + 1
+                                val label = when {
+                                    days >= 7 -> "7+ days"
+                                    days == 1 -> "1 day"
+                                    else -> "$days days"
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = label,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        text = count.toString(),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
                             }
                         }
                     }
@@ -807,11 +865,14 @@ internal fun InsightsScreen(
 @Composable
 private fun StreakMomentumGraph(
     momentumSeries: List<Int>,
+    momentumStatuses: List<MomentumDayStatus>,
+    reversalLabels: List<Int?>,
     dayLabels: List<Int>,
     title: String,
     stockMode: Boolean,
     crashMode: Boolean,
     pendingColor: Color,
+    frozenColor: Color,
     pendingToday: Boolean,
     onInspect: () -> Unit
 ) {
@@ -876,10 +937,13 @@ private fun StreakMomentumGraph(
                     if (stockMode) {
                         MomentumCandleChart(
                             values = momentumSeries,
+                            statuses = momentumStatuses,
+                            reversalLabels = reversalLabels,
                             dayLabels = dayLabels.drop(1),
                             upColor = Color(0xFF16A34A),
                             downColor = Color(0xFFDC2626),
                             pendingColor = pendingColor,
+                            frozenColor = frozenColor,
                             pendingLast = pendingToday,
                             crashMode = crashMode,
                             contentHeight = chartHeight,
@@ -888,9 +952,12 @@ private fun StreakMomentumGraph(
                     } else {
                         MomentumLineChart(
                             values = momentumSeries,
+                            statuses = momentumStatuses,
+                            reversalLabels = reversalLabels,
                             dayLabels = dayLabels,
                             lineColor = MaterialTheme.colorScheme.primary,
                             pendingColor = pendingColor,
+                            frozenColor = frozenColor,
                             pendingLast = pendingToday,
                             contentHeight = chartHeight,
                             fixedRange = compactRange
@@ -1008,6 +1075,10 @@ private fun momentumYTicks(minValue: Int, maxValue: Int): List<Int> {
 // that now sit directly on the axis line (see `MomentumCandleChart`/`MomentumLineChart`).
 private val MomentumDateLabelGutter = 16.dp
 
+// Color for a frozen (freeze-bridged) day on the momentum graph - a distinct blue so it
+// reads as neither a real workout (green) nor a confirmed miss (red).
+private val FreezeBlue = Color(0xFF0EA5E9)
+
 // Stock-market gimmick: draw each day-over-day change in streak as a candle. A climb
 // (green) rises one step; a break (red) drops from the streak peak all the way to zero.
 // The very last candle can be "pending" (today, not yet logged) — drawn in a distinct
@@ -1021,6 +1092,9 @@ private fun MomentumCandleChart(
     pendingColor: Color,
     pendingLast: Boolean,
     contentHeight: Dp,
+    statuses: List<MomentumDayStatus> = emptyList(),
+    reversalLabels: List<Int?> = emptyList(),
+    frozenColor: Color = FreezeBlue,
     crashMode: Boolean = false,
     candleWidth: Dp = 12.dp,
     gap: Dp = 10.dp,
@@ -1039,6 +1113,7 @@ private fun MomentumCandleChart(
     val range = (maxValue - minValue).coerceAtLeast(1)
     val baselineColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
     val labelStyle = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant)
+    val reversalLabelStyle = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
     val textMeasurer = rememberTextMeasurer()
     val candleCount = values.size - 1
     val chartWidth = candleWidth * candleCount + gap * (candleCount - 1).coerceAtLeast(0)
@@ -1068,7 +1143,13 @@ private fun MomentumCandleChart(
             // The first miss after a run drops from the streak peak; a continuing miss (in
             // classic mode) shows a 1-unit red tick so it stays visible.
             val isMiss = close <= 0 && !isPending
-            val color = if (isPending) pendingColor else if (isMiss) downColor else upColor
+            val isFrozen = statuses.getOrNull(i) == MomentumDayStatus.FROZEN
+            val color = when {
+                isPending -> pendingColor
+                isFrozen -> frozenColor
+                isMiss -> downColor
+                else -> upColor
+            }
             var topValue: Int
             var bottomValue: Int
             if (isPending && crashMode && close < 0) {
@@ -1114,6 +1195,26 @@ private fun MomentumCandleChart(
                 size = Size(cw, bodyHeight),
                 cornerRadius = radius
             )
+            // When this candle is the confirmed last day of a run right before it reverses
+            // (a streak breaking or a miss gap ending with a workout), stamp its run length
+            // right on the candle: above the body for a broken streak (count sits near the
+            // peak it reached), below the body for an ended gap (count sits near where the
+            // miss run bottomed out), in the candle's own color so it reads as an annotation.
+            val reversalCount = reversalLabels.getOrNull(i)
+            if (reversalCount != null) {
+                val countLayout = textMeasurer.measure(
+                    reversalCount.toString(),
+                    style = reversalLabelStyle.copy(color = color)
+                )
+                val countX = (left + cw / 2f - countLayout.size.width / 2f)
+                    .coerceIn(0f, (size.width - countLayout.size.width).coerceAtLeast(0f))
+                val countY = if (isMiss) {
+                    bodyTop + bodyHeight + labelGapPx
+                } else {
+                    bodyTop - labelGapPx - countLayout.size.height
+                }
+                drawText(countLayout, topLeft = Offset(countX, countY))
+            }
             // The date sits right on the zero axis, under the candle by default; if the
             // candle dips below zero (crash mode) it flips above the axis instead, so the
             // label never overlaps the body.
@@ -1142,6 +1243,9 @@ private fun MomentumLineChart(
     pendingColor: Color,
     pendingLast: Boolean,
     contentHeight: Dp,
+    statuses: List<MomentumDayStatus> = emptyList(),
+    reversalLabels: List<Int?> = emptyList(),
+    frozenColor: Color = FreezeBlue,
     barWidth: Dp = 14.dp,
     gap: Dp = 6.dp,
     labelGutter: Dp = MomentumDateLabelGutter,
@@ -1159,6 +1263,7 @@ private fun MomentumLineChart(
     val range = (maxValue - minValue).coerceAtLeast(1)
     val baselineColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
     val labelStyle = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant)
+    val reversalLabelStyle = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
     val textMeasurer = rememberTextMeasurer()
     val chartWidth = barWidth * values.size + gap * (values.size - 1).coerceAtLeast(0)
     Canvas(modifier = modifier.height(contentHeight + labelGutter * 2).width(chartWidth)) {
@@ -1195,8 +1300,13 @@ private fun MomentumLineChart(
         // when today hasn't been logged yet.
         for (i in 1 until points.size) {
             val isPending = pendingLast && i == points.size - 1
+            val segmentColor = when {
+                isPending -> pendingColor
+                statuses.getOrNull(i) == MomentumDayStatus.FROZEN -> frozenColor
+                else -> lineColor
+            }
             drawLine(
-                color = if (isPending) pendingColor else lineColor,
+                color = segmentColor,
                 start = points[i - 1],
                 end = points[i],
                 strokeWidth = 3.dp.toPx(),
@@ -1208,7 +1318,31 @@ private fun MomentumLineChart(
         // the value dips below zero so the label never overlaps the line/dot.
         points.forEachIndexed { index, p ->
             val isPending = pendingLast && index == points.size - 1
-            drawCircle(color = if (isPending) pendingColor else lineColor, radius = 3.dp.toPx(), center = p)
+            val dotColor = when {
+                isPending -> pendingColor
+                statuses.getOrNull(index) == MomentumDayStatus.FROZEN -> frozenColor
+                else -> lineColor
+            }
+            drawCircle(color = dotColor, radius = 3.dp.toPx(), center = p)
+            // When this point is the confirmed last day of a run right before it reverses
+            // (a streak breaking or a miss gap ending with a workout), stamp its run length
+            // next to the dot: above for a broken streak, below for an ended gap.
+            val reversalCount = reversalLabels.getOrNull(index)
+            if (reversalCount != null) {
+                val countLayout = textMeasurer.measure(
+                    reversalCount.toString(),
+                    style = reversalLabelStyle.copy(color = dotColor)
+                )
+                val countX = (p.x - countLayout.size.width / 2f)
+                    .coerceIn(0f, (size.width - countLayout.size.width).coerceAtLeast(0f))
+                val isMissPoint = statuses.getOrNull(index) == MomentumDayStatus.MISS
+                val countY = if (isMissPoint) {
+                    p.y + labelGapPx
+                } else {
+                    p.y - labelGapPx - countLayout.size.height
+                }
+                drawText(countLayout, topLeft = Offset(countX, countY))
+            }
             val label = dayLabels.getOrNull(index)?.toString()
             if (showDateLabels && label != null) {
                 val layout = textMeasurer.measure(label, style = labelStyle)

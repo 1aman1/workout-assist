@@ -1,15 +1,14 @@
 package com.example.workoutassist.ui
 
-import android.Manifest
 import android.app.Activity
 import android.content.Context
-import android.content.pm.PackageManager
-import android.os.Build
+import android.content.Intent
+import android.net.Uri
+import android.provider.DocumentsContract
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.core.content.ContextCompat
-import com.example.workoutassist.notifications.BackupReminderScheduler
+import com.example.workoutassist.backup.AutoBackupScheduler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -123,13 +122,12 @@ internal data class AppLabels(
     val missedBannerText: String,
     val routineTitle: String,
     val streakTitle: String,
-    val daysToRoutineText: String,
-    val onRoutineText: String
+    val daysToRoutineText: String
 )
 
 internal const val DEFAULT_SCHEDULE_TITLE = "Your plan"
-private const val PREFS_NAME = "gudhealth_prefs"
-private const val KEY_SCHEDULE_TITLE = "schedule_title"
+internal const val PREFS_NAME = "gudhealth_prefs"
+internal const val KEY_SCHEDULE_TITLE = "schedule_title"
 private const val KEY_PAGE_LABEL_SCHEDULE = "page_label_schedule"
 private const val KEY_PAGE_LABEL_INFINITY = "page_label_infinity"
 private const val KEY_TAB_LABEL_WORKOUT = "tab_label_workout"
@@ -145,6 +143,8 @@ private const val KEY_THEME_BANNER = "theme_banner"
 private const val KEY_THEME_BANNER_CUSTOM_HEX = "theme_banner_custom_hex"
 private const val KEY_THEME_PENDING_CANDLE = "theme_pending_candle"
 private const val KEY_THEME_PENDING_CANDLE_CUSTOM_HEX = "theme_pending_candle_custom_hex"
+private const val KEY_THEME_FROZEN = "theme_frozen"
+private const val KEY_THEME_FROZEN_CUSTOM_HEX = "theme_frozen_custom_hex"
 private const val KEY_PRODUCTION_RESET_20260707_DONE = "production_reset_20260707_done"
 private const val KEY_HISTORY_PREFILL_20260708_DONE = "history_prefill_20260708_done"
 private const val DEFAULT_PAGE_LABEL_SCHEDULE = "Compact"
@@ -172,8 +172,6 @@ private const val KEY_TITLE_STREAK = "title_streak"
 private const val DEFAULT_TITLE_STREAK = "Streak momentum"
 private const val KEY_TEXT_DAYS_TO_ROUTINE = "text_days_to_routine"
 private const val DEFAULT_TEXT_DAYS_TO_ROUTINE = "days to get back on routine"
-private const val KEY_TEXT_ON_ROUTINE = "text_on_routine"
-private const val DEFAULT_TEXT_ON_ROUTINE = "You're on routine"
 private const val KEY_INSIGHTS_SHORT_WINDOW = "insights_short_window"
 private const val DEFAULT_INSIGHTS_SHORT_WINDOW = 7
 private const val MIN_INSIGHTS_SHORT_WINDOW = 5
@@ -183,7 +181,9 @@ private const val KEY_DEFAULT_SCHEDULE_CALENDAR = "default_schedule_calendar"
 private const val KEY_CLASSIC_STREAK_GRAPH = "classic_streak_graph"
 private const val KEY_MOMENTUM_STOCK_MODE = "momentum_stock_mode"
 private const val KEY_MOMENTUM_CRASH_MODE = "momentum_crash_mode"
-private const val KEY_BACKUP_REMINDER_ENABLED = "backup_reminder_enabled"
+private const val KEY_STREAK_FREEZE_DAYS = "streak_freeze_days"
+internal const val KEY_AUTO_BACKUP_ENABLED = "auto_backup_enabled"
+internal const val KEY_AUTO_BACKUP_DIR_URI = "auto_backup_dir_uri"
 private const val DEFAULT_THEME_BACKGROUND_ID = "white"
 private const val DEFAULT_THEME_STATUS_ID = "turquoise"
 private const val DEFAULT_THEME_DONE_ID = "green"
@@ -194,6 +194,8 @@ private const val DEFAULT_THEME_BANNER_ID = "flame"
 private const val DEFAULT_THEME_BANNER_CUSTOM_HEX = "#BF360C"
 private const val DEFAULT_THEME_PENDING_CANDLE_ID = "blue_candle"
 private const val DEFAULT_THEME_PENDING_CANDLE_CUSTOM_HEX = "#2563EB"
+private const val DEFAULT_THEME_FROZEN_ID = "ice_blue"
+private const val DEFAULT_THEME_FROZEN_CUSTOM_HEX = "#0EA5E9"
 internal const val CUSTOM_THEME_OPTION_ID = "custom"
 internal const val LATEST_DESIGN_VERSION = "1.111"
 
@@ -236,6 +238,12 @@ private val PENDING_CANDLE_THEME_OPTIONS = listOf(
     ThemeColorOption(id = "indigo_candle", label = "Indigo candle", color = Color(0xFF4F46E5))
 )
 
+private val FROZEN_THEME_OPTIONS = listOf(
+    ThemeColorOption(id = "ice_blue", label = "Ice blue", color = Color(0xFF0EA5E9)),
+    ThemeColorOption(id = "frost_cyan", label = "Frost cyan", color = Color(0xFF22D3EE)),
+    ThemeColorOption(id = "glacier", label = "Glacier", color = Color(0xFF38BDF8))
+)
+
 internal val PAGE_COMMAND_NAMES = listOf(
     AppPageCommand(name = "Schedule", command = "workout.schedule", description = "Workout tab: merged plan/history (Compact default, Calendar toggle)"),
     AppPageCommand(name = "Day Detail", command = "workout.day", description = "Workout day detail (start/edit a day)"),
@@ -250,7 +258,7 @@ internal val PAGE_COMMAND_NAMES = listOf(
     AppPageCommand(name = "Weekly Frequency", command = "graphs.frequency", description = "Progress Graphs: weekly-frequency bars"),
     AppPageCommand(name = "Exercise Trends", command = "graphs.exercise", description = "Progress Graphs: per-exercise weight/reps line charts"),
     AppPageCommand(name = "Settings", command = "settings.home", description = "Settings root (Appearance: labels, theme, default schedule view, streak graph; Data; Advanced)"),
-    AppPageCommand(name = "Backup & Restore", command = "settings.backup", description = "Settings > Data: export/import a JSON backup"),
+    AppPageCommand(name = "Backup & Restore", command = "settings.backup", description = "Settings > Data: export/import a JSON backup, plus a weekly auto-backup toggle to a chosen folder"),
     AppPageCommand(name = "Theme", command = "settings.theme", description = "Settings > Theme (colors + custom picker)"),
     AppPageCommand(name = "Labels", command = "settings.labels", description = "Settings > Labels (titles, toggle, tabs, routine texts)"),
     AppPageCommand(name = "Page Commands", command = "settings.pagecommands", description = "Settings > Page command names (this list)"),
@@ -258,7 +266,15 @@ internal val PAGE_COMMAND_NAMES = listOf(
 )
 
 internal val LATEST_VERSION_HIGHLIGHTS = listOf(
-    "Settings > Data has a new 'Weekly reminder' toggle: turn it on and a notification arrives every Sunday nudging you to back up. Tapping it (or its one button) opens the app straight to Settings > Backup & Restore.",
+    "Follow-up fix for the streak-freeze/Insights color bug: the auto rest-day advance can no longer leave a day stuck looking frozen, and any already-stale frozen+completed overlap on your device now self-heals automatically on app open.",
+    "Tapping a missed day on the Schedule tab now also lets you log a custom/off-schedule activity for that day, right alongside picking a scheduled workout or spending a streak freeze - previously custom activities could only be logged for today via the 3-dot menu.",
+    "Fixed a bug where logging a real workout over a day you'd previously spent a streak freeze on left the Insights momentum graph still showing it freeze-blue, even though the Schedule tab correctly showed it as a completed day. Logging a workout now always clears that day's freeze flag.",
+    "A day on the Schedule tab where you spent a streak freeze now shows its own card with a snowflake icon and 'Streak freeze used' label, instead of looking like a plain missed day - matching the freeze coloring Insights already uses.",
+    "The streak graph's expanded inspector is less crowded: its consistency stats and streak-length breakdown now live behind a 'View streak stats' button instead of sitting below the chart all the time.",
+    "Streak freeze spending moved from Insights to the Schedule tab: tap a missed day (the gap) and use the new 'Spend a streak freeze' button in that same popup, right next to picking which workout you actually did. Insights still shows the freeze counts, just no longer lets you spend them there.",
+    "Removed the 'You're on routine' banner that used to appear below the streak summary chips once your Back-to-routine streak reached a full cycle, along with its Settings > Labels 'On-routine text' field. The streak chip and triangle still show your completed streak.",
+    "The streak graph now labels the reversal day of each ended run right on the chart: the last day of a broken streak is stamped with its run length (e.g. '8' on the 8th day of an 8-day streak that just broke), and the last day of an ended gap is stamped with the gap length (e.g. '4' right before a workout resumes it). Works in both line/bar mode and stock-candle mode, on the compact card and the inspector.",
+    "Settings > Data has a new 'Auto backup' toggle: turn it on, pick a folder, and a backup JSON exports there automatically every week, overwriting the previous one. Replaces the old weekly reminder notification.",
     "Today's due card has a new icon (next to the pulsing emoji) to log something else instead: pick a different scheduled day's workout, or type a freeform activity name (with your recent custom activities offered as quick-tap chips). Either way it counts as done on today's streak/momentum graph, but it does NOT advance the gym day-cycle - the originally-due day stays owed and will show up again next time.",
     "Fixed the streak candle chart's pending-candle continuation (previous highlight) so it works correctly with 'Falling miss gaps' turned on too - it was only checking the toggle, not whether a crash was actually in progress, so it wrongly collapsed an ordinary ongoing streak's pending candle to a tiny 1-unit tick near zero instead of continuing the climb.",
     "Removed the horizontal swipe-to-switch-tabs gesture - it was conflicting with the streak graph's own horizontal scroll/zoom/pan interactions on the Insights tab. Use the bottom navigation bar to switch between Workout, Insights, and Settings.",    "Fixed the streak candle chart: today's still-pending candle (while a streak is already going, not crashed) now continues the climb by one unit past the current streak instead of snapping down into a flat peak-to-zero shape - a streak of 2 now shows 0, 1, 2, then a blue 3 for today, instead of an odd-looking blue tick back at the bottom. Also fixed the inspector's zoom-based date labels so they show at the default 100% zoom too, only hiding below 100% (previously they were hidden at exactly 100% as well).",    "Settings > Streak graph has a new 'Falling miss gaps' toggle: when on, a miss run crashes progressively below zero (0, -1, -2, ...) like a stock chart instead of flatlining at 0, and a fresh streak after the gap always restarts the climb at 1 rather than recovering back up through the negative numbers. Works with both the line and stock-candle looks. Today's pending candle (while it's still crashed and unlogged) now stretches from that negative depth up to +1, showing the possibility of recovery as one long blue candle. The pending color is now themeable too: Settings > Theme has a new 'Pending candle' role (Blue candle / Sky candle / Indigo candle, or a custom color). The chevron-expanded streak graph inspector no longer auto-zooms its Y-axis to squeeze the whole range into view - it now uses a fixed scale like a stock chart and scrolls both ways (time and value); it opens anchored on today's value and the date axis, and you can scroll up to see higher peaks. A zoom in/out control (50%-250%) above the chart scales both axes together. The compact card is now pinned to today and no longer manually draggable, so it can't be left scrolled away from today. In the inspector, zooming now re-anchors on today too (not just opening it), and the chart area is bigger (a wider, taller dialog). The date under each candle/point now sits right on the zero axis line itself (instead of a separate row below the chart), flipping to the opposite side of the line whenever the candle/point would otherwise overlap it - below the axis by default, above it when a candle dips below zero. The compact card's y-axis is now pinned to a fixed -5..+5 range too (instead of auto-fitting to the data), staying anchored on today. In the inspector, date labels auto-hide at 100% zoom or below (where they'd start overlapping each other) and reappear once you zoom in past 100%.",
@@ -405,10 +421,7 @@ internal val LATEST_VERSION_HIGHLIGHTS = listOf(
 )
 
 @Composable
-fun WorkoutAssistApp(
-    openBackupSettingsSignal: Boolean = false,
-    onOpenBackupSettingsHandled: () -> Unit = {}
-) {
+fun WorkoutAssistApp() {
     val context = LocalContext.current
     val activity = context as? Activity
     val scope = rememberCoroutineScope()
@@ -485,6 +498,30 @@ fun WorkoutAssistApp(
             .take(6)
             .toList()
     }
+    // Epoch days the user manually bridged by spending an earned streak freeze.
+    var frozenStreakDays by remember {
+        mutableStateOf(
+            prefs.getStringSet(KEY_STREAK_FREEZE_DAYS, emptySet())
+                ?.mapNotNull { it.toLongOrNull() }
+                ?.toSet()
+                ?: emptySet()
+        )
+    }
+    fun persistFrozenStreakDays(updated: Set<Long>) {
+        frozenStreakDays = updated
+        prefs.edit()
+            .putStringSet(KEY_STREAK_FREEZE_DAYS, updated.map { it.toString() }.toSet())
+            .apply()
+    }
+    // Self-heal: a day can't be both logged and frozen - a real log always wins. This
+    // catches not just future cases but any already-stale overlap left over from before
+    // the various logging call sites were taught to clear the freeze flag themselves.
+    LaunchedEffect(completedSessionEpochDays, frozenStreakDays) {
+        val stale = frozenStreakDays intersect completedSessionEpochDays
+        if (stale.isNotEmpty()) {
+            persistFrozenStreakDays(frozenStreakDays - stale)
+        }
+    }
     // Dates logged via a freeform custom activity have no matching WorkoutDayModel to open.
     val customActivityEpochDays = remember(sessions) {
         sessions.asSequence()
@@ -530,6 +567,10 @@ fun WorkoutAssistApp(
             restDueDate !in completedSessionEpochDays
         ) {
             repository.logBackdatedWorkout(nextDue, restDueDate)
+            // A logged rest session now covers this day, same as any other workout.
+            if (restDueDate in frozenStreakDays) {
+                persistFrozenStreakDays(frozenStreakDays - restDueDate)
+            }
         }
     }
     val highlightedTodayDayNumber = days
@@ -601,9 +642,6 @@ fun WorkoutAssistApp(
     var daysToRoutineTextLabel by remember {
         mutableStateOf(prefs.getString(KEY_TEXT_DAYS_TO_ROUTINE, DEFAULT_TEXT_DAYS_TO_ROUTINE) ?: DEFAULT_TEXT_DAYS_TO_ROUTINE)
     }
-    var onRoutineTextLabel by remember {
-        mutableStateOf(prefs.getString(KEY_TEXT_ON_ROUTINE, DEFAULT_TEXT_ON_ROUTINE) ?: DEFAULT_TEXT_ON_ROUTINE)
-    }
     var insightsShortWindow by remember {
         mutableStateOf(prefs.getInt(KEY_INSIGHTS_SHORT_WINDOW, DEFAULT_INSIGHTS_SHORT_WINDOW))
     }
@@ -622,10 +660,12 @@ fun WorkoutAssistApp(
     var momentumCrashMode by remember {
         mutableStateOf(prefs.getBoolean(KEY_MOMENTUM_CRASH_MODE, false))
     }
-    var backupReminderEnabled by remember {
-        mutableStateOf(prefs.getBoolean(KEY_BACKUP_REMINDER_ENABLED, false))
+    var autoBackupEnabled by remember {
+        mutableStateOf(prefs.getBoolean(KEY_AUTO_BACKUP_ENABLED, false))
     }
-    var settingsJumpToBackup by remember { mutableStateOf(false) }
+    var autoBackupDirUri by remember {
+        mutableStateOf(prefs.getString(KEY_AUTO_BACKUP_DIR_URI, null))
+    }
     var backgroundThemeOptionId by remember {
         mutableStateOf(
             prefs.getString(KEY_THEME_BACKGROUND, DEFAULT_THEME_BACKGROUND_ID) ?: DEFAULT_THEME_BACKGROUND_ID
@@ -650,6 +690,11 @@ fun WorkoutAssistApp(
         mutableStateOf(
             prefs.getString(KEY_THEME_PENDING_CANDLE, DEFAULT_THEME_PENDING_CANDLE_ID)
                 ?: DEFAULT_THEME_PENDING_CANDLE_ID
+        )
+    }
+    var frozenThemeOptionId by remember {
+        mutableStateOf(
+            prefs.getString(KEY_THEME_FROZEN, DEFAULT_THEME_FROZEN_ID) ?: DEFAULT_THEME_FROZEN_ID
         )
     }
     var backgroundThemeCustomHex by remember {
@@ -682,45 +727,64 @@ fun WorkoutAssistApp(
                 ?: DEFAULT_THEME_PENDING_CANDLE_CUSTOM_HEX
         )
     }
+    var frozenThemeCustomHex by remember {
+        mutableStateOf(
+            prefs.getString(KEY_THEME_FROZEN_CUSTOM_HEX, DEFAULT_THEME_FROZEN_CUSTOM_HEX)
+                ?: DEFAULT_THEME_FROZEN_CUSTOM_HEX
+        )
+    }
 
-    // Self-heal: re-arm the weekly reminder on every launch if the user left it on
+    // Self-heal: re-arm the weekly auto-backup on every launch if the user left it on
     // (WorkManager's KEEP policy makes this a no-op when it's already scheduled).
-    LaunchedEffect(backupReminderEnabled) {
-        if (backupReminderEnabled) {
-            BackupReminderScheduler.schedule(context)
+    LaunchedEffect(autoBackupEnabled) {
+        if (autoBackupEnabled) {
+            AutoBackupScheduler.schedule(context)
         }
     }
 
-    LaunchedEffect(openBackupSettingsSignal) {
-        if (openBackupSettingsSignal) {
-            selectedTab = RootTab.SETTINGS
-            settingsJumpToBackup = true
-            onOpenBackupSettingsHandled()
+    val chooseAutoBackupDirLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        if (uri != null) {
+            context.contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            )
+            autoBackupDirUri = uri.toString()
+            autoBackupEnabled = true
+            prefs.edit()
+                .putString(KEY_AUTO_BACKUP_DIR_URI, uri.toString())
+                .putBoolean(KEY_AUTO_BACKUP_ENABLED, true)
+                .apply()
+            AutoBackupScheduler.schedule(context)
         }
     }
 
-    val notificationPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) {
-        // Whether granted or not, honor the toggle: WorkManager still schedules the work,
-        // the worker itself just silently skips posting if permission is still missing.
-        BackupReminderScheduler.schedule(context)
-    }
-
-    fun setBackupReminderEnabled(enabled: Boolean) {
-        backupReminderEnabled = enabled
-        prefs.edit().putBoolean(KEY_BACKUP_REMINDER_ENABLED, enabled).apply()
+    fun setAutoBackupEnabled(enabled: Boolean) {
         if (enabled) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-                ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS)
-                    != PackageManager.PERMISSION_GRANTED
-            ) {
-                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            if (autoBackupDirUri == null) {
+                chooseAutoBackupDirLauncher.launch(null)
             } else {
-                BackupReminderScheduler.schedule(context)
+                autoBackupEnabled = true
+                prefs.edit().putBoolean(KEY_AUTO_BACKUP_ENABLED, true).apply()
+                AutoBackupScheduler.schedule(context)
             }
         } else {
-            BackupReminderScheduler.cancel(context)
+            autoBackupEnabled = false
+            prefs.edit().putBoolean(KEY_AUTO_BACKUP_ENABLED, false).apply()
+            AutoBackupScheduler.cancel(context)
+        }
+    }
+
+    fun chooseAutoBackupFolder() {
+        chooseAutoBackupDirLauncher.launch(null)
+    }
+
+    val autoBackupFolderLabel = remember(autoBackupDirUri) {
+        autoBackupDirUri?.let { uriString ->
+            runCatching {
+                DocumentsContract.getTreeDocumentId(Uri.parse(uriString)).substringAfterLast(':')
+            }.getOrNull()
         }
     }
 
@@ -823,6 +887,10 @@ fun WorkoutAssistApp(
         hexValue = pendingCandleThemeCustomHex,
         fallback = Color(0xFF2563EB)
     )
+    val frozenThemeCustomColor = parseThemeHexColorOrDefault(
+        hexValue = frozenThemeCustomHex,
+        fallback = Color(0xFF0EA5E9)
+    )
     val backgroundThemeOptions = remember(backgroundThemeCustomColor) {
         BACKGROUND_THEME_OPTIONS + ThemeColorOption(
             id = CUSTOM_THEME_OPTION_ID,
@@ -858,6 +926,13 @@ fun WorkoutAssistApp(
             color = pendingCandleThemeCustomColor
         )
     }
+    val frozenThemeOptions = remember(frozenThemeCustomColor) {
+        FROZEN_THEME_OPTIONS + ThemeColorOption(
+            id = CUSTOM_THEME_OPTION_ID,
+            label = "Custom",
+            color = frozenThemeCustomColor
+        )
+    }
     val backgroundThemeColor = resolveThemeColorOption(
         options = backgroundThemeOptions,
         selectedId = backgroundThemeOptionId,
@@ -882,6 +957,11 @@ fun WorkoutAssistApp(
         options = pendingCandleThemeOptions,
         selectedId = pendingCandleThemeOptionId,
         fallbackId = DEFAULT_THEME_PENDING_CANDLE_ID
+    ).color
+    val frozenThemeColor = resolveThemeColorOption(
+        options = frozenThemeOptions,
+        selectedId = frozenThemeOptionId,
+        fallbackId = DEFAULT_THEME_FROZEN_ID
     ).color
 
     val secondaryContainerColor = mixWithWhite(statusThemeColor, 0.72f)
@@ -1005,6 +1085,7 @@ fun WorkoutAssistApp(
                                         infinityPageLabel = infinityPageLabel,
                                         missedBannerText = missedBannerTextLabel,
                                         bannerColor = bannerThemeColor,
+                                        frozenColor = frozenThemeColor,
                                         defaultCalendarView = defaultScheduleCalendar,
                                         lastCompletedDayNumber = lastCompletedDayNumber,
                                         completedSessionEpochDays = completedSessionEpochDays,
@@ -1012,10 +1093,24 @@ fun WorkoutAssistApp(
                                         completedDayNumberByDate = completedDayNumberByDate,
                                         recentCustomActivityNames = recentCustomActivityNames,
                                         customActivityEpochDays = customActivityEpochDays,
+                                        frozenDays = frozenStreakDays,
+                                        onToggleFreezeDay = { day ->
+                                            val updated = if (day in frozenStreakDays) {
+                                                frozenStreakDays - day
+                                            } else {
+                                                frozenStreakDays + day
+                                            }
+                                            persistFrozenStreakDays(updated)
+                                        },
                                         onLogBackdatedWorkout = { dayNumber, epochDay ->
                                             val day = days.firstOrNull { it.dayNumber == dayNumber }
                                             if (day != null) {
                                                 scope.launch { repository.logBackdatedWorkout(day, epochDay) }
+                                            }
+                                            // A real workout now covers this day, so it no longer needs
+                                            // (and shouldn't still show as) a freeze-bridged day.
+                                            if (epochDay in frozenStreakDays) {
+                                                persistFrozenStreakDays(frozenStreakDays - epochDay)
                                             }
                                         },
                                         onLogAlternateToday = { dayNumber ->
@@ -1032,6 +1127,18 @@ fun WorkoutAssistApp(
                                                 ?: 1
                                             scope.launch {
                                                 repository.logCustomActivity(name, fallbackDayNumber, todayDateEpochDay)
+                                            }
+                                        },
+                                        onLogCustomActivityOnDate = { name, epochDay ->
+                                            val fallbackDayNumber = todaysDueDayNumber
+                                                ?: days.minByOrNull { it.dayNumber }?.dayNumber
+                                                ?: 1
+                                            scope.launch {
+                                                repository.logCustomActivity(name, fallbackDayNumber, epochDay)
+                                            }
+                                            // A real activity now covers this day, same as a regular workout.
+                                            if (epochDay in frozenStreakDays) {
+                                                persistFrozenStreakDays(frozenStreakDays - epochDay)
                                             }
                                         },
                                         onRemoveWorkoutOnDate = { epochDay ->
@@ -1078,7 +1185,6 @@ fun WorkoutAssistApp(
                                 routineTitle = routineTitleLabel,
                                 streakTitle = streakTitleLabel,
                                 daysToRoutineText = daysToRoutineTextLabel,
-                                onRoutineText = onRoutineTextLabel,
                                 bannerColor = bannerThemeColor,
                                 shortWindowDays = insightsShortWindow,
                                 onShortWindowChange = { newWindow ->
@@ -1102,6 +1208,8 @@ fun WorkoutAssistApp(
                                 stockMode = momentumStockMode,
                                 crashMode = momentumCrashMode,
                                 pendingColor = pendingCandleThemeColor,
+                                frozenColor = frozenThemeColor,
+                                frozenDays = frozenStreakDays,
                                 onOpenGraphs = { showGraphsPage = true }
                             )
                         }
@@ -1116,6 +1224,7 @@ fun WorkoutAssistApp(
                             doneThemeOptionId = doneThemeOptionId,
                             bannerThemeOptionId = bannerThemeOptionId,
                             pendingCandleThemeOptionId = pendingCandleThemeOptionId,
+                            frozenThemeOptionId = frozenThemeOptionId,
                             onBackgroundThemeOptionChanged = { selectedId ->
                                 backgroundThemeOptionId = selectedId
                                 prefs.edit().putString(KEY_THEME_BACKGROUND, selectedId).apply()
@@ -1136,16 +1245,22 @@ fun WorkoutAssistApp(
                                 pendingCandleThemeOptionId = selectedId
                                 prefs.edit().putString(KEY_THEME_PENDING_CANDLE, selectedId).apply()
                             },
+                            onFrozenThemeOptionChanged = { selectedId ->
+                                frozenThemeOptionId = selectedId
+                                prefs.edit().putString(KEY_THEME_FROZEN, selectedId).apply()
+                            },
                             backgroundThemeOptions = backgroundThemeOptions,
                             statusThemeOptions = statusThemeOptions,
                             doneThemeOptions = doneThemeOptions,
                             bannerThemeOptions = bannerThemeOptions,
                             pendingCandleThemeOptions = pendingCandleThemeOptions,
+                            frozenThemeOptions = frozenThemeOptions,
                             backgroundCustomColor = backgroundThemeCustomColor,
                             statusCustomColor = statusThemeCustomColor,
                             doneCustomColor = doneThemeCustomColor,
                             bannerCustomColor = bannerThemeCustomColor,
                             pendingCandleCustomColor = pendingCandleThemeCustomColor,
+                            frozenCustomColor = frozenThemeCustomColor,
                             onBackgroundCustomColorChanged = { selectedColor ->
                                 val hex = colorToHexRgb(selectedColor)
                                 backgroundThemeCustomHex = hex
@@ -1191,6 +1306,15 @@ fun WorkoutAssistApp(
                                     .putString(KEY_THEME_PENDING_CANDLE, CUSTOM_THEME_OPTION_ID)
                                     .apply()
                             },
+                            onFrozenCustomColorChanged = { selectedColor ->
+                                val hex = colorToHexRgb(selectedColor)
+                                frozenThemeCustomHex = hex
+                                frozenThemeOptionId = CUSTOM_THEME_OPTION_ID
+                                prefs.edit()
+                                    .putString(KEY_THEME_FROZEN_CUSTOM_HEX, hex)
+                                    .putString(KEY_THEME_FROZEN, CUSTOM_THEME_OPTION_ID)
+                                    .apply()
+                            },
                             labels = AppLabels(
                                 planTitle = scheduleTitle,
                                 compactButton = schedulePageLabel,
@@ -1207,8 +1331,7 @@ fun WorkoutAssistApp(
                                 missedBannerText = missedBannerTextLabel,
                                 routineTitle = routineTitleLabel,
                                 streakTitle = streakTitleLabel,
-                                daysToRoutineText = daysToRoutineTextLabel,
-                                onRoutineText = onRoutineTextLabel
+                                daysToRoutineText = daysToRoutineTextLabel
                             ),
                             onLabelsSaved = { updated ->
                                 val cleanPlanTitle = updated.planTitle.trim().ifEmpty { DEFAULT_SCHEDULE_TITLE }
@@ -1227,7 +1350,6 @@ fun WorkoutAssistApp(
                                 val cleanRoutineTitle = updated.routineTitle.trim().ifEmpty { DEFAULT_TITLE_ROUTINE }
                                 val cleanStreakTitle = updated.streakTitle.trim().ifEmpty { DEFAULT_TITLE_STREAK }
                                 val cleanDaysToRoutine = updated.daysToRoutineText.trim().ifEmpty { DEFAULT_TEXT_DAYS_TO_ROUTINE }
-                                val cleanOnRoutine = updated.onRoutineText.trim().ifEmpty { DEFAULT_TEXT_ON_ROUTINE }
                                 scheduleTitle = cleanPlanTitle
                                 schedulePageLabel = cleanSchedule
                                 infinityPageLabel = cleanInfinity
@@ -1244,7 +1366,6 @@ fun WorkoutAssistApp(
                                 routineTitleLabel = cleanRoutineTitle
                                 streakTitleLabel = cleanStreakTitle
                                 daysToRoutineTextLabel = cleanDaysToRoutine
-                                onRoutineTextLabel = cleanOnRoutine
                                 prefs.edit()
                                     .putString(KEY_SCHEDULE_TITLE, cleanPlanTitle)
                                     .putString(KEY_PAGE_LABEL_SCHEDULE, cleanSchedule)
@@ -1262,7 +1383,6 @@ fun WorkoutAssistApp(
                                     .putString(KEY_TITLE_ROUTINE, cleanRoutineTitle)
                                     .putString(KEY_TITLE_STREAK, cleanStreakTitle)
                                     .putString(KEY_TEXT_DAYS_TO_ROUTINE, cleanDaysToRoutine)
-                                    .putString(KEY_TEXT_ON_ROUTINE, cleanOnRoutine)
                                     .apply()
                             },
                             onExportBackup = {
@@ -1291,12 +1411,12 @@ fun WorkoutAssistApp(
                                 momentumCrashMode = enabled
                                 prefs.edit().putBoolean(KEY_MOMENTUM_CRASH_MODE, enabled).apply()
                             },
-                            backupReminderEnabled = backupReminderEnabled,
-                            onBackupReminderEnabledChanged = { enabled ->
-                                setBackupReminderEnabled(enabled)
+                            autoBackupEnabled = autoBackupEnabled,
+                            onAutoBackupEnabledChanged = { enabled ->
+                                setAutoBackupEnabled(enabled)
                             },
-                            jumpToBackupSection = settingsJumpToBackup,
-                            onJumpToBackupSectionHandled = { settingsJumpToBackup = false }
+                            autoBackupFolderLabel = autoBackupFolderLabel,
+                            onChooseAutoBackupFolder = { chooseAutoBackupFolder() }
                         )
                     }
                 }

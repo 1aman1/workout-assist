@@ -1,8 +1,6 @@
 package com.example.workoutassist.ui
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -61,6 +59,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.example.workoutassist.data.SetLogEntity
 import com.example.workoutassist.data.WorkoutDayModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private data class PastSessionPeek(
@@ -488,24 +487,22 @@ internal fun WorkoutActivePage(
                                 detectTapGestures(
                                     onPress = {
                                         finishHolding = true
+                                        val animJob = finishHoldScope.launch { finishHoldProgress.animateRealTime(1200) }
+                                        // Gated on real elapsed time (not the animation's completion),
+                                        // since a system animator-duration-scale of 0 would otherwise
+                                        // finish instantly on a plain tap.
                                         val holdJob = finishHoldScope.launch {
-                                            finishHoldProgress.animateTo(
-                                                targetValue = 1f,
-                                                animationSpec = tween(
-                                                    durationMillis = 1200,
-                                                    easing = LinearEasing
-                                                )
-                                            )
+                                            delay(1200L)
                                             finishHolding = false
                                             onFinish()
-                                            finishHoldProgress.snapTo(0f)
                                         }
                                         tryAwaitRelease()
+                                        animJob.cancel()
                                         if (holdJob.isActive) {
                                             holdJob.cancel()
                                             finishHolding = false
-                                            finishHoldScope.launch { finishHoldProgress.snapTo(0f) }
                                         }
+                                        finishHoldScope.launch { finishHoldProgress.snapTo(0f) }
                                     }
                                 )
                             }

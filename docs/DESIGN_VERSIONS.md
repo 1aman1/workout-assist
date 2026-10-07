@@ -1483,6 +1483,130 @@ How to use:
 
 ---
 
+## Version 1.120 (2026-10-06)
+- Change summary:
+  - Closed two more gaps in the frozen-day/completed-day overlap bug fixed in v1.118: the auto-rest-day advance (`LaunchedEffect` that silently logs a skipped rest day so the cycle doesn't stall) now also clears that day's streak-freeze flag if present, same as the user-facing backdated-workout and custom-activity entry points already do.
+  - Added a self-healing `LaunchedEffect(completedSessionEpochDays, frozenStreakDays)` that prunes any day present in both sets, regardless of how it got there. This also retroactively repairs any already-stale overlap left over on a device from before v1.118 (e.g. a day a user spent a freeze on, then separately logged a real workout for, before the per-entry-point fixes existed).
+  - Moved the `frozenStreakDays`/`persistFrozenStreakDays` declarations earlier in `WorkoutAssistApp` (above the auto-rest-day effect) since Kotlin requires them declared before first use.
+- Why changed:
+  - Follow-up integrity review after the v1.118 bugfix: the auto-rest-day logging path is a second, easy-to-miss code path that could silently reintroduce the same frozen/completed overlap, and the v1.118 fix alone didn't retroactively clean up state that was already corrupted on a user's device.
+- UX impact:
+  - The Insights momentum graph and Schedule tab can no longer disagree about whether a day is "frozen" vs. "done", regardless of which code path logged the day, and any pre-existing bad state self-corrects on the next app open.
+- Data/model impact:
+  - None - same `KEY_STREAK_FREEZE_DAYS` key, just kept strictly disjoint from `completedSessionEpochDays`.
+- Migration notes (if any):
+  - None; self-healing happens automatically on next launch, no user action needed.
+
+## Version 1.119 (2026-10-06)
+- Change summary:
+  - Tapping a missed/gap day on the Schedule tab (the same popup used to mark a backdated workout or spend a streak freeze) now also has a "Custom activity" section at the bottom, matching the one already available for today via the 3-dot "Log something else" menu: recent-activity chips plus a name field and "Log" button, logging a freeform activity on that specific past date instead of only today.
+  - `ScheduleScreen` gained an `onLogCustomActivityOnDate: (String, Long) -> Unit` param; `WorkoutAssistApp` wires it to `repository.logCustomActivity(name, fallbackDayNumber, epochDay)` (the same method already used for today's custom activities, which already accepted an arbitrary date) and also clears that day's streak-freeze flag if it was previously spent, same as backdated workouts already do.
+- Why changed:
+  - User request: the 3-dot menu on today's card lets you log a custom activity, but there was no way to do the same for a past missed day - only picking one of the scheduled workouts (or spending a freeze) was possible there.
+- UX impact:
+  - Custom/off-schedule activities (e.g. "Badminton") can now be backdated to any missed day, not just logged for today.
+- Data/model impact:
+  - None - reuses the existing `logCustomActivity` method and `isCustomActivity`/`customActivityEpochDays` tracking, just from a new entry point.
+- Migration notes (if any):
+  - None.
+
+## Version 1.118 (2026-10-06)
+- Change summary:
+  - Bugfix: logging a real workout for a day that was previously marked as a spent streak freeze no longer leaves that day stuck flagged as frozen. `onLogBackdatedWorkout` now clears the day from `frozenStreakDays` (and persists it) whenever a workout is logged for an epoch day still in that set.
+- Why changed:
+  - User reported that after spending a freeze on a day, then logging an actual workout for that same day, the Schedule tab correctly showed it as a normal completed day, but the Insights momentum graph kept coloring it freeze-blue. Root cause: `buildMomentumEntries` checks `day in frozenDays` before status, independent of whether the day is also completed, so a day left in both sets rendered FROZEN even though it had a real logged workout. Schedule's card renderer happened to mask this because its DONE check runs before its frozen-card check, so the stale flag wasn't visible there.
+- UX impact:
+  - A day's streak-freeze flag and its real workout log can no longer silently disagree between the two screens; logging a workout always supersedes a previously spent freeze.
+- Data/model impact:
+  - None - same `KEY_STREAK_FREEZE_DAYS` SharedPreferences key, just kept consistent with `completedSessionEpochDays`.
+- Migration notes (if any):
+  - None.
+
+## Version 1.117 (2026-10-06)
+- Change summary:
+  - On the Schedule tab, a day that was bridged with a spent streak freeze no longer renders as a plain missed/gap card (or vanishes into the compact-mode domino strip). It now shows its own card - same shape/position as a logged day - with a snowflake icon and "Streak freeze used" label, tinted with the same freeze-blue color Insights already uses for frozen days in the momentum graph. Tapping it still opens the same popup, which already offered "Undo streak freeze".
+  - `ScheduleScreen` gained a `frozenColor` param (defaults to the same blue used by Insights) and a new `FrozenDayCard` composable. The compact-mode `displayEntries` filter now keeps frozen days visible as cards instead of collapsing them into the domino gap strip, since a frozen day isn't really a gap anymore.
+- Why changed:
+  - User request: freeze spending already continues the streak and counts the day as successful, so the Schedule card for that day should visibly say the freeze was used, matching how Insights' momentum graph already indicates frozen days.
+- UX impact:
+  - Frozen days are now visually distinct and always shown (not hidden) on the Schedule tab, consistent with how they already count toward the streak and how Insights displays them.
+- Data/model impact:
+  - None - purely a rendering change, same `frozenDays` set already in use.
+- Migration notes (if any):
+  - None.
+
+## Version 1.116 (2026-10-06)
+- Change summary:
+  - Decluttered the Streak Momentum inspector popup: the "Consistency" metric rows (Current/Best streak, Breaks, Active days, Streaks, Avg streak, Longest gap, Freezes earned/available/used) and the "Streak lengths" histogram no longer render directly below the chart. Instead a "View streak stats" button opens them in a second, nested popup on top of the inspector.
+  - Added `showMomentumStats` state in `InsightsScreen`; the nested stats `Dialog` reuses the exact same `MetricRow`/histogram composables, just relocated.
+- Why changed:
+  - User request: the inspector popup had "a lot of metrics below" crowding the chart; wanted the metrics tucked behind their own button/popup to free up space.
+- UX impact:
+  - The inspector popup now shows just the chart, zoom controls, and a single button; tapping it opens a focused stats-only popup, closable independently of the inspector.
+- Data/model impact:
+  - None - purely a UI reorganization, no new state persisted.
+- Migration notes (if any):
+  - None.
+
+## Version 1.115 (2026-10-06)
+- Change summary:
+  - Moved streak-freeze spending out of Insights: the "Streak freezes" section (spend-a-freeze chips + "Frozen days (tap to undo)" chips) at the bottom of the Insights inspector is gone. Insights still shows the read-only "Freezes earned/available/used" metric rows.
+  - Tapping a missed day on the Schedule tab (the red/banner "gap" card) now opens the same "mark a workout" popup as before, but with a new streak-freeze button below the workout list: an `AcUnit`-icon `OutlinedButton` reading "Spend a streak freeze (N available)", or "Undo streak freeze" if that day is already frozen. It's disabled when there's no freeze available or the day isn't a freeze-eligible single-day gap.
+  - `ScheduleScreen` gained `frozenDays`/`onToggleFreezeDay` params (same shape as `InsightsScreen`'s, now removed from there) and now computes `earnedStreakFreezes`/`freezeEligibleDays` locally; its `routineStreak` (feeding the Schedule tab's streak-brick strip) now includes `frozenDays` too, matching Insights' calculation, so spending a freeze updates both tabs' streaks consistently.
+- Why changed:
+  - User request: remove the freeze-spend option from Insights and make it available instead by tapping the gap (missed day) directly on the main Schedule screen, in the same popup used to pick which workout to log.
+- UX impact:
+  - Freeze spending/undoing now happens in-context on the Schedule tab, right where the gap is visible, instead of requiring a trip to the Insights inspector.
+- Data/model impact:
+  - None - same `KEY_STREAK_FREEZE_DAYS` SharedPreferences key and `frozenDays` set, just a different UI entry point.
+- Migration notes (if any):
+  - None.
+
+## Version 1.114 (2026-10-06)
+- Change summary:
+  - Removed the "You're on routine" banner entirely: the `Text(onRoutineText)` block shown below the Insights streak summary chips once the Back-to-routine streak reached a full cycle, the `onRoutine` boolean (`remember(...) { isRoutineWindowUnbroken(...) }`) that gated it, and the now-dead `isRoutineWindowUnbroken` pure helper in `AppFormatters.kt` (it had no other callers).
+  - Removed the `onRoutineText` parameter from `InsightsScreen`, the `onRoutineText` field from `AppLabels`, its "On-routine text" `OutlinedTextField` in `SettingsScreen`'s Labels page, and its `KEY_TEXT_ON_ROUTINE`/`DEFAULT_TEXT_ON_ROUTINE` SharedPreferences constants + load/save wiring in `WorkoutAssistApp.kt`.
+  - The Back-to-routine stat itself (the `routineStreak` current-streak chip, the classic triangle `RoutineBatteryBar`, the editable `routineTitle`/`daysToRoutineText` labels) is unchanged - only the "fully on routine" completion message was removed.
+- Why changed:
+  - User request: remove the "You're on routine" feature and all its wiring.
+- UX impact:
+  - The Insights card no longer shows a bold "You're on routine" line once the streak fills a full cycle; nothing replaces it (the streak chip and triangle still show the completed streak).
+  - Settings > Labels no longer has an "On-routine text" field.
+- Data/model impact:
+  - The `text_on_routine` SharedPreferences key is no longer read or written (harmless leftover on upgrade for anyone who had customized it). No Room/database schema changes.
+- Migration notes (if any):
+  - None.
+
+## Version 1.113 (2026-10-13)
+- Change summary:
+  - The Streak Momentum graph now labels the **reversal day** of each ended run directly on the chart (both the compact card and the chevron-expanded inspector, in both line/bar mode and stock-candle mode): the last day of a broken streak is stamped with its run length (e.g. `8` on the 8th day of an 8-day streak that just broke), and the last day of an ended miss/gap run is stamped with the gap length (e.g. `4` on the last day of a 4-day gap right before a workout resumes it).
+  - New pure function `momentumReversalRunLengths(entries: List<MomentumEntry>): List<Int?>` added to `AppFormatters.kt`, aligned 1:1 with its input entries list: it walks the entries tracking the current run's type (streak vs. miss gap) and length, and records a label at index `i` only when `i > 0` and the following entry confirms the opposite type (a trailing `PENDING` today never counts as a confirmed reversal, so an in-progress run is never prematurely labeled).
+  - `MomentumCandleChart` and `MomentumLineChart` (in `InsightsScreen.kt`) both gained a `reversalLabels: List<Int?> = emptyList()` parameter, threaded from a new `momentumReversalLabels` state (computed from the existing `momentumEntries` list) through `StreakMomentumGraph` and the inspector's direct chart calls. Each chart draws the label in bold text, in the same color as that candle/point, positioned above the candle/dot for a streak-reversal and below it for a gap-reversal.
+  - Added unit tests in `AppFormattersTest.kt` covering a broken streak, an ended gap, a not-yet-confirmed pending reversal, and the always-unlabeled first entry.
+- Why changed:
+  - User request: show the streak/gap count directly on the streak graph's reversal candle instead of only in the surrounding metrics (Current streak, Breaks, etc.), so the exact length of a just-ended run is visible at a glance where it happened.
+- UX impact:
+  - Purely additive visual annotation on the existing Streak Momentum graph; no new settings, taps, or navigation. Candles/points that aren't a confirmed reversal are unaffected.
+- Data/model impact:
+  - None - no new persisted state, no database/schema changes. The new helper is a pure function over the already-computed in-memory momentum entries.
+- Migration notes (if any):
+  - None.
+
+## Version 1.112 (2026-10-06)
+- Change summary:
+  - Replaced the weekly **backup reminder notification** (v1.111) with a weekly **auto backup** feature. Settings > Data's "Weekly reminder" `Switch` is now an "Auto backup" `Switch`: turning it on for the first time launches `ActivityResultContracts.OpenDocumentTree()` to pick a destination folder; the chosen tree `Uri` gets a persisted read/write permission (`takePersistableUriPermission`) and is saved to `SharedPreferences` (`auto_backup_dir_uri`). A "Change backup folder" button appears under the toggle once enabled, to re-pick the folder at any time.
+  - New `com.example.workoutassist.backup` package replaces `com.example.workoutassist.notifications`: `AutoBackupScheduler` enqueues a 7-day `PeriodicWorkRequest` on `AutoBackupWorker` via `WorkManager.enqueueUniquePeriodicWork(..., ExistingPeriodicWorkPolicy.KEEP, ...)` (no specific day/time anchor needed since there's no user-facing notification). `AutoBackupWorker` (a `CoroutineWorker`) reads the saved folder `Uri` and the current schedule title directly from `SharedPreferences` (`PREFS_NAME`/`KEY_SCHEDULE_TITLE`, both widened to `internal` for cross-package access), resolves or creates a fixed-name document (`workout-assist-auto-backup.json`) under that folder via `DocumentsContract` (querying children for an existing match, or `createDocument` if absent — no new `androidx.documentfile` dependency needed), and reuses the existing `exportBackupToUri()` (opened in `"wt"` mode, so it always overwrites) to write the backup JSON.
+  - Removed the now-dead notification/deep-link machinery entirely: `BackupReminderScheduler`/`BackupReminderWorker`, the `POST_NOTIFICATIONS` manifest permission, `MainActivity`'s `android:launchMode="singleTask"` + `onNewIntent`/`newBackupSettingsIntent()`, `WorkoutAssistApp`'s `openBackupSettingsSignal`/`onOpenBackupSettingsHandled` params, and `SettingsScreen`'s `jumpToBackupSection`/`onJumpToBackupSectionHandled` + `BringIntoViewRequester` wiring (all of it only existed to support tapping the old reminder notification).
+  - Settings > Page Commands' `settings.backup` description now mentions the auto-backup toggle; the "What's new" highlight for the old reminder was swapped for one describing auto backup.
+- Why changed:
+  - User request: replace the existing "remind me to back up" nudge with a fully automatic weekly export (with overwrite) to a user-chosen folder, reusing the same WorkManager-based wiring.
+- UX impact:
+  - Off by default. Once enabled and a folder is picked, backups happen silently every 7 days with no notification or user action required; the same file is overwritten each time instead of accumulating timestamped files like a manual export does.
+- Data/model impact:
+  - New `SharedPreferences` keys `auto_backup_enabled` (boolean, default `false`) and `auto_backup_dir_uri` (string, default unset). Old `backup_reminder_enabled` key is simply no longer read/written (harmless leftover on upgrade). No Room/database schema changes.
+- Migration notes (if any):
+  - Existing installs that had the old reminder toggle on will have it silently stop (the old periodic work name is no longer scheduled/re-armed); they'll need to re-enable Auto backup and pick a folder once to resume weekly backups.
+
 ## Version 1.111 (2026-09-24)
 - Change summary:
   - Added a weekly (Sunday, 10:00 local) **backup reminder notification**. Settings > Data gained a "Weekly reminder" `Switch` next to the existing Export/Import buttons. Turning it on calls a new `com.example.workoutassist.notifications.BackupReminderScheduler.schedule(context)`, which enqueues a `PeriodicWorkRequest` (7-day interval) on `BackupReminderWorker` via `WorkManager.enqueueUniquePeriodicWork(..., ExistingPeriodicWorkPolicy.KEEP, ...)`; the initial delay is computed (via `java.util.Calendar`, not `java.time`, since `minSdk = 24` has no desugaring configured) to land on the next Sunday at 10:00. Turning it off calls `BackupReminderScheduler.cancel(context)`.

@@ -30,6 +30,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AcUnit
 import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.MilitaryTech
 import androidx.compose.material.icons.rounded.MoreHoriz
@@ -412,6 +413,53 @@ private fun MissedDayCard(
 }
 
 @Composable
+private fun FrozenDayCard(
+    entry: ScheduleEntry,
+    frozenColor: Color,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    val contentColor = if (frozenColor.luminance() > 0.5f) Color.Black else Color.White
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable { onClick() },
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = frozenColor)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = formatDateShort(entry.epochDay),
+                modifier = Modifier.width(72.dp),
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = contentColor
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Icon(
+                imageVector = Icons.Rounded.AcUnit,
+                contentDescription = null,
+                tint = contentColor,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = "Streak freeze used",
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                color = contentColor
+            )
+        }
+    }
+}
+
+@Composable
 private fun GapDominoStrip(count: Int, color: Color, modifier: Modifier = Modifier) {
     Row(
         modifier = modifier
@@ -443,6 +491,7 @@ internal fun ScheduleScreen(
     infinityPageLabel: String,
     missedBannerText: String,
     bannerColor: Color,
+    frozenColor: Color = Color(0xFF0EA5E9),
     defaultCalendarView: Boolean = false,
     lastCompletedDayNumber: Int?,
     completedSessionEpochDays: Set<Long>,
@@ -450,9 +499,12 @@ internal fun ScheduleScreen(
     completedDayNumberByDate: Map<Long, Int>,
     recentCustomActivityNames: List<String> = emptyList(),
     customActivityEpochDays: Set<Long> = emptySet(),
+    frozenDays: Set<Long> = emptySet(),
+    onToggleFreezeDay: (Long) -> Unit = {},
     onLogBackdatedWorkout: (Int, Long) -> Unit,
     onLogAlternateToday: (Int) -> Unit = {},
     onLogCustomActivityToday: (String) -> Unit = {},
+    onLogCustomActivityOnDate: (String, Long) -> Unit = { _, _ -> },
     onRemoveWorkoutOnDate: (Long) -> Unit,
     onDaySelected: (Int) -> Unit
 ) {
@@ -472,8 +524,19 @@ internal fun ScheduleScreen(
         computeNextDueDay(orderedDays, lastCompletedDayNumber)
     }
     val cycleLength = remember(orderedDays) { orderedDays.size.takeIf { it > 0 } ?: 7 }
-    val routineStreak = remember(completedSessionEpochDays, todayEpochDay) {
-        computeRoutineStreak(completedSessionEpochDays, todayEpochDay)
+    val routineStreak = remember(completedSessionEpochDays, frozenDays, todayEpochDay) {
+        computeRoutineStreak(completedSessionEpochDays + frozenDays, todayEpochDay)
+    }
+    // Streak freezes: earned from sustained real runs, spent by tapping a missed day below.
+    val earnedFreezes = remember(completedSessionEpochDays) {
+        earnedStreakFreezes(completedSessionEpochDays)
+    }
+    val freezesUsed = remember(frozenDays, todayEpochDay) {
+        frozenDays.count { it <= todayEpochDay }
+    }
+    val freezesAvailable = (earnedFreezes - freezesUsed).coerceAtLeast(0)
+    val eligibleFreezeDays = remember(completedSessionEpochDays, frozenDays, todayEpochDay) {
+        freezeEligibleDays(completedSessionEpochDays, frozenDays, todayEpochDay)
     }
     val timeline = remember(
         orderedDays,
@@ -492,8 +555,15 @@ internal fun ScheduleScreen(
             todayEpochDay = todayEpochDay
         )
     }
-    val displayEntries = remember(timeline, expanded) {
-        if (expanded) timeline else timeline.filter { it.status != DayStatus.MISSED }
+    val displayEntries = remember(timeline, expanded, frozenDays) {
+        if (expanded) {
+            timeline
+        } else {
+            // A frozen day isn't really a gap anymore (the streak was bridged), so it
+            // always shows as its own card, same as DONE/DUE days, instead of collapsing
+            // into the compact domino strip alongside genuinely missed days.
+            timeline.filter { it.status != DayStatus.MISSED || it.epochDay in frozenDays }
+        }
     }
     // In compact mode, collapse missed-day runs between shown dates into a domino strip.
     val renderRows = remember(displayEntries, expanded) {
@@ -646,13 +716,22 @@ internal fun ScheduleScreen(
                                         .firstOrNull { it.dayNumber == entry.dayNumber }
                                         ?.exercises?.isEmpty() == true
                                     when (entry.status) {
-                                        DayStatus.MISSED -> MissedDayCard(
-                                            entry = entry,
-                                            bannerColor = bannerColor,
-                                            bannerText = missedBannerText,
-                                            modifier = Modifier.animateItem(fadeOutSpec = null),
-                                            onClick = { editDateTarget = entry.epochDay }
-                                        )
+                                        DayStatus.MISSED -> if (entry.epochDay in frozenDays) {
+                                            FrozenDayCard(
+                                                entry = entry,
+                                                frozenColor = frozenColor,
+                                                modifier = Modifier.animateItem(fadeOutSpec = null),
+                                                onClick = { editDateTarget = entry.epochDay }
+                                            )
+                                        } else {
+                                            MissedDayCard(
+                                                entry = entry,
+                                                bannerColor = bannerColor,
+                                                bannerText = missedBannerText,
+                                                modifier = Modifier.animateItem(fadeOutSpec = null),
+                                                onClick = { editDateTarget = entry.epochDay }
+                                            )
+                                        }
 
                                         else -> ScheduleEntryCard(
                                             entry = entry,
@@ -749,6 +828,84 @@ internal fun ScheduleScreen(
                                             Text(day.workoutName)
                                         }
                                     }
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(vertical = 4.dp),
+                                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.28f)
+                                )
+                                val isFrozen = editDate in frozenDays
+                                val freezeEligible = editDate in eligibleFreezeDays
+                                OutlinedButton(
+                                    onClick = {
+                                        onToggleFreezeDay(editDate)
+                                        editDateTarget = null
+                                    },
+                                    enabled = isFrozen || (freezeEligible && freezesAvailable > 0),
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.AcUnit,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        if (isFrozen) {
+                                            "Undo streak freeze"
+                                        } else {
+                                            "Spend a streak freeze ($freezesAvailable available)"
+                                        }
+                                    )
+                                }
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(vertical = 4.dp),
+                                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.28f)
+                                )
+                                Text(
+                                    text = "Custom activity",
+                                    style = MaterialTheme.typography.labelLarge
+                                )
+                                var customNameForDate by remember(editDate) { mutableStateOf("") }
+                                if (recentCustomActivityNames.isNotEmpty()) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .horizontalScroll(rememberScrollState()),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        recentCustomActivityNames.forEach { name ->
+                                            AssistChip(
+                                                onClick = { customNameForDate = name },
+                                                label = { Text(name) }
+                                            )
+                                        }
+                                    }
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    OutlinedTextField(
+                                        value = customNameForDate,
+                                        onValueChange = { customNameForDate = it },
+                                        modifier = Modifier.weight(1f),
+                                        singleLine = true,
+                                        label = { Text("Activity name") }
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Button(
+                                        onClick = {
+                                            val trimmed = customNameForDate.trim()
+                                            if (trimmed.isNotEmpty()) {
+                                                onLogCustomActivityOnDate(trimmed, editDate)
+                                                editDateTarget = null
+                                            }
+                                        },
+                                        enabled = customNameForDate.isNotBlank()
+                                    ) {
+                                        Text("Log")
+                                    }
+                                }
                             }
                         }
                     },
