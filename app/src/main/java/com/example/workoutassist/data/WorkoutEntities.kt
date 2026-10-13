@@ -1,11 +1,9 @@
 package com.example.workoutassist.data
 
-import androidx.room.Embedded
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
-import androidx.room.Relation
 
 @Entity(tableName = "template_days")
 data class TemplateDayEntity(
@@ -15,21 +13,11 @@ data class TemplateDayEntity(
     val completedForDateEpochDay: Long? = null
 )
 
-@Entity(
-    tableName = "exercises",
-    foreignKeys = [
-        ForeignKey(
-            entity = TemplateDayEntity::class,
-            parentColumns = ["dayNumber"],
-            childColumns = ["dayNumber"],
-            onDelete = ForeignKey.CASCADE
-        )
-    ],
-    indices = [Index("dayNumber")]
-)
+// Day membership/order lives in ExerciseDayLinkEntity now - an exercise can be on
+// several days at once, or none (unassigned/pooled).
+@Entity(tableName = "exercises")
 data class ExerciseEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val dayNumber: Int,
     val name: String,
     val sets: Int,
     val reps: Int,
@@ -38,7 +26,6 @@ data class ExerciseEntity(
     val plannedRepsBySetJson: String = "",
     val plannedWeightBySetJson: String = "",
     val remarks: String = "",
-    val position: Int,
     val isDone: Boolean = false
 )
 
@@ -93,11 +80,30 @@ data class SetLogEntity(
     val loggedAt: Long
 )
 
-data class DayWithExercises(
-    @Embedded val day: TemplateDayEntity,
-    @Relation(
-        parentColumn = "dayNumber",
-        entityColumn = "dayNumber"
-    )
-    val exercises: List<ExerciseEntity>
+// Many-to-many: one exercise can be marked onto multiple days (e.g. Treadmill on every
+// day). `position` orders this exercise within this one day's list only - independent of
+// any other day it's also linked to. An exercise with zero rows here is unassigned/pooled.
+@Entity(
+    tableName = "exercise_day_links",
+    primaryKeys = ["exerciseId", "dayNumber"],
+    foreignKeys = [
+        ForeignKey(
+            entity = ExerciseEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["exerciseId"],
+            onDelete = ForeignKey.CASCADE
+        ),
+        ForeignKey(
+            entity = TemplateDayEntity::class,
+            parentColumns = ["dayNumber"],
+            childColumns = ["dayNumber"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [Index("dayNumber")]
+)
+data class ExerciseDayLinkEntity(
+    val exerciseId: Long,
+    val dayNumber: Int,
+    val position: Int
 )

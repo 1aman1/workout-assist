@@ -250,16 +250,26 @@ internal fun InsightsScreen(
         val start = startOfMonthEpochDay(todayEpochDay, 0)
         breakDays.count { it in start..todayEpochDay }
     }
+    // Lifted to the top level (alongside breaksThisMonth) so both the main card's summary
+    // chips and the inspector's detailed stats can share the same computation.
+    val streakRuns = remember(completedSessionEpochDays) {
+        streakRunLengths(completedSessionEpochDays)
+    }
+    val avgStreak = if (streakRuns.isEmpty()) 0.0 else streakRuns.average()
 
     // Workout lookback grid: which prelisted template day was last done in each of the
-    // last [lookbackWeeks] rolling 7-day weeks. Custom activities and frozen days are not
-    // sessions tied to a template day, so they never appear here - only real workouts do.
+    // last [lookbackWeeks] rolling cycles. A "cycle" is the plan's current day count, not a
+    // hardcoded 7 - so this stays meaningful if the plan ever has more/fewer than 7 days.
+    // Custom activities and frozen days are not sessions tied to a template day, so they
+    // never appear here - only real workouts do.
     val lookbackWorkoutDays = remember(days) { days.sortedBy { it.dayNumber } }
-    val lookbackWeekRanges = remember(todayEpochDay, lookbackWeeks) {
-        val safeWeeks = lookbackWeeks.coerceIn(3, 8)
+    val lookbackCycleLength = remember(days) { days.size.takeIf { it > 0 } ?: 7 }
+    val lookbackWeekRanges = remember(todayEpochDay, lookbackWeeks, lookbackCycleLength) {
+        val safeWeeks = lookbackWeeks.coerceIn(2, 10)
+        val cycleDays = lookbackCycleLength.toLong()
         (0 until safeWeeks).map { weekIndex ->
-            val end = todayEpochDay - weekIndex * 7L
-            (end - 6L)..end
+            val end = todayEpochDay - weekIndex * cycleDays
+            (end - (cycleDays - 1L))..end
         }
     }
     val lookbackEpochDaysByDayNumber = remember(sessions) {
@@ -499,34 +509,60 @@ internal fun InsightsScreen(
                                 onDoubleTap = { showRoutineWindowPicker = true }
                             )
                         } else {
-                            StreakMomentumGraph(
-                                momentumSeries = momentumSeries,
-                                momentumStatuses = momentumStatuses,
-                                reversalLabels = momentumReversalLabels,
-                                dayLabels = momentumDayLabels,
-                                title = streakTitle,
-                                stockMode = stockMode,
-                                crashMode = crashMode,
-                                pendingColor = pendingColor,
-                                frozenColor = frozenColor,
-                                pendingToday = momentumPendingToday,
-                                onInspect = { showMomentumInspector = true }
-                            )
+                            // Graph itself only lives in the expand popup now; main page just
+                            // shows the title + expand affordance.
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = streakTitle,
+                                    modifier = Modifier.weight(1f),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                if (momentumSeries.isNotEmpty()) {
+                                    TextButton(
+                                        onClick = { showMomentumInspector = true },
+                                        colors = ButtonDefaults.textButtonColors(
+                                            contentColor = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    ) {
+                                        Text("Expand")
+                                        Spacer(modifier = Modifier.width(2.dp))
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                                            contentDescription = "Expand streak graph"
+                                        )
+                                    }
+                                }
+                            }
+                            if (momentumSeries.isEmpty()) {
+                                Text(
+                                    text = "Finish a few workouts to see your streak momentum build up here.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             StreakSummaryChip(
-                                label = "Current streak",
+                                label = "Current",
                                 value = "$routineStreak ${if (routineStreak == 1) "day" else "days"}"
                             )
                             StreakSummaryChip(
-                                label = "Best streak",
+                                label = "Best",
                                 value = "$bestStreak ${if (bestStreak == 1) "day" else "days"}"
                             )
                             StreakSummaryChip(
-                                label = "Breaks this month",
+                                label = "Avg",
+                                value = "${"%.1f".format(avgStreak)} days"
+                            )
+                            StreakSummaryChip(
+                                label = "Breaks",
                                 value = breaksThisMonth.toString()
                             )
                         }
@@ -591,7 +627,8 @@ internal fun InsightsScreen(
                                 weekRanges = lookbackWeekRanges,
                                 cellsByDayNumber = lookbackCellsByDayNumber,
                                 compact = true,
-                                onDoubleTap = { showLookbackWeeksPicker = true }
+                                onDoubleTap = { showLookbackWeeksPicker = true },
+                                onExpand = { showLookbackInspector = true }
                             )
                         }
                     }
@@ -686,8 +723,9 @@ internal fun InsightsScreen(
         NumberWheelDialog(
             title = "Insights \u2192 Workout lookback",
             value = lookbackWeeks,
-            range = 3..8,
-            valueText = { weeks -> "Last $weeks weeks" },
+            range = 2..10,
+            step = 2,
+            valueText = { weeks -> "Last $weeks cycles" },
             onDismiss = { showLookbackWeeksPicker = false },
             onConfirm = { newWeeks ->
                 lookbackWeeks = newWeeks
@@ -758,7 +796,9 @@ internal fun InsightsScreen(
         val inspectorZoomMin = 0.5f
         val inspectorZoomMax = 2.5f
         val inspectorZoomStep = 0.25f
-        var inspectorZoom by remember { mutableStateOf(1f) }
+        // Default to the minimum (50%) zoom so a long streak history fits on open without
+        // the user needing to zoom out manually first.
+        var inspectorZoom by remember { mutableStateOf(inspectorZoomMin) }
         val inspectorHScroll = rememberScrollState()
         val inspectorVScroll = rememberScrollState()
         // Re-anchor on today whenever the data, mode, or zoom level changes (zooming resizes
@@ -776,9 +816,6 @@ internal fun InsightsScreen(
         val streakHistogram = remember(completedSessionEpochDays) {
             streakLengthHistogram(completedSessionEpochDays, maxBucket = 7)
         }
-        val streakRuns = remember(completedSessionEpochDays) {
-            streakRunLengths(completedSessionEpochDays)
-        }
         val breaksLast3Months = remember(breakDays, todayEpochDay) {
             val start = startOfMonthEpochDay(todayEpochDay, 2)
             breakDays.count { it in start..todayEpochDay }
@@ -786,7 +823,6 @@ internal fun InsightsScreen(
         val longestGap = remember(completedSessionEpochDays, todayEpochDay) {
             longestStreakGap(completedSessionEpochDays, todayEpochDay)
         }
-        val avgStreak = if (streakRuns.isEmpty()) 0.0 else streakRuns.average()
         Dialog(
             onDismissRequest = { showMomentumInspector = false },
             properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -971,15 +1007,15 @@ internal fun InsightsScreen(
                                 label = "Best streak",
                                 value = "$bestStreak ${if (bestStreak == 1) "day" else "days"}"
                             )
-                            MetricRow("Breaks this month", breaksThisMonth.toString())
-                            MetricRow("Breaks last 3 months", breaksLast3Months.toString())
-                            MetricRow("Active days", completedSessionEpochDays.size.toString())
-                            MetricRow("Streaks", streakRuns.size.toString())
-                            MetricRow("Avg streak", "${"%.1f".format(avgStreak)} days")
                             MetricRow(
                                 label = "Longest gap",
                                 value = "$longestGap ${if (longestGap == 1) "day" else "days"}"
                             )
+                            MetricRow("Avg streak", "${"%.1f".format(avgStreak)} days")
+                            MetricRow("Breaks this month", breaksThisMonth.toString())
+                            MetricRow("Breaks last 3 months", breaksLast3Months.toString())
+                            MetricRow("Active days", completedSessionEpochDays.size.toString())
+                            MetricRow("Streaks", streakRuns.size.toString())
                             MetricRow("Freezes earned", earnedFreezes.toString())
                             MetricRow("Freezes available", freezesAvailable.toString())
                             MetricRow("Freezes used", freezesUsed.toString())
@@ -1022,123 +1058,7 @@ internal fun InsightsScreen(
     }
 }
 
-// The routine streak visualization (default). A horizontally scrollable momentum graph
-// with a Bars/Stocks toggle; the classic triangle graph is shown instead via Settings.
-@Composable
-private fun StreakMomentumGraph(
-    momentumSeries: List<Int>,
-    momentumStatuses: List<MomentumDayStatus>,
-    reversalLabels: List<Int?>,
-    dayLabels: List<Int>,
-    title: String,
-    stockMode: Boolean,
-    crashMode: Boolean,
-    pendingColor: Color,
-    frozenColor: Color,
-    pendingToday: Boolean,
-    onInspect: () -> Unit
-) {
-    val chartScroll = rememberScrollState()
-    // The compact card is always anchored on today (right-most) and isn't user-draggable,
-    // so it never drifts away and "gets lost" scrolled into old history; the chevron opens
-    // the inspector, which is the dedicated place to pan/zoom through the full timeline.
-    LaunchedEffect(momentumSeries, stockMode, chartScroll.maxValue) {
-        chartScroll.scrollTo(chartScroll.maxValue)
-    }
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = title,
-                modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
-            )
-            if (momentumSeries.isNotEmpty()) {
-                TextButton(
-                    onClick = onInspect,
-                    colors = ButtonDefaults.textButtonColors(
-                        contentColor = MaterialTheme.colorScheme.onSurface
-                    )
-                ) {
-                    Text("Expand")
-                    Spacer(modifier = Modifier.width(2.dp))
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                        contentDescription = "Expand streak graph"
-                    )
-                }
-            }
-        }
-        if (momentumSeries.isEmpty()) {
-            Text(
-                text = "Finish a few workouts to see your streak momentum build up here.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        } else {
-            val chartHeight = 180.dp
-            // The compact card no longer auto-fits its y-scale to the full data range (that
-            // squashed everything down whenever a big streak or crash appeared); it now uses
-            // a fixed -5..+5 window, matching the inspector's "fixed scale, scroll to see
-            // more" feel, and stays anchored on today (right-most) via `chartScroll` above.
-            val compactRange = -5..5
-            val axisMin = compactRange.first
-            val axisMax = compactRange.last
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.Top
-            ) {
-                MomentumYAxis(
-                    minValue = axisMin,
-                    maxValue = axisMax,
-                    height = chartHeight,
-                    verticalInset = MomentumDateLabelGutter
-                )
-                Row(
-                    modifier = Modifier
-                        .weight(1f)
-                        .horizontalScroll(chartScroll, enabled = false)
-                ) {
-                    if (stockMode) {
-                        MomentumCandleChart(
-                            values = momentumSeries,
-                            statuses = momentumStatuses,
-                            reversalLabels = reversalLabels,
-                            dayLabels = dayLabels.drop(1),
-                            upColor = Color(0xFF16A34A),
-                            downColor = Color(0xFFDC2626),
-                            pendingColor = pendingColor,
-                            frozenColor = frozenColor,
-                            pendingLast = pendingToday,
-                            crashMode = crashMode,
-                            contentHeight = chartHeight,
-                            fixedRange = compactRange
-                        )
-                    } else {
-                        MomentumLineChart(
-                            values = momentumSeries,
-                            statuses = momentumStatuses,
-                            reversalLabels = reversalLabels,
-                            dayLabels = dayLabels,
-                            lineColor = MaterialTheme.colorScheme.primary,
-                            pendingColor = pendingColor,
-                            frozenColor = frozenColor,
-                            pendingLast = pendingToday,
-                            contentHeight = chartHeight,
-                            fixedRange = compactRange
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-// Compact highlighted stat shown on the main streak card (Best streak / Breaks this month).
+// Compact highlighted stat shown on the main streak card (Current / Best / Avg / Breaks).
 @Composable
 private fun RowScope.StreakSummaryChip(label: String, value: String) {
     Card(
@@ -1696,18 +1616,110 @@ private fun RatioBatteryBar(
     }
 }
 
-// Grid: rows are rolling 7-day weeks (most recent first), columns are the template's
-// prelisted workout days (1..N). A cell shows the day-of-month it was last done that
-// week, or a dash if skipped that week - making a lagging vs. on-pace workout obvious
-// from its column's dash/fill ratio. In compact mode (main card) the left-side week
-// dates and the legend are hidden to reduce clutter; the expanded popup shows both.
+// Compact "which workouts are lagging" view: one bar per day, height = weeks done out of
+// the weeks shown, scaled to a fixed per-week unit so the overall bar height still grows
+// or shrinks with the selected week range (min 3, max 8). A shorter bar reads as behind
+// pace at a glance, without needing the full week-by-week matrix.
+@Composable
+private fun WorkoutLookbackColumnChart(
+    workoutDays: List<WorkoutDayModel>,
+    totalWeeks: Int,
+    cellsByDayNumber: Map<Int, List<Long?>>,
+    onPaceColor: Color,
+    partialColor: Color,
+    laggingColor: Color
+) {
+    val unitHeight = 16.dp
+    val barWidth = 28.dp
+    val barAreaHeight = unitHeight * totalWeeks.coerceAtLeast(1)
+    // Y-axis ticks in multiples of 2 up to the ceiling (rounded up from the weeks shown;
+    // default is 4 -> 4, 2), so the bars read against a scale instead of floating free.
+    val axisCeiling = (kotlin.math.ceil(totalWeeks.coerceAtLeast(1) / 2.0).toInt() * 2).coerceAtLeast(4)
+    val axisTicks = (axisCeiling downTo 2 step 2).toList()
+    val axisTextHeight = 14.dp
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .width(20.dp)
+                .height(barAreaHeight)
+        ) {
+            axisTicks.forEach { tick ->
+                val y = (barAreaHeight * (1f - tick.toFloat() / axisCeiling) - axisTextHeight / 2)
+                    .coerceIn(0.dp, barAreaHeight - axisTextHeight)
+                Text(
+                    text = tick.toString(),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .offset(y = y)
+                )
+            }
+        }
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            workoutDays.forEach { day ->
+                val hits = cellsByDayNumber[day.dayNumber].orEmpty().count { it != null }
+                val paceColor = when {
+                    totalWeeks == 0 -> MaterialTheme.colorScheme.onSurfaceVariant
+                    hits == totalWeeks -> onPaceColor
+                    hits == 0 -> laggingColor
+                    else -> partialColor
+                }
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .width(barWidth)
+                            .height(barAreaHeight),
+                        contentAlignment = Alignment.BottomCenter
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .width(barWidth)
+                                .height(unitHeight * hits)
+                                .background(
+                                    color = paceColor,
+                                    shape = RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp)
+                                )
+                        )
+                    }
+                    Text(
+                        text = "D${day.dayNumber}",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = paceColor
+                    )
+                }
+            }
+        }
+    }
+}
+
+// Grid: rows are rolling cycles (most recent first, each cycle spanning the plan's current
+// day count rather than a hardcoded 7 days), columns are the template's prelisted workout
+// days (1..N). A cell shows the day-of-month it was last done that cycle, or a dash if
+// skipped - making a lagging vs. on-pace workout obvious from its column's dash/fill ratio.
+// In compact mode (main card) the left-side date labels and the legend are hidden to reduce
+// clutter; the expanded popup shows both.
 @Composable
 private fun WorkoutLookbackGraph(
     workoutDays: List<WorkoutDayModel>,
     weekRanges: List<LongRange>,
     cellsByDayNumber: Map<Int, List<Long?>>,
     compact: Boolean,
-    onDoubleTap: () -> Unit
+    onDoubleTap: () -> Unit,
+    onExpand: () -> Unit = {}
 ) {
     val onPaceColor = Color(0xFF2E7D32)
     val partialColor = Color(0xFFFF8F00)
@@ -1720,15 +1732,33 @@ private fun WorkoutLookbackGraph(
         modifier = Modifier
             .fillMaxWidth()
             .pointerInput(Unit) {
-                detectTapGestures(onDoubleTap = { onDoubleTap() })
+                detectTapGestures(
+                    onTap = { if (compact) onExpand() },
+                    onDoubleTap = { onDoubleTap() }
+                )
             },
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Text(
-            text = "When each workout was last done \u00b7 last ${weekRanges.size} weeks \u00b7 double-tap to change",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        // Description only shown in the expanded inspector, not the compact main-page card.
+        if (!compact) {
+            Text(
+                text = "When each workout was last done \u00b7 last ${weekRanges.size} cycles \u00b7 double-tap to change",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        if (compact) {
+            // Lagging-at-a-glance view: one bar per day, height = weeks done out of weeks
+            // shown, so a shorter bar reads as behind pace without needing the full matrix.
+            WorkoutLookbackColumnChart(
+                workoutDays = workoutDays,
+                totalWeeks = weekRanges.size,
+                cellsByDayNumber = cellsByDayNumber,
+                onPaceColor = onPaceColor,
+                partialColor = partialColor,
+                laggingColor = laggingColor
+            )
+        } else {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1844,6 +1874,7 @@ private fun WorkoutLookbackGraph(
                     )
                 }
             }
+        }
         }
     }
 }

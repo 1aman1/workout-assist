@@ -87,6 +87,10 @@ internal fun WorkoutDayScreen(
     day: WorkoutDayModel,
     repository: WorkoutRepository,
     setLogs: List<SetLogEntity>,
+    // False when this day is being logged as a substitute for the day actually due (picked
+    // via "Log something else"): the session is still real (sets/reps get logged normally),
+    // it just doesn't advance the overall day-in-cycle pointer.
+    advancesCycle: Boolean = true,
     onRequestGoToSettings: () -> Unit,
     onBack: () -> Unit,
     onWorkoutActiveChange: (Boolean) -> Unit = {}
@@ -94,6 +98,7 @@ internal fun WorkoutDayScreen(
     val scope = rememberCoroutineScope()
     val viewedDateEpochDay = day.plannedDateEpochDay
 
+    // Edit exercises mode is local to this day's screen (not shared/global).
     var editMode by remember(day.dayNumber) { mutableStateOf(false) }
     var workoutActive by remember(day.dayNumber) { mutableStateOf(false) }
 
@@ -314,7 +319,7 @@ internal fun WorkoutDayScreen(
 
         activeSessionId = 0L
         scope.launch {
-            activeSessionId = repository.startSession(day)
+            activeSessionId = repository.startSession(day, advancesCycle = advancesCycle)
         }
 
         workoutActive = true
@@ -659,6 +664,11 @@ internal fun WorkoutDayScreen(
                 actions = {
                     if (!workoutActive) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "Edit",
+                                style = MaterialTheme.typography.labelLarge,
+                                modifier = Modifier.padding(end = 4.dp)
+                            )
                             Switch(
                                 checked = editMode,
                                 enabled = !workoutActive,
@@ -851,7 +861,7 @@ internal fun WorkoutDayScreen(
                                 },
                                 onDelete = {
                                     scope.launch {
-                                        repository.deleteExercise(exercise)
+                                        repository.unassignExerciseFromDay(day.dayNumber, exercise.id)
                                     }
                                     hasEditChangesPendingExport = true
                                 }

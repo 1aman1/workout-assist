@@ -11,9 +11,14 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface WorkoutDao {
-    @Transaction
     @Query("SELECT * FROM template_days ORDER BY dayNumber ASC")
-    fun observeDaysWithExercises(): Flow<List<DayWithExercises>>
+    fun observeDays(): Flow<List<TemplateDayEntity>>
+
+    @Query("SELECT * FROM exercises ORDER BY id ASC")
+    fun observeExercises(): Flow<List<ExerciseEntity>>
+
+    @Query("SELECT * FROM exercise_day_links ORDER BY dayNumber ASC, position ASC")
+    fun observeLinks(): Flow<List<ExerciseDayLinkEntity>>
 
     @Query("SELECT * FROM workout_sessions ORDER BY id DESC")
     fun observeSessions(): Flow<List<WorkoutSessionEntity>>
@@ -27,8 +32,11 @@ interface WorkoutDao {
     @Query("SELECT * FROM template_days ORDER BY dayNumber ASC")
     suspend fun getAllDays(): List<TemplateDayEntity>
 
-    @Query("SELECT * FROM exercises ORDER BY dayNumber ASC, position ASC")
+    @Query("SELECT * FROM exercises ORDER BY id ASC")
     suspend fun getAllExercises(): List<ExerciseEntity>
+
+    @Query("SELECT * FROM exercise_day_links ORDER BY dayNumber ASC, position ASC")
+    suspend fun getAllLinks(): List<ExerciseDayLinkEntity>
 
     @Query("SELECT * FROM workout_sessions ORDER BY id ASC")
     suspend fun getAllSessions(): List<WorkoutSessionEntity>
@@ -48,11 +56,16 @@ interface WorkoutDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertSetLogs(logs: List<SetLogEntity>)
 
-    @Insert
-    suspend fun insertExercises(exercises: List<ExerciseEntity>)
-
-    @Query("SELECT * FROM exercises WHERE dayNumber = :dayNumber ORDER BY position ASC")
+    @Query("""
+        SELECT e.* FROM exercises e
+        INNER JOIN exercise_day_links l ON l.exerciseId = e.id
+        WHERE l.dayNumber = :dayNumber
+        ORDER BY l.position ASC
+    """)
     suspend fun getExercisesForDay(dayNumber: Int): List<ExerciseEntity>
+
+    @Query("SELECT * FROM exercises WHERE id = :exerciseId")
+    suspend fun getExerciseById(exerciseId: Long): ExerciseEntity?
 
     @Insert
     suspend fun insertExercise(exercise: ExerciseEntity): Long
@@ -63,8 +76,35 @@ interface WorkoutDao {
     @Delete
     suspend fun deleteExercise(exercise: ExerciseEntity)
 
-    @Query("UPDATE exercises SET position = :position WHERE id = :exerciseId")
-    suspend fun updateExercisePosition(exerciseId: Long, position: Int): Int
+    @Query("SELECT * FROM exercise_day_links WHERE dayNumber = :dayNumber ORDER BY position ASC")
+    suspend fun getLinksForDay(dayNumber: Int): List<ExerciseDayLinkEntity>
+
+    @Query("SELECT * FROM exercise_day_links WHERE exerciseId = :exerciseId")
+    suspend fun getLinksForExercise(exerciseId: Long): List<ExerciseDayLinkEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertLink(link: ExerciseDayLinkEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertLinks(links: List<ExerciseDayLinkEntity>)
+
+    @Query("DELETE FROM exercise_day_links WHERE exerciseId = :exerciseId AND dayNumber = :dayNumber")
+    suspend fun deleteLink(exerciseId: Long, dayNumber: Int): Int
+
+    @Query("DELETE FROM exercise_day_links WHERE exerciseId = :exerciseId")
+    suspend fun deleteLinksForExercise(exerciseId: Long): Int
+
+    @Query("DELETE FROM exercise_day_links")
+    suspend fun deleteAllLinks()
+
+    @Query("UPDATE exercise_day_links SET position = :position WHERE exerciseId = :exerciseId AND dayNumber = :dayNumber")
+    suspend fun updateLinkPosition(exerciseId: Long, dayNumber: Int, position: Int): Int
+
+    @Query("SELECT * FROM exercises WHERE id NOT IN (SELECT exerciseId FROM exercise_day_links) ORDER BY id ASC")
+    suspend fun getUnassignedExercises(): List<ExerciseEntity>
+
+    @Query("SELECT * FROM exercises WHERE id NOT IN (SELECT exerciseId FROM exercise_day_links) ORDER BY id ASC")
+    fun observeUnassignedExercises(): Flow<List<ExerciseEntity>>
 
     @Query("UPDATE template_days SET workoutName = :workoutName WHERE dayNumber = :dayNumber")
     suspend fun updateWorkoutName(dayNumber: Int, workoutName: String): Int
@@ -127,10 +167,12 @@ interface WorkoutDao {
         days: List<TemplateDayEntity>,
         exercises: List<ExerciseEntity>,
         sessions: List<WorkoutSessionEntity>,
-        logs: List<SetLogEntity>
+        logs: List<SetLogEntity>,
+        links: List<ExerciseDayLinkEntity>
     ) {
         deleteAllSetLogs()
         deleteAllSessions()
+        deleteAllLinks()
         deleteAllExercises()
         deleteAllDays()
 
@@ -139,6 +181,9 @@ interface WorkoutDao {
         }
         if (exercises.isNotEmpty()) {
             upsertExercises(exercises)
+        }
+        if (links.isNotEmpty()) {
+            insertLinks(links)
         }
         if (sessions.isNotEmpty()) {
             upsertSessions(sessions)

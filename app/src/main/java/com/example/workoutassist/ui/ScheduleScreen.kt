@@ -146,16 +146,19 @@ private fun buildMergedTimeline(
         date += 1L
     }
 
-    // Future days of the current cycle, projected forward to the last day number.
-    val startDn = nextDueDay?.dayNumber ?: 1
-    val firstFutureDn = if (todayDone) startDn else startDn + 1
+    // Future days of the current cycle, projected forward to the last cycle position.
+    // Walked by cycle index (not raw dayNumber) since parked days are excluded from the
+    // cycle, which can leave gaps in the dayNumber sequence.
+    val startDn = nextDueDay?.dayNumber ?: cycle.first().dayNumber
+    val startIndex = cycle.indexOfFirst { it.dayNumber == startDn }.takeIf { it >= 0 } ?: 0
+    val firstFutureIndex = if (todayDone) startIndex else startIndex + 1
     var projectedDate = todayEpochDay + 1L
-    for (dn in firstFutureDn..dayCount) {
-        val day = cycle.firstOrNull { it.dayNumber == dn } ?: continue
+    for (i in firstFutureIndex until dayCount) {
+        val day = cycle[i]
         result.add(
             ScheduleEntry(
                 epochDay = projectedDate,
-                dayNumber = dn,
+                dayNumber = day.dayNumber,
                 workoutName = day.workoutName,
                 status = DayStatus.FUTURE
             )

@@ -64,7 +64,8 @@ import kotlinx.coroutines.launch
 
 private enum class AppScreen {
     SCHEDULE,
-    DAY_DETAIL
+    DAY_DETAIL,
+    EXERCISE_POOL
 }
 
 private enum class RootTab(
@@ -460,6 +461,10 @@ fun WorkoutAssistApp() {
     }
 
     val days by repository.observeDays().collectAsState(initial = emptyList())
+    // A day with no exercises assigned is "parked": kept in the DB (so it can be
+    // un-parked later via the exercise pool) but excluded from the schedule cycle,
+    // next-due calculations and insights/retro - as if it weren't part of the plan.
+    val activeDays = remember(days) { days.filter { it.exercises.isNotEmpty() } }
     val sessions by repository.observeSessions().collectAsState(initial = emptyList())
     val setLogs by repository.observeSetLogs().collectAsState(initial = emptyList())
     val completedSessionEpochDays = remember(sessions) {
@@ -532,8 +537,8 @@ fun WorkoutAssistApp() {
     val todayDateEpochDay = currentDateEpochDay()
     // The day-in-cycle that's actually due today (same modulo logic as ScheduleScreen's
     // computeNextDueDay), used as the dayNumber FK fallback when logging a custom activity.
-    val todaysDueDayNumber = remember(days, lastCompletedDayNumber) {
-        val cycle = days.sortedBy { it.dayNumber }
+    val todaysDueDayNumber = remember(activeDays, lastCompletedDayNumber) {
+        val cycle = activeDays.sortedBy { it.dayNumber }
         if (cycle.isEmpty()) {
             null
         } else {
@@ -544,39 +549,17 @@ fun WorkoutAssistApp() {
             cycle[(((startIndex + 1) % n) + n) % n].dayNumber
         }
     }
-
-    // Auto-advance past a skipped rest day: if the next due day is a rest day and its
-    // scheduled date has already passed, log an (empty) rest session for it so the
-    // cycle rolls forward instead of the rest day showing as "missed" indefinitely.
-    LaunchedEffect(days, lastCompletedDayNumber, lastCompletedEpochDay, todayDateEpochDay) {
-        if (days.isEmpty()) return@LaunchedEffect
-        val lastDate = lastCompletedEpochDay ?: return@LaunchedEffect
-        val cycle = days.sortedBy { it.dayNumber }
-        val startIndex = lastCompletedDayNumber
-            ?.let { dayNumber -> cycle.indexOfFirst { it.dayNumber == dayNumber } }
-            ?: return@LaunchedEffect
-        if (startIndex < 0) return@LaunchedEffect
-        val n = cycle.size
-        val nextDue = cycle[(((startIndex + 1) % n) + n) % n]
-        val restDueDate = lastDate + 1L
-        if (nextDue.exercises.isEmpty() &&
-            todayDateEpochDay > restDueDate &&
-            restDueDate !in completedSessionEpochDays
-        ) {
-            repository.logBackdatedWorkout(nextDue, restDueDate)
-            // A logged rest session now covers this day, same as any other workout.
-            if (restDueDate in frozenStreakDays) {
-                persistFrozenStreakDays(frozenStreakDays - restDueDate)
-            }
-        }
-    }
-    val highlightedTodayDayNumber = days
+    val highlightedTodayDayNumber = activeDays
         .firstOrNull { it.plannedDateEpochDay == todayDateEpochDay }
         ?.dayNumber
     var scheduleTitle by remember {
         mutableStateOf(prefs.getString(KEY_SCHEDULE_TITLE, DEFAULT_SCHEDULE_TITLE) ?: DEFAULT_SCHEDULE_TITLE)
     }
     var selectedDayNumber by remember { mutableIntStateOf(0) }
+    // True while viewing a day picked via "Log something else" (a substitute for the day
+    // that's actually due): the resulting session still gets logged for real, it just
+    // doesn't advance the day-in-cycle pointer.
+    var isAlternateDaySession by remember { mutableStateOf(false) }
     var currentScreen by remember { mutableStateOf(AppScreen.SCHEDULE) }
     var selectedTab by remember { mutableStateOf(RootTab.WORKOUT) }
     var showGraphsPage by remember { mutableStateOf(false) }
@@ -985,6 +968,11 @@ fun WorkoutAssistApp() {
 
         BackHandler(enabled = selectedTab == RootTab.WORKOUT && currentScreen == AppScreen.DAY_DETAIL) {
             currentScreen = AppScreen.SCHEDULE
+            isAlternateDaySession = false
+        }
+
+        BackHandler(enabled = selectedTab == RootTab.WORKOUT && currentScreen == AppScreen.EXERCISE_POOL) {
+            currentScreen = AppScreen.SCHEDULE
         }
 
         BackHandler(enabled = selectedTab == RootTab.WORKOUT && currentScreen == AppScreen.SCHEDULE) {
@@ -1038,7 +1026,8 @@ fun WorkoutAssistApp() {
             val layoutDirection = LocalLayoutDirection.current
             val suppressRootTopInset =
                 selectedTab == RootTab.SETTINGS ||
-                    (selectedTab == RootTab.WORKOUT && currentScreen == AppScreen.DAY_DETAIL)
+                    (selectedTab == RootTab.WORKOUT &&
+                        (currentScreen == AppScreen.DAY_DETAIL || currentScreen == AppScreen.EXERCISE_POOL))
 
             Box(
                 modifier = Modifier
@@ -1073,7 +1062,7 @@ fun WorkoutAssistApp() {
                             when (currentScreen) {
                                 AppScreen.SCHEDULE -> {
                                     ScheduleScreen(
-                                        days = days,
+                                        days = activeDays,
                                         planTitle = scheduleTitle,
                                         schedulePageLabel = schedulePageLabel,
                                         infinityPageLabel = infinityPageLabel,
@@ -1097,7 +1086,7 @@ fun WorkoutAssistApp() {
                                             persistFrozenStreakDays(updated)
                                         },
                                         onLogBackdatedWorkout = { dayNumber, epochDay ->
-                                            val day = days.firstOrNull { it.dayNumber == dayNumber }
+                                            val day = activeDays.firstOrNull { it.dayNumber == dayNumber }
                                             if (day != null) {
                                                 scope.launch { repository.logBackdatedWorkout(day, epochDay) }
                                             }
@@ -1108,16 +1097,17 @@ fun WorkoutAssistApp() {
                                             }
                                         },
                                         onLogAlternateToday = { dayNumber ->
-                                            val day = days.firstOrNull { it.dayNumber == dayNumber }
-                                            if (day != null) {
-                                                scope.launch {
-                                                    repository.logBackdatedWorkout(day, todayDateEpochDay, advancesCycle = false)
-                                                }
-                                            }
+                                            // Open the real workout session for that day instead of
+                                            // auto-completing it with planned values, so it actually
+                                            // gets logged (sets/reps) like any normal workout; it just
+                                            // doesn't advance the day-in-cycle pointer (see below).
+                                            selectedDayNumber = dayNumber
+                                            isAlternateDaySession = true
+                                            currentScreen = AppScreen.DAY_DETAIL
                                         },
                                         onLogCustomActivityToday = { name ->
                                             val fallbackDayNumber = todaysDueDayNumber
-                                                ?: days.minByOrNull { it.dayNumber }?.dayNumber
+                                                ?: activeDays.minByOrNull { it.dayNumber }?.dayNumber
                                                 ?: 1
                                             scope.launch {
                                                 repository.logCustomActivity(name, fallbackDayNumber, todayDateEpochDay)
@@ -1125,7 +1115,7 @@ fun WorkoutAssistApp() {
                                         },
                                         onLogCustomActivityOnDate = { name, epochDay ->
                                             val fallbackDayNumber = todaysDueDayNumber
-                                                ?: days.minByOrNull { it.dayNumber }?.dayNumber
+                                                ?: activeDays.minByOrNull { it.dayNumber }?.dayNumber
                                                 ?: 1
                                             scope.launch {
                                                 repository.logCustomActivity(name, fallbackDayNumber, epochDay)
@@ -1140,6 +1130,7 @@ fun WorkoutAssistApp() {
                                         },
                                         onDaySelected = { dayNumber ->
                                             selectedDayNumber = dayNumber
+                                            isAlternateDaySession = false
                                             currentScreen = AppScreen.DAY_DETAIL
                                         }
                                     )
@@ -1153,12 +1144,24 @@ fun WorkoutAssistApp() {
                                         day = selectedDay,
                                         repository = repository,
                                         setLogs = setLogs,
+                                        advancesCycle = !isAlternateDaySession,
                                         onRequestGoToSettings = {
                                             currentScreen = AppScreen.SCHEDULE
                                             selectedTab = RootTab.SETTINGS
                                         },
-                                        onBack = { currentScreen = AppScreen.SCHEDULE },
+                                        onBack = {
+                                            currentScreen = AppScreen.SCHEDULE
+                                            isAlternateDaySession = false
+                                        },
                                         onWorkoutActiveChange = { active -> isWorkoutSessionActive = active }
+                                    )
+                                }
+
+                                AppScreen.EXERCISE_POOL -> {
+                                    ExercisePoolScreen(
+                                        repository = repository,
+                                        days = days,
+                                        onBack = { currentScreen = AppScreen.SCHEDULE }
                                     )
                                 }
                             }
@@ -1172,7 +1175,7 @@ fun WorkoutAssistApp() {
                             InsightsScreen(
                                 sessions = sessions,
                                 setLogs = setLogs,
-                                days = days,
+                                days = activeDays,
                                 repository = repository,
                                 insightsTitle = insightsTitleLabel,
                                 workoutInsightsTitle = workoutInsightsTitleLabel,
@@ -1212,6 +1215,10 @@ fun WorkoutAssistApp() {
                         SettingsScreen(
                             statusFeedback = settingsFeedback,
                             onDismissStatusFeedback = { settingsFeedback = null },
+                            onEditSchedule = {
+                                selectedTab = RootTab.WORKOUT
+                                currentScreen = AppScreen.EXERCISE_POOL
+                            },
                             backgroundThemeOptionId = backgroundThemeOptionId,
                             statusThemeOptionId = statusThemeOptionId,
                             doneThemeOptionId = doneThemeOptionId,

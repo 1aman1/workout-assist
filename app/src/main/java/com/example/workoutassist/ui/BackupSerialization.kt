@@ -3,6 +3,7 @@ package com.example.workoutassist.ui
 import android.content.Context
 import android.net.Uri
 import com.example.workoutassist.data.BackupSnapshot
+import com.example.workoutassist.data.ExerciseDayLinkEntity
 import com.example.workoutassist.data.ExerciseEntity
 import com.example.workoutassist.data.SetLogEntity
 import com.example.workoutassist.data.TemplateDayEntity
@@ -16,7 +17,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 
-private const val BACKUP_FORMAT_VERSION = 1
+private const val BACKUP_FORMAT_VERSION = 2
 
 internal data class ImportedAppState(
     val scheduleTitle: String
@@ -118,7 +119,6 @@ private fun buildBackupJson(scheduleTitle: String, snapshot: BackupSnapshot): St
                     put(
                         JSONObject()
                             .put("id", exercise.id)
-                            .put("dayNumber", exercise.dayNumber)
                             .put("name", exercise.name)
                             .put("sets", exercise.sets)
                             .put("reps", exercise.reps)
@@ -127,8 +127,20 @@ private fun buildBackupJson(scheduleTitle: String, snapshot: BackupSnapshot): St
                             .put("plannedRepsBySetJson", exercise.plannedRepsBySetJson)
                             .put("plannedWeightBySetJson", exercise.plannedWeightBySetJson)
                             .put("remarks", exercise.remarks)
-                            .put("position", exercise.position)
                             .put("isDone", exercise.isDone)
+                    )
+                }
+            }
+        )
+        .put(
+            "exerciseDayLinks",
+            JSONArray().apply {
+                snapshot.links.forEach { link ->
+                    put(
+                        JSONObject()
+                            .put("exerciseId", link.exerciseId)
+                            .put("dayNumber", link.dayNumber)
+                            .put("position", link.position)
                     )
                 }
             }
@@ -186,6 +198,12 @@ private fun parseBackupJson(text: String): BackupPayload {
     val exercises = root.optJSONArray("exercises").toExercises()
     val sessions = root.optJSONArray("workoutSessions").toSessions()
     val logs = root.optJSONArray("setLogs").toSetLogs()
+    val links = if (formatVersion >= 2) {
+        root.optJSONArray("exerciseDayLinks").toExerciseDayLinks()
+    } else {
+        // v1 backups had no join table - exercises each carried a single dayNumber/position.
+        root.optJSONArray("exercises").toLegacyExerciseDayLinks()
+    }
 
     return BackupPayload(
         scheduleTitle = scheduleTitle,
@@ -193,7 +211,8 @@ private fun parseBackupJson(text: String): BackupPayload {
             days = days,
             exercises = exercises,
             sessions = sessions,
-            logs = logs
+            logs = logs,
+            links = links
         )
     )
 }
@@ -239,7 +258,6 @@ private fun JSONArray?.toExercises(): List<ExerciseEntity> {
             add(
                 ExerciseEntity(
                     id = exercise.optLong("id", 0L),
-                    dayNumber = exercise.getInt("dayNumber"),
                     name = exercise.optString("name", "Exercise"),
                     sets = sets,
                     reps = reps,
@@ -248,8 +266,47 @@ private fun JSONArray?.toExercises(): List<ExerciseEntity> {
                     plannedRepsBySetJson = plannedRepsBySetJson,
                     plannedWeightBySetJson = plannedWeightBySetJson,
                     remarks = exercise.optString("remarks", ""),
-                    position = exercise.optInt("position", index + 1),
                     isDone = exercise.optBoolean("isDone", false)
+                )
+            )
+        }
+    }
+}
+
+private fun JSONArray?.toExerciseDayLinks(): List<ExerciseDayLinkEntity> {
+    if (this == null) {
+        return emptyList()
+    }
+    return buildList {
+        for (index in 0 until length()) {
+            val link = getJSONObject(index)
+            add(
+                ExerciseDayLinkEntity(
+                    exerciseId = link.getLong("exerciseId"),
+                    dayNumber = link.getInt("dayNumber"),
+                    position = link.optInt("position", index + 1)
+                )
+            )
+        }
+    }
+}
+
+// v1 backward-compat: synthesizes one join-row per legacy exercise's single dayNumber/position.
+private fun JSONArray?.toLegacyExerciseDayLinks(): List<ExerciseDayLinkEntity> {
+    if (this == null) {
+        return emptyList()
+    }
+    return buildList {
+        for (index in 0 until length()) {
+            val exercise = getJSONObject(index)
+            if (!exercise.has("dayNumber")) {
+                continue
+            }
+            add(
+                ExerciseDayLinkEntity(
+                    exerciseId = exercise.optLong("id", 0L),
+                    dayNumber = exercise.getInt("dayNumber"),
+                    position = exercise.optInt("position", index + 1)
                 )
             )
         }

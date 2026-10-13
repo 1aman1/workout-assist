@@ -3,6 +3,7 @@ package com.example.workoutassist.data
 import java.util.Calendar
 import java.util.TimeZone
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import org.json.JSONArray
 
@@ -23,7 +24,6 @@ data class ExerciseDraft(
 
 data class ExerciseModel(
     val id: Long,
-    val dayNumber: Int,
     val name: String,
     val sets: Int,
     val reps: Int,
@@ -32,8 +32,11 @@ data class ExerciseModel(
     val plannedRepsBySet: List<Int>,
     val plannedWeightBySet: List<String>,
     val remarks: String,
+    val isDone: Boolean,
+    // Order within the one day's list this model was read from - not a global order.
     val position: Int,
-    val isDone: Boolean
+    // Every day this exercise is currently linked to; empty means it's unassigned/pooled.
+    val dayNumbers: Set<Int>
 )
 
 data class WorkoutDayModel(
@@ -49,24 +52,52 @@ data class BackupSnapshot(
     val days: List<TemplateDayEntity>,
     val exercises: List<ExerciseEntity>,
     val sessions: List<WorkoutSessionEntity>,
-    val logs: List<SetLogEntity>
+    val logs: List<SetLogEntity>,
+    val links: List<ExerciseDayLinkEntity>
 )
 
 class WorkoutRepository(private val dao: WorkoutDao) {
     fun observeDays(): Flow<List<WorkoutDayModel>> {
-        return dao.observeDaysWithExercises().map { rows ->
-            rows.map { row ->
+        return combine(dao.observeDays(), dao.observeExercises(), dao.observeLinks()) { days, exercises, links ->
+            val exerciseById = exercises.associateBy { it.id }
+            val linksByDay = links.groupBy { it.dayNumber }
+            val dayNumbersByExercise = links.groupBy({ it.exerciseId }) { it.dayNumber }
+                .mapValues { (_, dayNumbers) -> dayNumbers.toSet() }
+            days.map { day ->
+                val dayLinks = linksByDay[day.dayNumber].orEmpty().sortedBy { it.position }
                 WorkoutDayModel(
-                    dayNumber = row.day.dayNumber,
-                    workoutName = row.day.workoutName,
-                    plannedDateEpochDay = row.day.plannedDateEpochDay,
-                    completedForDateEpochDay = row.day.completedForDateEpochDay,
-                    isCompleted = row.day.completedForDateEpochDay == row.day.plannedDateEpochDay,
-                    exercises = row.exercises
-                        .sortedBy { it.position }
-                        .map { it.toModel() }
+                    dayNumber = day.dayNumber,
+                    workoutName = day.workoutName,
+                    plannedDateEpochDay = day.plannedDateEpochDay,
+                    completedForDateEpochDay = day.completedForDateEpochDay,
+                    isCompleted = day.completedForDateEpochDay == day.plannedDateEpochDay,
+                    exercises = dayLinks.mapNotNull { link ->
+                        exerciseById[link.exerciseId]?.toModel(
+                            position = link.position,
+                            dayNumbers = dayNumbersByExercise[link.exerciseId].orEmpty()
+                        )
+                    }
                 )
             }
+        }
+    }
+
+    // Exercises with no day assignment at all - the unassigned pool.
+    fun observeUnassignedExercises(): Flow<List<ExerciseModel>> {
+        return dao.observeUnassignedExercises().map { exercises ->
+            exercises.map { it.toModel(position = 0, dayNumbers = emptySet()) }
+        }
+    }
+
+    // Every exercise in the pool, each carrying the full set of days it's currently
+    // linked to (empty if unassigned) - used by the exercise-pool management screen.
+    fun observeAllExercises(): Flow<List<ExerciseModel>> {
+        return combine(dao.observeExercises(), dao.observeLinks()) { exercises, links ->
+            val dayNumbersByExercise = links.groupBy({ it.exerciseId }) { it.dayNumber }
+                .mapValues { (_, dayNumbers) -> dayNumbers.toSet() }
+            exercises
+                .sortedBy { it.name.lowercase() }
+                .map { it.toModel(position = 0, dayNumbers = dayNumbersByExercise[it.id].orEmpty()) }
         }
     }
 
@@ -91,7 +122,8 @@ class WorkoutRepository(private val dao: WorkoutDao) {
             days = emptyList(),
             exercises = emptyList(),
             sessions = emptyList(),
-            logs = emptyList()
+            logs = emptyList(),
+            links = emptyList()
         )
 
         seedDefaultTemplateFromToday()
@@ -120,8 +152,7 @@ class WorkoutRepository(private val dao: WorkoutDao) {
             }
         )
 
-        dao.insertExercises(
-            listOf(
+        listOf(
                 seedExercise(1, 1, "Barbell Bench Press (Main Lift)", 3, 6, 180, "60"),
                 seedExercise(1, 2, "Incline Barbell Press", 3, 6, 150, "50"),
                 seedExercise(1, 3, "Chest Dips (Lean Forward)", 3, 8, 120),
@@ -157,7 +188,10 @@ class WorkoutRepository(private val dao: WorkoutDao) {
                 seedExercise(6, 4, "Finish Crunches", 3, 15, 45),
                 seedExercise(6, 5, "Treadmill", 1, 1, 0, "", "10-15 min")
             )
-        )
+            .forEach { seed ->
+                val exerciseId = dao.insertExercise(seed.entity)
+                dao.insertLink(ExerciseDayLinkEntity(exerciseId = exerciseId, dayNumber = seed.dayNumber, position = seed.position))
+            }
     }
 
     suspend fun renameWorkout(dayNumber: Int, workoutName: String) {
@@ -168,16 +202,33 @@ class WorkoutRepository(private val dao: WorkoutDao) {
         dao.renameSessionsForDay(dayNumber, clean)
     }
 
+    // Always appends at the end of the cycle (highest dayNumber); reordering the
+    // cycle sequence itself is a separate, not-yet-built feature.
+    suspend fun addDay(workoutName: String): Int {
+        val existingDays = dao.getAllDays()
+        val clean = workoutName.trim()
+        val nextDayNumber = (existingDays.maxOfOrNull { it.dayNumber } ?: 0) + 1
+        val nextPlannedDate = (existingDays.maxOfOrNull { it.plannedDateEpochDay } ?: currentDateEpochDay()) + 1
+        dao.upsertDays(
+            listOf(
+                TemplateDayEntity(
+                    dayNumber = nextDayNumber,
+                    workoutName = clean.ifEmpty { "Day $nextDayNumber Workout" },
+                    plannedDateEpochDay = nextPlannedDate
+                )
+            )
+        )
+        return nextDayNumber
+    }
+
     suspend fun addExercise(dayNumber: Int, draft: ExerciseDraft) {
         val clean = draft.sanitized()
-        val existing = dao.getExercisesForDay(dayNumber)
-        val nextPosition = (existing.maxOfOrNull { it.position } ?: 0) + 1
+        val nextPosition = (dao.getLinksForDay(dayNumber).maxOfOrNull { it.position } ?: 0) + 1
         val plannedRepsBySet = List(clean.sets) { clean.reps }
         val plannedWeightBySet = List(clean.sets) { clean.plannedWeight }
 
-        dao.insertExercise(
+        val exerciseId = dao.insertExercise(
             ExerciseEntity(
-                dayNumber = dayNumber,
                 name = clean.name,
                 sets = clean.sets,
                 reps = clean.reps,
@@ -186,10 +237,10 @@ class WorkoutRepository(private val dao: WorkoutDao) {
                 plannedRepsBySetJson = encodeRepsBySetJson(plannedRepsBySet),
                 plannedWeightBySetJson = encodeWeightBySetJson(plannedWeightBySet),
                 remarks = clean.remarks,
-                position = nextPosition,
                 isDone = false
             )
         )
+        dao.insertLink(ExerciseDayLinkEntity(exerciseId = exerciseId, dayNumber = dayNumber, position = nextPosition))
     }
 
     suspend fun updateExercise(exercise: ExerciseModel, draft: ExerciseDraft) {
@@ -213,7 +264,6 @@ class WorkoutRepository(private val dao: WorkoutDao) {
         dao.updateExercise(
             ExerciseEntity(
                 id = exercise.id,
-                dayNumber = exercise.dayNumber,
                 name = clean.name,
                 sets = clean.sets,
                 reps = plannedRepsBySet.firstOrNull() ?: clean.reps,
@@ -222,7 +272,6 @@ class WorkoutRepository(private val dao: WorkoutDao) {
                 plannedRepsBySetJson = encodeRepsBySetJson(plannedRepsBySet),
                 plannedWeightBySetJson = encodeWeightBySetJson(plannedWeightBySet),
                 remarks = clean.remarks,
-                position = exercise.position,
                 isDone = exercise.isDone
             )
         )
@@ -248,7 +297,6 @@ class WorkoutRepository(private val dao: WorkoutDao) {
         dao.updateExercise(
             ExerciseEntity(
                 id = exercise.id,
-                dayNumber = exercise.dayNumber,
                 name = exercise.name,
                 sets = exercise.sets - 1,
                 reps = repsBySet.firstOrNull() ?: exercise.reps,
@@ -257,7 +305,6 @@ class WorkoutRepository(private val dao: WorkoutDao) {
                 plannedRepsBySetJson = encodeRepsBySetJson(repsBySet),
                 plannedWeightBySetJson = encodeWeightBySetJson(weightBySet),
                 remarks = exercise.remarks,
-                position = exercise.position,
                 isDone = exercise.isDone
             )
         )
@@ -290,7 +337,6 @@ class WorkoutRepository(private val dao: WorkoutDao) {
         dao.updateExercise(
             ExerciseEntity(
                 id = exercise.id,
-                dayNumber = exercise.dayNumber,
                 name = exercise.name,
                 sets = exercise.sets,
                 reps = updatedRepsBySet.firstOrNull() ?: exercise.reps,
@@ -299,36 +345,40 @@ class WorkoutRepository(private val dao: WorkoutDao) {
                 plannedRepsBySetJson = encodeRepsBySetJson(updatedRepsBySet),
                 plannedWeightBySetJson = encodeWeightBySetJson(updatedWeightBySet),
                 remarks = exercise.remarks,
-                position = exercise.position,
                 isDone = exercise.isDone
             )
         )
     }
 
-    suspend fun deleteExercise(exercise: ExerciseModel) {
-        dao.deleteExercise(
-            ExerciseEntity(
-                id = exercise.id,
-                dayNumber = exercise.dayNumber,
-                name = exercise.name,
-                sets = exercise.sets,
-                reps = exercise.reps,
-                intervalSeconds = exercise.intervalSeconds,
-                plannedWeight = exercise.plannedWeight,
-                plannedRepsBySetJson = encodeRepsBySetJson(
-                    exercise.plannedRepsBySet
-                        .normalizeRepsBySet(expectedSets = exercise.sets, fallbackValue = exercise.reps)
-                ),
-                plannedWeightBySetJson = encodeWeightBySetJson(
-                    exercise.plannedWeightBySet
-                        .normalizeWeightBySet(expectedSets = exercise.sets, fallbackValue = exercise.plannedWeight)
-                ),
-                remarks = exercise.remarks,
-                position = exercise.position,
-                isDone = exercise.isDone
-            )
-        )
-        normalizePositions(exercise.dayNumber)
+    // Unassigns an exercise from one day (used by the day edit screen's delete action).
+    // The exercise entity itself is NOT deleted - it stays linked to any other days it's
+    // on, or falls into the unassigned pool if this was its only day.
+    suspend fun unassignExerciseFromDay(dayNumber: Int, exerciseId: Long) {
+        dao.deleteLink(exerciseId, dayNumber)
+        normalizePositions(dayNumber)
+    }
+
+    // Permanently deletes an exercise (and all its day links/history FK) - used from the
+    // unassigned pool, not from a day's edit screen (which only unassigns).
+    suspend fun deleteExercisePermanently(exerciseId: Long) {
+        dao.getExerciseById(exerciseId)?.let { dao.deleteExercise(it) }
+    }
+
+    suspend fun assignExerciseToDay(exerciseId: Long, dayNumber: Int) {
+        val nextPosition = (dao.getLinksForDay(dayNumber).maxOfOrNull { it.position } ?: 0) + 1
+        dao.insertLink(ExerciseDayLinkEntity(exerciseId = exerciseId, dayNumber = dayNumber, position = nextPosition))
+    }
+
+    // Bulk "which days is this on" update - adds missing links (appended) and removes
+    // links no longer in dayNumbers, renormalizing each affected day's positions.
+    suspend fun setExerciseDayAssignments(exerciseId: Long, dayNumbers: Set<Int>) {
+        val currentDayNumbers = dao.getLinksForExercise(exerciseId).map { it.dayNumber }.toSet()
+        val toRemove = currentDayNumbers - dayNumbers
+        val toAdd = dayNumbers - currentDayNumbers
+
+        toRemove.forEach { dayNumber -> dao.deleteLink(exerciseId, dayNumber) }
+        toAdd.forEach { dayNumber -> assignExerciseToDay(exerciseId, dayNumber) }
+        toRemove.forEach { dayNumber -> normalizePositions(dayNumber) }
     }
 
     suspend fun setWorkoutDone(dayNumber: Int, plannedDateEpochDay: Long, isDone: Boolean) {
@@ -339,40 +389,41 @@ class WorkoutRepository(private val dao: WorkoutDao) {
     }
 
     suspend fun moveExercise(dayNumber: Int, exerciseId: Long, moveBy: Int) {
-        val exercises = dao.getExercisesForDay(dayNumber).sortedBy { it.position }.toMutableList()
-        val fromIndex = exercises.indexOfFirst { it.id == exerciseId }
+        val links = dao.getLinksForDay(dayNumber).sortedBy { it.position }.toMutableList()
+        val fromIndex = links.indexOfFirst { it.exerciseId == exerciseId }
         if (fromIndex < 0) {
             return
         }
 
         val targetIndex = fromIndex + moveBy
-        if (targetIndex !in exercises.indices) {
+        if (targetIndex !in links.indices) {
             return
         }
 
-        val fromItem = exercises[fromIndex]
-        exercises[fromIndex] = exercises[targetIndex]
-        exercises[targetIndex] = fromItem
+        val fromItem = links[fromIndex]
+        links[fromIndex] = links[targetIndex]
+        links[targetIndex] = fromItem
 
-        exercises.forEachIndexed { index, exercise ->
+        links.forEachIndexed { index, link ->
             val expected = index + 1
-            if (exercise.position != expected) {
-                dao.updateExercisePosition(exercise.id, expected)
+            if (link.position != expected) {
+                dao.updateLinkPosition(link.exerciseId, dayNumber, expected)
             }
         }
     }
 
     // Restore a day's template to a pre-edit snapshot (used to discard live edits).
-    // Exercises added during the edit (present now, absent in the snapshot) are removed;
-    // surviving exercises are updated in place (same id); exercises deleted during the
-    // edit are re-inserted (they get a fresh id, but past history keeps its exerciseName).
+    // Exercises linked during the edit (present now, absent in the snapshot) are unlinked
+    // from this day only (never deleted - they may still belong to other days, or just
+    // fall back into the pool); surviving exercises are updated in place (same id) and
+    // re-linked at their snapshot position; exercises whose entity was permanently deleted
+    // during the edit are re-created (fresh id, but past history keeps its exerciseName).
     suspend fun restoreDayExercises(dayNumber: Int, snapshot: List<ExerciseModel>) {
-        val current = dao.getExercisesForDay(dayNumber)
+        val currentLinks = dao.getLinksForDay(dayNumber)
         val snapshotIds = snapshot.mapTo(HashSet()) { it.id }
-        val currentIds = current.mapTo(HashSet()) { it.id }
 
-        current.filter { entity -> entity.id !in snapshotIds }.forEach { entity ->
-            dao.deleteExercise(entity)
+        currentLinks.filter { link -> link.exerciseId !in snapshotIds }.forEach { link ->
+            dao.deleteLink(link.exerciseId, dayNumber)
         }
 
         snapshot.forEach { model ->
@@ -380,10 +431,9 @@ class WorkoutRepository(private val dao: WorkoutDao) {
                 .normalizeRepsBySet(expectedSets = model.sets, fallbackValue = model.reps)
             val weightBySet = model.plannedWeightBySet
                 .normalizeWeightBySet(expectedSets = model.sets, fallbackValue = model.plannedWeight)
-            val survived = model.id in currentIds
+            val existingEntity = dao.getExerciseById(model.id)
             val entity = ExerciseEntity(
-                id = if (survived) model.id else 0L,
-                dayNumber = dayNumber,
+                id = existingEntity?.id ?: 0L,
                 name = model.name,
                 sets = model.sets,
                 reps = repsBySet.firstOrNull() ?: model.reps,
@@ -392,26 +442,28 @@ class WorkoutRepository(private val dao: WorkoutDao) {
                 plannedRepsBySetJson = encodeRepsBySetJson(repsBySet),
                 plannedWeightBySetJson = encodeWeightBySetJson(weightBySet),
                 remarks = model.remarks,
-                position = model.position,
                 isDone = model.isDone
             )
-            if (survived) {
+            val exerciseId = if (existingEntity != null) {
                 dao.updateExercise(entity)
+                existingEntity.id
             } else {
                 dao.insertExercise(entity)
             }
+            dao.insertLink(ExerciseDayLinkEntity(exerciseId = exerciseId, dayNumber = dayNumber, position = model.position))
         }
 
         normalizePositions(dayNumber)
     }
 
-    suspend fun startSession(day: WorkoutDayModel): Long {
+    suspend fun startSession(day: WorkoutDayModel, advancesCycle: Boolean = true): Long {
         return dao.insertSession(
             WorkoutSessionEntity(
                 dayNumber = day.dayNumber,
                 workoutName = day.workoutName,
                 startedAt = System.currentTimeMillis(),
-                finishedAt = null
+                finishedAt = null,
+                advancesCycle = advancesCycle
             )
         )
     }
@@ -601,29 +653,34 @@ class WorkoutRepository(private val dao: WorkoutDao) {
             days = dao.getAllDays().sortedBy { it.dayNumber },
             exercises = dao.getAllExercises(),
             sessions = dao.getAllSessions(),
-            logs = dao.getAllSetLogs()
+            logs = dao.getAllSetLogs(),
+            links = dao.getAllLinks()
         )
     }
 
     suspend fun importBackupSnapshot(snapshot: BackupSnapshot) {
         dao.replaceAllData(
             days = snapshot.days.sortedBy { it.dayNumber },
-            exercises = snapshot.exercises.sortedWith(compareBy(ExerciseEntity::dayNumber, ExerciseEntity::position)),
+            exercises = snapshot.exercises.sortedBy { it.id },
             sessions = snapshot.sessions.sortedBy { it.id },
-            logs = snapshot.logs.sortedBy { it.id }
+            logs = snapshot.logs.sortedBy { it.id },
+            links = snapshot.links.sortedWith(compareBy(ExerciseDayLinkEntity::dayNumber, ExerciseDayLinkEntity::position))
         )
     }
 
     private suspend fun normalizePositions(dayNumber: Int) {
-        dao.getExercisesForDay(dayNumber)
+        dao.getLinksForDay(dayNumber)
             .sortedBy { it.position }
-            .forEachIndexed { index, exercise ->
-                dao.updateExercisePosition(exercise.id, index + 1)
+            .forEachIndexed { index, link ->
+                val expected = index + 1
+                if (link.position != expected) {
+                    dao.updateLinkPosition(link.exerciseId, dayNumber, expected)
+                }
             }
     }
 }
 
-private fun ExerciseEntity.toModel(): ExerciseModel {
+private fun ExerciseEntity.toModel(position: Int, dayNumbers: Set<Int>): ExerciseModel {
     val normalizedRepsBySet = decodeRepsBySetJson(plannedRepsBySetJson)
         .normalizeRepsBySet(expectedSets = sets, fallbackValue = reps)
     val normalizedWeightBySet = decodeWeightBySetJson(plannedWeightBySetJson)
@@ -631,7 +688,6 @@ private fun ExerciseEntity.toModel(): ExerciseModel {
 
     return ExerciseModel(
         id = id,
-        dayNumber = dayNumber,
         name = name,
         sets = sets,
         reps = normalizedRepsBySet.firstOrNull() ?: reps,
@@ -640,8 +696,9 @@ private fun ExerciseEntity.toModel(): ExerciseModel {
         plannedRepsBySet = normalizedRepsBySet,
         plannedWeightBySet = normalizedWeightBySet,
         remarks = remarks,
+        isDone = isDone,
         position = position,
-        isDone = isDone
+        dayNumbers = dayNumbers
     )
 }
 
@@ -657,6 +714,8 @@ private fun ExerciseDraft.sanitized(): ExerciseDraft {
     )
 }
 
+private data class SeedExercise(val dayNumber: Int, val position: Int, val entity: ExerciseEntity)
+
 private fun seedExercise(
     dayNumber: Int,
     position: Int,
@@ -666,13 +725,12 @@ private fun seedExercise(
     intervalSeconds: Int,
     plannedWeight: String = "",
     remarks: String = ""
-): ExerciseEntity {
+): SeedExercise {
     val normalizedSets = sets.coerceIn(MIN_SETS, MAX_SETS)
     val normalizedReps = reps.coerceIn(MIN_REPS, MAX_REPS)
     val normalizedWeight = plannedWeight.trim()
 
-    return ExerciseEntity(
-        dayNumber = dayNumber,
+    val entity = ExerciseEntity(
         name = name,
         sets = normalizedSets,
         reps = normalizedReps,
@@ -681,9 +739,9 @@ private fun seedExercise(
         plannedRepsBySetJson = encodeRepsBySetJson(List(normalizedSets) { normalizedReps }),
         plannedWeightBySetJson = encodeWeightBySetJson(List(normalizedSets) { normalizedWeight }),
         remarks = remarks,
-        position = position,
         isDone = false
     )
+    return SeedExercise(dayNumber = dayNumber, position = position, entity = entity)
 }
 
 private fun encodeRepsBySetJson(values: List<Int>): String {
