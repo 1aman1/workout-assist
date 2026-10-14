@@ -1483,6 +1483,83 @@ How to use:
 
 ---
 
+## Version 1.124 (2026-10-14)
+- Change summary:
+  - The momentum candle chart now draws a streak-freeze day's candle as a full column from the zero axis up to its value, instead of the usual thin open-to-close sliver - so a freeze day reads as a distinct, prominent bar. The frozen color (`frozenColor`) is unchanged.
+- Why changed:
+  - User request: make the streak-freeze candle visible as a complete column/full candle from the x-axis, purely as a shape exception for freeze days (same color as before).
+- UX impact:
+  - Freeze-day candles are now taller/more visually distinct in both the compact card and the inspector. The shape is derived live from each day's `MomentumDayStatus.FROZEN` status, so if a day is ever no longer frozen it automatically renders as an ordinary candle again - no separate state to migrate or unwind.
+- Data/model impact:
+  - None - purely a rendering change in `MomentumCandleChart`, no new fields or preferences.
+- Migration notes (if any):
+  - None.
+
+## Version 1.125 (2026-10-14)
+- Change summary:
+  - Reversed and renamed the **Falling miss gaps** toggle to **Flatline misses** (`momentumCrashMode`/`KEY_MOMENTUM_CRASH_MODE` -> `flatlineMisses`/`KEY_FLATLINE_MISSES`). The switch direction is now inverted: ON (the new default) means misses flatline at 0, OFF means misses crash progressively below zero like a stock chart - same two visual behaviors as before, just the toggle polarity and label flipped so "enabled" reads naturally as the calmer/default look.
+- Why changed:
+  - User request: the toggle's old polarity (enabled = falling candles) read backwards: an off/default switch producing the more dramatic falling behavior while an "advanced" look was always one tap away. Flipping it so enabled = flatline (the safe default) matches how most users would expect a feature switch to read.
+- UX impact:
+  - Existing installs land on the new default (flatline, same as the old default) rather than carrying over their previous explicit choice, since the preference key was renamed rather than migrated - a one-time reset for anyone who had explicitly turned the old toggle on.
+- Data/model impact:
+  - Renamed SharedPreferences key `momentum_crash_mode` -> `flatline_misses`; old key is orphaned and no longer read.
+- Migration notes (if any):
+  - None - the orphaned old key is harmless on existing installs.
+
+## Version 1.126 (2026-10-14)
+- Change summary:
+  - The streak momentum inspector popup (`showMomentumInspector` dialog in `InsightsScreen.kt`) is taller: its fixed chart viewport grew from 340dp to 520dp, and the outer dialog `Card`'s vertical padding shrank from 24dp to 8dp so the popup extends closer to the screen's top/bottom edges.
+- Why changed:
+  - User request: make the popup longer so it occupies more of the screen vertically, showing more candle history at once.
+- UX impact:
+  - More of the candle chart is visible without scrolling; the popup itself sits closer to the top/bottom of the screen. Purely a sizing change - same content, controls, and scroll behavior.
+- Data/model impact:
+  - None.
+- Migration notes (if any):
+  - None.
+
+
+## Version 1.123 (2026-10-14)
+- Change summary:
+  - Moved the **Edit day schedule** card (previously a standalone card at the very top of the Settings root page, above the Appearance section) into the new Configuration section, as its first card.
+- Why changed:
+  - User request: group it alongside the other Configuration cards instead of leaving it as a separate top-of-page card.
+- UX impact:
+  - No functional change - same card, same click target, just relocated under the Configuration section header.
+- Data/model impact:
+  - None.
+- Migration notes (if any):
+  - None.
+
+## Version 1.122 (2026-10-14)
+- Change summary:
+  - Introduced a new **Configuration** section header on the Settings root page, placed between Appearance and Data.
+  - Moved the **Falling miss gaps** and **Retro lookback window** cards out of the Appearance section into the new Configuration section (Appearance now ends with Labels/Default schedule view/Theme; Configuration holds the two moved cards).
+- Why changed:
+  - User request: group streak-graph-related/behavioral settings into a dedicated Configuration section instead of mixing them into Appearance.
+- UX impact:
+  - No functional change - same cards, same toggles/values, just reorganized under a new section header for clarity.
+- Data/model impact:
+  - None - purely a UI reorganization, no preference keys changed.
+- Migration notes (if any):
+  - None.
+
+## Version 1.121 (2026-10-14)
+- Change summary:
+  - Removed the classic triangle streak graph entirely: the `useClassicStreakGraph` toggle, its `RoutineBatteryBar` rendering (and the `KEY_CLASSIC_STREAK_GRAPH` preference), and the Settings > Streak graph "Classic triangle graph" switch are all gone. The Insights streak card now always shows the momentum graph header/expand affordance.
+  - Removed the "Stock-market candles" toggle: `momentumStockMode`/`KEY_MOMENTUM_STOCK_MODE` and the alternate `MomentumLineChart` renderer are gone. The momentum inspector now always renders `MomentumCandleChart` (candles are the only, default, momentum visualization).
+  - The one remaining Streak graph option, **Falling miss gaps** (`momentumCrashMode`), was moved out of the now-removed `Settings > Streak graph` subpage directly onto the Settings root page as its own inline card (same pattern as "Default schedule view"/"Retro lookback window"). `SettingsView.STREAK_GRAPH_OPTIONS` was deleted since no options remain to house in a subpage.
+  - The triangle's double-tap-to-edit-routine-length gesture (`showRoutineWindowPicker`) was preserved by moving its trigger onto the momentum header row, so the "Routine length" picker stays reachable after the triangle's removal.
+- Why changed:
+  - User request: drop the classic triangle graph and its settings toggle; make stock-market candles the permanent default (so its toggle is also redundant); surface the one remaining streak-graph option directly on the Settings page instead of behind a subpage.
+- UX impact:
+  - Insights streak card and its inspector popup have one fewer graph style to choose between; Settings has one fewer navigation hop for the miss-gaps option, at the cost of the now-removed triangle/line-chart choices.
+- Data/model impact:
+  - Dropped SharedPreferences keys `classic_streak_graph` and `momentum_stock_mode` (existing values are simply no longer read; no migration needed since both default to the now-permanent behavior).
+- Migration notes (if any):
+  - None - removed prefs are harmlessly orphaned on existing installs.
+
 ## Version 1.120 (2026-10-06)
 - Change summary:
   - Closed two more gaps in the frozen-day/completed-day overlap bug fixed in v1.118: the auto-rest-day advance (`LaunchedEffect` that silently logs a skipped rest day so the cycle doesn't stall) now also clears that day's streak-freeze flag if present, same as the user-facing backdated-workout and custom-activity entry points already do.

@@ -20,7 +20,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -28,11 +31,13 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -106,25 +111,62 @@ internal fun WorkoutGraphsScreen(
         }
     }
 
-    // Exercise selector ---------------------------------------------------
-    val exerciseNames = remember(trackedLogs) {
+    // Day (workout) selector first, then exercise within that day - avoids one big pool
+    // of every exercise ever logged across every workout.
+    val sessionById = remember(sessions) { sessions.associateBy { it.id } }
+    val workoutNames = remember(trackedLogs, sessionById) {
         trackedLogs.asSequence()
+            .mapNotNull { sessionById[it.sessionId] }
+            .map { it.workoutName }
+            .distinct()
+            .toList()
+    }
+    val dayNumberByWorkoutName = remember(trackedLogs, sessionById) {
+        trackedLogs.asSequence()
+            .mapNotNull { sessionById[it.sessionId] }
+            .associate { it.workoutName to it.dayNumber }
+    }
+    var selectedWorkoutName by remember { mutableStateOf("") }
+    LaunchedEffect(workoutNames) {
+        selectedWorkoutName = when {
+            workoutNames.isEmpty() -> ""
+            selectedWorkoutName in workoutNames -> selectedWorkoutName
+            else -> workoutNames.first()
+        }
+    }
+
+    val logsForSelectedWorkout = remember(trackedLogs, sessionById, selectedWorkoutName) {
+        if (selectedWorkoutName.isBlank()) {
+            emptyList()
+        } else {
+            trackedLogs.filter { sessionById[it.sessionId]?.workoutName == selectedWorkoutName }
+        }
+    }
+
+    // Exercise selector ---------------------------------------------------
+    val exerciseNames = remember(logsForSelectedWorkout) {
+        logsForSelectedWorkout.asSequence()
             .map { it.exerciseName.trim() }
             .filter { it.isNotBlank() }
             .distinct()
             .sorted()
             .toList()
     }
-    var selectedExercise by remember(exerciseNames) {
-        mutableStateOf(exerciseNames.firstOrNull())
+    var selectedExercise by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(exerciseNames) {
+        selectedExercise = when {
+            exerciseNames.isEmpty() -> null
+            selectedExercise in exerciseNames -> selectedExercise
+            else -> exerciseNames.first()
+        }
     }
 
-    val logsByDate = remember(trackedLogs, selectedExercise) {
+    val logsByDate = remember(logsForSelectedWorkout, selectedExercise) {
         val name = selectedExercise
         if (name == null) {
             emptyMap()
         } else {
-            trackedLogs
+            logsForSelectedWorkout
                 .filter { it.exerciseName.trim() == name }
                 .groupBy { timestampMillisToEpochDay(it.loggedAt) }
                 .toSortedMap()
@@ -194,6 +236,10 @@ internal fun WorkoutGraphsScreen(
             FrequencyCard(weeklyFrequency = weeklyFrequency)
 
             ExerciseProgressCard(
+                workoutNames = workoutNames,
+                dayNumberByWorkoutName = dayNumberByWorkoutName,
+                selectedWorkoutName = selectedWorkoutName,
+                onWorkoutSelected = { selectedWorkoutName = it },
                 exerciseNames = exerciseNames,
                 selectedExercise = selectedExercise,
                 onExerciseSelected = { selectedExercise = it },
@@ -274,15 +320,69 @@ private fun FrequencyCard(weeklyFrequency: List<Float>) {
 
 @Composable
 private fun ExerciseProgressCard(
+    workoutNames: List<String>,
+    dayNumberByWorkoutName: Map<String, Int>,
+    selectedWorkoutName: String,
+    onWorkoutSelected: (String) -> Unit,
     exerciseNames: List<String>,
     selectedExercise: String?,
     onExerciseSelected: (String) -> Unit,
     weightPoints: List<DatedValue>,
     repsPoints: List<DatedValue>
 ) {
-    GraphCard(title = "Exercise progress") {
-        if (exerciseNames.isEmpty()) {
+    var workoutSelectorExpanded by remember { mutableStateOf(false) }
+
+    GraphCard(title = "Exercise progress by day") {
+        if (workoutNames.isEmpty()) {
             EmptyGraphHint("Log some sets to see per-exercise trends.")
+            return@GraphCard
+        }
+
+        Box(modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(
+                onClick = { workoutSelectorExpanded = true },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text(
+                    text = dayNumberByWorkoutName[selectedWorkoutName]
+                        ?.let { "Day $it · $selectedWorkoutName" }
+                        ?: selectedWorkoutName,
+                    modifier = Modifier.weight(1f),
+                    textAlign = TextAlign.Start
+                )
+                Icon(
+                    imageVector = Icons.Rounded.ExpandMore,
+                    contentDescription = "Open day selection"
+                )
+            }
+
+            DropdownMenu(
+                expanded = workoutSelectorExpanded,
+                onDismissRequest = { workoutSelectorExpanded = false }
+            ) {
+                workoutNames.forEach { name ->
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                dayNumberByWorkoutName[name]
+                                    ?.let { "Day $it · $name" }
+                                    ?: name
+                            )
+                        },
+                        onClick = {
+                            onWorkoutSelected(name)
+                            workoutSelectorExpanded = false
+                        }
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        if (exerciseNames.isEmpty()) {
+            EmptyGraphHint("No logged exercises found for selected day.")
             return@GraphCard
         }
 

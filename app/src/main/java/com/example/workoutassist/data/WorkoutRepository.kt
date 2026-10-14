@@ -388,6 +388,30 @@ class WorkoutRepository(private val dao: WorkoutDao) {
         )
     }
 
+    // Swaps two days' workout identity (name, assigned exercises, logged history) while
+    // each day's own dayNumber/plannedDateEpochDay slot stays fixed - "Day N" labels simply
+    // auto-realign since the content moved, not the slot numbering itself.
+    suspend fun swapDays(dayNumberA: Int, dayNumberB: Int) {
+        if (dayNumberA == dayNumberB) return
+        val days = dao.getAllDays()
+        val dayA = days.firstOrNull { it.dayNumber == dayNumberA } ?: return
+        val dayB = days.firstOrNull { it.dayNumber == dayNumberB } ?: return
+        dao.swapDays(dayNumberA, dayNumberB, workoutNameForA = dayB.workoutName, workoutNameForB = dayA.workoutName)
+        normalizePositions(dayNumberA)
+        normalizePositions(dayNumberB)
+    }
+
+    // Moves a day up/down by one position in the dayNumber-ordered sequence, swapping it
+    // with its neighbor (used by the day-focus reorder UI's move up/down controls).
+    suspend fun moveDay(dayNumber: Int, moveBy: Int) {
+        val ordered = dao.getAllDays().sortedBy { it.dayNumber }
+        val fromIndex = ordered.indexOfFirst { it.dayNumber == dayNumber }
+        if (fromIndex < 0) return
+        val targetIndex = fromIndex + moveBy
+        if (targetIndex !in ordered.indices) return
+        swapDays(ordered[fromIndex].dayNumber, ordered[targetIndex].dayNumber)
+    }
+
     suspend fun moveExercise(dayNumber: Int, exerciseId: Long, moveBy: Int) {
         val links = dao.getLinksForDay(dayNumber).sortedBy { it.position }.toMutableList()
         val fromIndex = links.indexOfFirst { it.exerciseId == exerciseId }

@@ -86,7 +86,6 @@ internal enum class SettingsView {
     ROOT,
     THEME_OPTIONS,
     LABEL_OPTIONS,
-    STREAK_GRAPH_OPTIONS,
     PAGE_COMMANDS
 }
 
@@ -174,11 +173,13 @@ private const val KEY_INSIGHTS_SHORT_WINDOW = "insights_short_window"
 private const val DEFAULT_INSIGHTS_SHORT_WINDOW = 7
 private const val MIN_INSIGHTS_SHORT_WINDOW = 5
 private const val MAX_INSIGHTS_SHORT_WINDOW = 15
+private const val KEY_INSIGHTS_LOOKBACK_WEEKS = "insights_lookback_weeks"
+private const val DEFAULT_INSIGHTS_LOOKBACK_WEEKS = 4
+private const val MIN_INSIGHTS_LOOKBACK_WEEKS = 2
+private const val MAX_INSIGHTS_LOOKBACK_WEEKS = 10
 private const val KEY_ROUTINE_WINDOW = "insights_routine_window"
 private const val KEY_DEFAULT_SCHEDULE_CALENDAR = "default_schedule_calendar"
-private const val KEY_CLASSIC_STREAK_GRAPH = "classic_streak_graph"
-private const val KEY_MOMENTUM_STOCK_MODE = "momentum_stock_mode"
-private const val KEY_MOMENTUM_CRASH_MODE = "momentum_crash_mode"
+private const val KEY_FLATLINE_MISSES = "flatline_misses"
 private const val KEY_STREAK_FREEZE_DAYS = "streak_freeze_days"
 internal const val KEY_AUTO_BACKUP_ENABLED = "auto_backup_enabled"
 internal const val KEY_AUTO_BACKUP_DIR_URI = "auto_backup_dir_uri"
@@ -248,13 +249,13 @@ internal val PAGE_COMMAND_NAMES = listOf(
     AppPageCommand(name = "Workout Session", command = "workout.session", description = "Active workout session (focus mode)"),
     AppPageCommand(name = "Exercise History Peek", command = "workout.session.history", description = "Active session: double-tap the exercise title -> confirm -> temporary past-sessions overlay (back/close returns to the session)"),
     AppPageCommand(name = "Insights", command = "insights.home", description = "Insights tab (ratios + open Workout Insights + Progress Graphs)"),
-    AppPageCommand(name = "Streak Graph", command = "insights.routine", description = "Insights: streak momentum graph (Bars/Stocks toggle, tap the chevron icon to inspect); today shows pending (blue) until logged; Settings > Streak graph switches to the classic triangle"),
+    AppPageCommand(name = "Streak Graph", command = "insights.routine", description = "Insights: streak momentum graph (stock-candle style), tap the chevron icon to inspect; today shows pending (blue) until logged"),
     AppPageCommand(name = "Adherence Ratios", command = "insights.ratios", description = "Insights: recent-days + last-30-day ratio bars (tap short bar to change window 5-15)"),
     AppPageCommand(name = "Workout Insights", command = "insights.workout", description = "Insights > Workout Insights (per-workout exercise history)"),
     AppPageCommand(name = "Progress Graphs", command = "graphs.progress", description = "Progress Graphs (beta), opened from Insights"),
     AppPageCommand(name = "Consistency Rings", command = "graphs.consistency", description = "Progress Graphs: last-7 / last-30 consistency rings"),
     AppPageCommand(name = "Weekly Frequency", command = "graphs.frequency", description = "Progress Graphs: weekly-frequency bars"),
-    AppPageCommand(name = "Exercise Trends", command = "graphs.exercise", description = "Progress Graphs: per-exercise weight/reps line charts"),
+    AppPageCommand(name = "Exercise Trends", command = "graphs.exercise", description = "Progress Graphs: pick a day, then an exercise logged on it, for weight/reps line charts"),
     AppPageCommand(name = "Settings", command = "settings.home", description = "Settings root (Appearance: labels, theme, default schedule view, streak graph; Data; Advanced)"),
     AppPageCommand(name = "Backup & Restore", command = "settings.backup", description = "Settings > Data: export/import a JSON backup, plus a weekly auto-backup toggle to a chosen folder"),
     AppPageCommand(name = "Theme", command = "settings.theme", description = "Settings > Theme (colors + custom picker)"),
@@ -264,6 +265,9 @@ internal val PAGE_COMMAND_NAMES = listOf(
 )
 
 internal val LATEST_VERSION_HIGHLIGHTS = listOf(
+    "The streak momentum inspector popup is taller: its chart viewport grew and the dialog now sits closer to the top/bottom of the screen, so more of the candle history is visible at once without scrolling.",
+    "Reversed and renamed the Settings 'Falling miss gaps' toggle to 'Flatline misses': it's now ON by default, and ON means misses flatline at 0 (the classic look) while OFF makes misses crash progressively below zero like a stock chart - same behavior as before, just the switch direction and label flipped.",
+    "Removed the classic triangle streak graph and its Settings toggle - the momentum graph (stock-market candles) is now the only, permanent streak visualization. The remaining 'Falling miss gaps' option moved out of the Streak graph subpage onto the Settings root page directly.",
     "Follow-up fix for the streak-freeze/Insights color bug: the auto rest-day advance can no longer leave a day stuck looking frozen, and any already-stale frozen+completed overlap on your device now self-heals automatically on app open.",
     "Tapping a missed day on the Schedule tab now also lets you log a custom/off-schedule activity for that day, right alongside picking a scheduled workout or spending a streak freeze - previously custom activities could only be logged for today via the 3-dot menu.",
     "Fixed a bug where logging a real workout over a day you'd previously spent a streak freeze on left the Insights momentum graph still showing it freeze-blue, even though the Schedule tab correctly showed it as a completed day. Logging a workout now always clears that day's freeze flag.",
@@ -625,17 +629,14 @@ fun WorkoutAssistApp() {
     var routineWindowOverride by remember {
         mutableStateOf(prefs.getInt(KEY_ROUTINE_WINDOW, 0))
     }
+    var insightsLookbackWeeks by remember {
+        mutableStateOf(prefs.getInt(KEY_INSIGHTS_LOOKBACK_WEEKS, DEFAULT_INSIGHTS_LOOKBACK_WEEKS))
+    }
     var defaultScheduleCalendar by remember {
         mutableStateOf(prefs.getBoolean(KEY_DEFAULT_SCHEDULE_CALENDAR, false))
     }
-    var useClassicStreakGraph by remember {
-        mutableStateOf(prefs.getBoolean(KEY_CLASSIC_STREAK_GRAPH, false))
-    }
-    var momentumStockMode by remember {
-        mutableStateOf(prefs.getBoolean(KEY_MOMENTUM_STOCK_MODE, false))
-    }
-    var momentumCrashMode by remember {
-        mutableStateOf(prefs.getBoolean(KEY_MOMENTUM_CRASH_MODE, false))
+    var flatlineMisses by remember {
+        mutableStateOf(prefs.getBoolean(KEY_FLATLINE_MISSES, true))
     }
     var autoBackupEnabled by remember {
         mutableStateOf(prefs.getBoolean(KEY_AUTO_BACKUP_ENABLED, false))
@@ -1059,7 +1060,21 @@ fun WorkoutAssistApp() {
                         if (days.isEmpty()) {
                             LoadingScreen()
                         } else {
-                            when (currentScreen) {
+                            AnimatedContent(
+                                targetState = currentScreen,
+                                transitionSpec = {
+                                    val forward = targetState.ordinal > initialState.ordinal
+                                    if (forward) {
+                                        (slideInHorizontally(animationSpec = tween(280)) { width -> width } + fadeIn()) togetherWith
+                                            (slideOutHorizontally(animationSpec = tween(280)) { width -> -width } + fadeOut())
+                                    } else {
+                                        (slideInHorizontally(animationSpec = tween(280)) { width -> -width } + fadeIn()) togetherWith
+                                            (slideOutHorizontally(animationSpec = tween(280)) { width -> width } + fadeOut())
+                                    }
+                                },
+                                label = "workoutScreenSwitch"
+                            ) { animatedScreen ->
+                            when (animatedScreen) {
                                 AppScreen.SCHEDULE -> {
                                     ScheduleScreen(
                                         days = activeDays,
@@ -1165,6 +1180,7 @@ fun WorkoutAssistApp() {
                                     )
                                 }
                             }
+                            }
                         }
                     }
 
@@ -1200,9 +1216,16 @@ fun WorkoutAssistApp() {
                                     routineWindowOverride = clamped
                                     prefs.edit().putInt(KEY_ROUTINE_WINDOW, clamped).apply()
                                 },
-                                useClassicStreakGraph = useClassicStreakGraph,
-                                stockMode = momentumStockMode,
-                                crashMode = momentumCrashMode,
+                                lookbackWeeks = insightsLookbackWeeks,
+                                onLookbackWeeksChange = { newWeeks ->
+                                    val clamped = newWeeks.coerceIn(
+                                        MIN_INSIGHTS_LOOKBACK_WEEKS,
+                                        MAX_INSIGHTS_LOOKBACK_WEEKS
+                                    )
+                                    insightsLookbackWeeks = clamped
+                                    prefs.edit().putInt(KEY_INSIGHTS_LOOKBACK_WEEKS, clamped).apply()
+                                },
+                                flatlineMisses = flatlineMisses,
                                 pendingColor = pendingCandleThemeColor,
                                 frozenColor = frozenThemeColor,
                                 frozenDays = frozenStreakDays,
@@ -1392,20 +1415,19 @@ fun WorkoutAssistApp() {
                                 defaultScheduleCalendar = useCalendar
                                 prefs.edit().putBoolean(KEY_DEFAULT_SCHEDULE_CALENDAR, useCalendar).apply()
                             },
-                            useClassicStreakGraph = useClassicStreakGraph,
-                            onUseClassicStreakGraphChanged = { enabled ->
-                                useClassicStreakGraph = enabled
-                                prefs.edit().putBoolean(KEY_CLASSIC_STREAK_GRAPH, enabled).apply()
+                            flatlineMisses = flatlineMisses,
+                            onFlatlineMissesChanged = { enabled ->
+                                flatlineMisses = enabled
+                                prefs.edit().putBoolean(KEY_FLATLINE_MISSES, enabled).apply()
                             },
-                            momentumStockMode = momentumStockMode,
-                            onMomentumStockModeChanged = { enabled ->
-                                momentumStockMode = enabled
-                                prefs.edit().putBoolean(KEY_MOMENTUM_STOCK_MODE, enabled).apply()
-                            },
-                            momentumCrashMode = momentumCrashMode,
-                            onMomentumCrashModeChanged = { enabled ->
-                                momentumCrashMode = enabled
-                                prefs.edit().putBoolean(KEY_MOMENTUM_CRASH_MODE, enabled).apply()
+                            retroWeekSize = insightsLookbackWeeks,
+                            onRetroWeekSizeChanged = { newWeeks ->
+                                val clamped = newWeeks.coerceIn(
+                                    MIN_INSIGHTS_LOOKBACK_WEEKS,
+                                    MAX_INSIGHTS_LOOKBACK_WEEKS
+                                )
+                                insightsLookbackWeeks = clamped
+                                prefs.edit().putInt(KEY_INSIGHTS_LOOKBACK_WEEKS, clamped).apply()
                             },
                             autoBackupEnabled = autoBackupEnabled,
                             onAutoBackupEnabledChanged = { enabled ->

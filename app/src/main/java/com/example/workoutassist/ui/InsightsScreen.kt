@@ -1,6 +1,14 @@
 package com.example.workoutassist.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -122,10 +130,10 @@ internal fun InsightsScreen(
     onShortWindowChange: (Int) -> Unit = {},
     routineWindowOverride: Int = 0,
     onRoutineWindowChange: (Int) -> Unit = {},
+    lookbackWeeks: Int = 4,
+    onLookbackWeeksChange: (Int) -> Unit = {},
     lookbackTitle: String = "Retro",
-    useClassicStreakGraph: Boolean = false,
-    stockMode: Boolean = false,
-    crashMode: Boolean = false,
+    flatlineMisses: Boolean = true,
     pendingColor: Color = Color(0xFF2563EB),
     frozenColor: Color = FreezeBlue,
     frozenDays: Set<Long> = emptySet(),
@@ -136,7 +144,6 @@ internal fun InsightsScreen(
     var showWorkoutInsights by remember { mutableStateOf(false) }
     var showWindowPicker by remember { mutableStateOf(false) }
     var showRoutineWindowPicker by remember { mutableStateOf(false) }
-    var lookbackWeeks by remember { mutableStateOf(4) }
     var showLookbackWeeksPicker by remember { mutableStateOf(false) }
     var showLookbackInspector by remember { mutableStateOf(false) }
     // Full-screen inspector so a tall streak graph can be examined with 2D scrolling.
@@ -214,8 +221,8 @@ internal fun InsightsScreen(
     }
     // Crash mode ("gimmick"): miss runs fall progressively below zero instead of
     // flatlining at 0, like a stock crashing further each day it doesn't recover.
-    val displayMomentumEntries = remember(momentumEntries, crashMode) {
-        if (crashMode) applyMissCrashDepth(momentumEntries) else momentumEntries
+    val displayMomentumEntries = remember(momentumEntries, flatlineMisses) {
+        if (flatlineMisses) momentumEntries else applyMissCrashDepth(momentumEntries)
     }
     val momentumSeries = remember(displayMomentumEntries) { displayMomentumEntries.map { it.value } }
     val momentumStatuses = remember(displayMomentumEntries) { displayMomentumEntries.map { it.status } }
@@ -500,50 +507,45 @@ internal fun InsightsScreen(
 
                         HorizontalDivider()
 
-                        if (useClassicStreakGraph) {
-                            RoutineBatteryBar(
-                                label = routineTitle,
-                                streak = routineStreak,
-                                total = cycleLength,
-                                remainingColor = bannerColor,
-                                onDoubleTap = { showRoutineWindowPicker = true }
+                        // Graph itself only lives in the expand popup now; main page just
+                        // shows the title + expand affordance. Double-tap to set the
+                        // routine-length cycle used by the streak/consistency stats.
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .pointerInput(Unit) {
+                                    detectTapGestures(onDoubleTap = { showRoutineWindowPicker = true })
+                                },
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = streakTitle,
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold
                             )
-                        } else {
-                            // Graph itself only lives in the expand popup now; main page just
-                            // shows the title + expand affordance.
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = streakTitle,
-                                    modifier = Modifier.weight(1f),
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                                if (momentumSeries.isNotEmpty()) {
-                                    TextButton(
-                                        onClick = { showMomentumInspector = true },
-                                        colors = ButtonDefaults.textButtonColors(
-                                            contentColor = MaterialTheme.colorScheme.onSurface
-                                        )
-                                    ) {
-                                        Text("Expand")
-                                        Spacer(modifier = Modifier.width(2.dp))
-                                        Icon(
-                                            imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                                            contentDescription = "Expand streak graph"
-                                        )
-                                    }
+                            if (momentumSeries.isNotEmpty()) {
+                                TextButton(
+                                    onClick = { showMomentumInspector = true },
+                                    colors = ButtonDefaults.textButtonColors(
+                                        contentColor = MaterialTheme.colorScheme.onSurface
+                                    )
+                                ) {
+                                    Text("Expand")
+                                    Spacer(modifier = Modifier.width(2.dp))
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                                        contentDescription = "Expand streak graph"
+                                    )
                                 }
                             }
-                            if (momentumSeries.isEmpty()) {
-                                Text(
-                                    text = "Finish a few workouts to see your streak momentum build up here.",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
+                        }
+                        if (momentumSeries.isEmpty()) {
+                            Text(
+                                text = "Finish a few workouts to see your streak momentum build up here.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -728,7 +730,7 @@ internal fun InsightsScreen(
             valueText = { weeks -> "Last $weeks cycles" },
             onDismiss = { showLookbackWeeksPicker = false },
             onConfirm = { newWeeks ->
-                lookbackWeeks = newWeeks
+                onLookbackWeeksChange(newWeeks)
                 showLookbackWeeksPicker = false
             }
         )
@@ -787,12 +789,10 @@ internal fun InsightsScreen(
         // into one view), the inspector uses a fixed dp-per-streak-unit scale, like a stock
         // chart, and pans in both directions: horizontally through time (unchanged) and
         // vertically through the value range, instead of shrinking everything to fit.
-        val inspectorViewportHeight = 340.dp
+        val inspectorViewportHeight = 520.dp
         val baseInspectorUnitHeight = 26.dp
         val baseInspectorCandleWidth = 12.dp
         val baseInspectorCandleGap = 10.dp
-        val baseInspectorBarWidth = 14.dp
-        val baseInspectorBarGap = 6.dp
         val inspectorZoomMin = 0.5f
         val inspectorZoomMax = 2.5f
         val inspectorZoomStep = 0.25f
@@ -804,10 +804,10 @@ internal fun InsightsScreen(
         // Re-anchor on today whenever the data, mode, or zoom level changes (zooming resizes
         // the content, so without this the view could land somewhere other than today) - the
         // same "always anchored on today" guarantee as the compact card, just pannable here.
-        LaunchedEffect(stockMode, inspectorZoom, inspectorHScroll.maxValue) {
+        LaunchedEffect(inspectorZoom, inspectorHScroll.maxValue) {
             inspectorHScroll.scrollTo(inspectorHScroll.maxValue)
         }
-        LaunchedEffect(momentumSeries, stockMode, inspectorZoom, inspectorVScroll.maxValue) {
+        LaunchedEffect(momentumSeries, inspectorZoom, inspectorVScroll.maxValue) {
             // Land on the bottom of the value range (today's baseline + the date axis),
             // same "anchored on now" feel as the horizontal scroll; scroll up to see peaks.
             inspectorVScroll.scrollTo(inspectorVScroll.maxValue)
@@ -830,7 +830,7 @@ internal fun InsightsScreen(
             Card(
                 modifier = Modifier
                     .fillMaxWidth(0.96f)
-                    .padding(vertical = 24.dp),
+                    .padding(vertical = 8.dp),
                 shape = RoundedCornerShape(18.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
@@ -891,8 +891,6 @@ internal fun InsightsScreen(
                     val inspectorContentHeight = baseInspectorUnitHeight * inspectorZoom * inspectorRange
                     val inspectorCandleWidth = baseInspectorCandleWidth * inspectorZoom
                     val inspectorCandleGap = baseInspectorCandleGap * inspectorZoom
-                    val inspectorBarWidth = baseInspectorBarWidth * inspectorZoom
-                    val inspectorBarGap = baseInspectorBarGap * inspectorZoom
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -915,39 +913,22 @@ internal fun InsightsScreen(
                             // their date labels would overlap each other, so hide the dates
                             // until the user zooms back to 100% (the default) or beyond.
                             val inspectorShowDates = inspectorZoom >= 1f
-                            if (stockMode) {
-                                MomentumCandleChart(
-                                    values = momentumSeries,
-                                    statuses = momentumStatuses,
-                                    reversalLabels = momentumReversalLabels,
-                                    dayLabels = momentumDayLabels.drop(1),
-                                    upColor = Color(0xFF16A34A),
-                                    downColor = Color(0xFFDC2626),
-                                    pendingColor = pendingColor,
-                                    frozenColor = frozenColor,
-                                    pendingLast = momentumPendingToday,
-                                    crashMode = crashMode,
-                                    candleWidth = inspectorCandleWidth,
-                                    gap = inspectorCandleGap,
-                                    contentHeight = inspectorContentHeight,
-                                    showDateLabels = inspectorShowDates
-                                )
-                            } else {
-                                MomentumLineChart(
-                                    values = momentumSeries,
-                                    statuses = momentumStatuses,
-                                    reversalLabels = momentumReversalLabels,
-                                    dayLabels = momentumDayLabels,
-                                    lineColor = MaterialTheme.colorScheme.primary,
-                                    pendingColor = pendingColor,
-                                    frozenColor = frozenColor,
-                                    pendingLast = momentumPendingToday,
-                                    barWidth = inspectorBarWidth,
-                                    gap = inspectorBarGap,
-                                    contentHeight = inspectorContentHeight,
-                                    showDateLabels = inspectorShowDates
-                                )
-                            }
+                            MomentumCandleChart(
+                                values = momentumSeries,
+                                statuses = momentumStatuses,
+                                reversalLabels = momentumReversalLabels,
+                                dayLabels = momentumDayLabels.drop(1),
+                                upColor = Color(0xFF16A34A),
+                                downColor = Color(0xFFDC2626),
+                                pendingColor = pendingColor,
+                                frozenColor = frozenColor,
+                                pendingLast = momentumPendingToday,
+                                fallingMode = !flatlineMisses,
+                                candleWidth = inspectorCandleWidth,
+                                gap = inspectorCandleGap,
+                                contentHeight = inspectorContentHeight,
+                                showDateLabels = inspectorShowDates
+                            )
                         }
                     }
                     HorizontalDivider()
@@ -1070,11 +1051,20 @@ private fun RowScope.StreakSummaryChip(label: String, value: String) {
         )
     ) {
         Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-            Text(
-                text = value,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
+            AnimatedContent(
+                targetState = value,
+                transitionSpec = {
+                    (slideInVertically(tween(220)) { height -> height } + fadeIn()) togetherWith
+                        (slideOutVertically(tween(220)) { height -> -height } + fadeOut())
+                },
+                label = "streakChipValue"
+            ) { animatedValue ->
+                Text(
+                    text = animatedValue,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelSmall,
@@ -1135,7 +1125,7 @@ private fun MomentumYAxis(
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier
-                    .align(Alignment.TopEnd)
+                    .align(Alignment.TopStart)
                     .offset(y = y)
             )
         }
@@ -1161,7 +1151,7 @@ private fun momentumYTicks(minValue: Int, maxValue: Int): List<Int> {
 }
 
 // Space reserved above/below the zero axis inside the chart canvas for the date labels
-// that now sit directly on the axis line (see `MomentumCandleChart`/`MomentumLineChart`).
+// that now sit directly on the axis line (see `MomentumCandleChart`).
 private val MomentumDateLabelGutter = 16.dp
 
 // Color for a frozen (freeze-bridged) day on the momentum graph - a distinct blue so it
@@ -1184,7 +1174,7 @@ private fun MomentumCandleChart(
     statuses: List<MomentumDayStatus> = emptyList(),
     reversalLabels: List<Int?> = emptyList(),
     frozenColor: Color = FreezeBlue,
-    crashMode: Boolean = false,
+    fallingMode: Boolean = false,
     candleWidth: Dp = 12.dp,
     gap: Dp = 10.dp,
     labelGutter: Dp = MomentumDateLabelGutter,
@@ -1241,7 +1231,15 @@ private fun MomentumCandleChart(
             }
             var topValue: Int
             var bottomValue: Int
-            if (isPending && crashMode && close < 0) {
+            if (isFrozen) {
+                // A streak-freeze day is drawn as a full column from the zero axis up to its
+                // value (not just the usual open-to-close sliver), so the freeze reads as a
+                // distinct, prominent bar. This is purely a per-day rendering choice driven by
+                // the live FROZEN status - if that day is ever no longer frozen, it falls
+                // through to the ordinary candle shape below with no extra state to unwind.
+                topValue = maxOf(open, close, 0)
+                bottomValue = 0
+            } else if (isPending && fallingMode && close < 0) {
                 // Only stretch into the "recovery" shape once the crash depth has actually
                 // gone negative (i.e. we're mid-crash). Gating on the depth itself (not just
                 // the crash-mode toggle) keeps an ordinary ongoing streak's pending candle on
@@ -1258,7 +1256,7 @@ private fun MomentumCandleChart(
                 // shape before the day has actually passed unlogged.
                 topValue = open + 1
                 bottomValue = open
-            } else if (!crashMode && isMiss) {
+            } else if (!fallingMode && isMiss) {
                 topValue = maxOf(open, 1)
                 bottomValue = 0
             } else {
@@ -1325,233 +1323,6 @@ private fun MomentumCandleChart(
 }
 
 @Composable
-private fun MomentumLineChart(
-    values: List<Int>,
-    dayLabels: List<Int>,
-    lineColor: Color,
-    pendingColor: Color,
-    pendingLast: Boolean,
-    contentHeight: Dp,
-    statuses: List<MomentumDayStatus> = emptyList(),
-    reversalLabels: List<Int?> = emptyList(),
-    frozenColor: Color = FreezeBlue,
-    barWidth: Dp = 14.dp,
-    gap: Dp = 6.dp,
-    labelGutter: Dp = MomentumDateLabelGutter,
-    // When set, pins the y-scale to this range instead of auto-fitting to the data (values
-    // outside it are clamped/cropped, like scrolling a stock chart at a fixed price scale).
-    fixedRange: IntRange? = null,
-    // At low zoom, points get too close together for their date labels to fit without
-    // overlapping their neighbors, so callers hide the labels below a zoom threshold.
-    showDateLabels: Boolean = true,
-    modifier: Modifier = Modifier
-) {
-    if (values.isEmpty()) return
-    val maxValue = fixedRange?.last ?: (values.maxOrNull() ?: 1).coerceAtLeast(1)
-    val minValue = fixedRange?.first ?: (values.minOrNull() ?: 0).coerceAtMost(0)
-    val range = (maxValue - minValue).coerceAtLeast(1)
-    val baselineColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
-    val labelStyle = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant)
-    val reversalLabelStyle = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
-    val textMeasurer = rememberTextMeasurer()
-    val chartWidth = barWidth * values.size + gap * (values.size - 1).coerceAtLeast(0)
-    Canvas(modifier = modifier.height(contentHeight + labelGutter * 2).width(chartWidth)) {
-        val gutterPx = labelGutter.toPx()
-        val innerHeight = size.height - gutterPx * 2
-        val innerBottom = gutterPx + innerHeight
-        val labelGapPx = 2.dp.toPx()
-        val stride = (barWidth + gap).toPx()
-        val half = barWidth.toPx() / 2f
-        val points = values.mapIndexed { index, value ->
-            val clamped = if (fixedRange != null) value.coerceIn(minValue, maxValue) else value
-            val x = index * stride + half
-            val y = gutterPx + innerHeight * (1f - (clamped - minValue).toFloat() / range)
-            Offset(x, y)
-        }
-        val zeroY = gutterPx + innerHeight * (1f - (0 - minValue).toFloat() / range)
-        if (minValue < 0) {
-            drawLine(
-                color = baselineColor,
-                start = Offset(0f, zeroY),
-                end = Offset(size.width, zeroY),
-                strokeWidth = 1.dp.toPx()
-            )
-        }
-        // Soft fill under the line.
-        val fill = Path().apply {
-            moveTo(points.first().x, innerBottom)
-            points.forEach { lineTo(it.x, it.y) }
-            lineTo(points.last().x, innerBottom)
-            close()
-        }
-        drawPath(path = fill, color = lineColor.copy(alpha = 0.15f))
-        // The connecting line. The last segment (into today) is drawn pending-colored
-        // when today hasn't been logged yet.
-        for (i in 1 until points.size) {
-            val isPending = pendingLast && i == points.size - 1
-            val segmentColor = when {
-                isPending -> pendingColor
-                statuses.getOrNull(i) == MomentumDayStatus.FROZEN -> frozenColor
-                else -> lineColor
-            }
-            drawLine(
-                color = segmentColor,
-                start = points[i - 1],
-                end = points[i],
-                strokeWidth = 3.dp.toPx(),
-                cap = StrokeCap.Round
-            )
-        }
-        // A dot at each streak value; today's dot is pending-colored while unlogged. The
-        // date sits on the zero axis, under the point by default, flipping above it when
-        // the value dips below zero so the label never overlaps the line/dot.
-        points.forEachIndexed { index, p ->
-            val isPending = pendingLast && index == points.size - 1
-            val dotColor = when {
-                isPending -> pendingColor
-                statuses.getOrNull(index) == MomentumDayStatus.FROZEN -> frozenColor
-                else -> lineColor
-            }
-            drawCircle(color = dotColor, radius = 3.dp.toPx(), center = p)
-            // When this point is the confirmed last day of a run right before it reverses
-            // (a streak breaking or a miss gap ending with a workout), stamp its run length
-            // next to the dot: above for a broken streak, below for an ended gap.
-            val reversalCount = reversalLabels.getOrNull(index)
-            if (reversalCount != null) {
-                val countLayout = textMeasurer.measure(
-                    reversalCount.toString(),
-                    style = reversalLabelStyle.copy(color = dotColor)
-                )
-                val countX = (p.x - countLayout.size.width / 2f)
-                    .coerceIn(0f, (size.width - countLayout.size.width).coerceAtLeast(0f))
-                val isMissPoint = statuses.getOrNull(index) == MomentumDayStatus.MISS
-                val countY = if (isMissPoint) {
-                    p.y + labelGapPx
-                } else {
-                    p.y - labelGapPx - countLayout.size.height
-                }
-                drawText(countLayout, topLeft = Offset(countX, countY))
-            }
-            val label = dayLabels.getOrNull(index)?.toString()
-            if (showDateLabels && label != null) {
-                val layout = textMeasurer.measure(label, style = labelStyle)
-                val pointValue = if (fixedRange != null) values[index].coerceIn(minValue, maxValue) else values[index]
-                val labelAbove = pointValue < 0
-                val labelX = (p.x - layout.size.width / 2f)
-                    .coerceIn(0f, (size.width - layout.size.width).coerceAtLeast(0f))
-                val labelY = if (labelAbove) {
-                    zeroY - labelGapPx - layout.size.height
-                } else {
-                    zeroY + labelGapPx
-                }
-                drawText(layout, topLeft = Offset(labelX, labelY))
-            }
-        }
-    }
-}
-
-@Composable
-private fun RoutineBatteryBar(
-    label: String,
-    streak: Int,
-    total: Int,
-    remainingColor: Color,
-    onDoubleTap: (() -> Unit)? = null
-) {
-    val safeTotal = total.coerceAtLeast(1)
-    val safeStreak = streak.coerceIn(0, safeTotal)
-    Column(
-        modifier = if (onDoubleTap != null) {
-            Modifier.pointerInput(Unit) {
-                detectTapGestures(onDoubleTap = { onDoubleTap() })
-            }
-        } else {
-            Modifier
-        },
-        verticalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        val streakColor = MaterialTheme.colorScheme.primary
-        val fireColor = Color(0xFFFF6D00)
-        val fraction = safeStreak.toFloat() / safeTotal
-        val triangleHeight = 96.dp
-        val fireHeadroom = 22.dp
-        val fireIconSize = 18.dp
-        BoxWithConstraints(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(triangleHeight + fireHeadroom)
-        ) {
-            val barWidth = maxWidth
-            Canvas(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(triangleHeight)
-                    .align(Alignment.BottomCenter)
-            ) {
-                val w = size.width
-                val h = size.height
-                val splitX = w * fraction
-                val ySplit = h * (1f - fraction)
-                if (fraction > 0f) {
-                    val streakPath = Path().apply {
-                        moveTo(0f, h)
-                        lineTo(splitX, h)
-                        lineTo(splitX, ySplit)
-                        close()
-                    }
-                    drawPath(path = streakPath, color = streakColor)
-                }
-                if (fraction < 1f) {
-                    val remainingPath = Path().apply {
-                        moveTo(splitX, h)
-                        lineTo(w, h)
-                        lineTo(w, 0f)
-                        lineTo(splitX, ySplit)
-                        close()
-                    }
-                    drawPath(path = remainingPath, color = remainingColor)
-                }
-            }
-            // A fire marker just above the green hypotenuse for each completed day.
-            for (i in 0 until safeStreak) {
-                val centerXFrac = (i + 0.5f) / safeTotal
-                val edgeYFrac = 1f - centerXFrac
-                Icon(
-                    imageVector = Icons.Rounded.LocalFireDepartment,
-                    contentDescription = null,
-                    tint = fireColor,
-                    modifier = Modifier
-                        .size(fireIconSize)
-                        .offset(
-                            x = barWidth * centerXFrac - fireIconSize / 2f,
-                            y = fireHeadroom + triangleHeight * edgeYFrac - fireIconSize - 2.dp
-                        )
-                )
-            }
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            for (n in safeTotal downTo 1) {
-                Text(
-                    text = n.toString(),
-                    modifier = Modifier.weight(1f),
-                    textAlign = TextAlign.Center,
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-    }
-}
-
-@Composable
 private fun RatioBatteryBar(
     label: String,
     filled: Int,
@@ -1581,28 +1352,42 @@ private fun RatioBatteryBar(
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            Text(
-                text = "$safeFilled/$safeTotal",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
-            )
+            AnimatedContent(
+                targetState = "$safeFilled/$safeTotal",
+                transitionSpec = {
+                    (slideInVertically(tween(220)) { height -> height } + fadeIn()) togetherWith
+                        (slideOutVertically(tween(220)) { height -> -height } + fadeOut())
+                },
+                label = "ratioBarValue"
+            ) { animatedValue ->
+                Text(
+                    text = animatedValue,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
         }
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(3.dp)
         ) {
             repeat(safeTotal) { index ->
+                val boxColor by animateColorAsState(
+                    targetValue = if (index < safeFilled) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        remainingColor
+                    },
+                    animationSpec = tween(220),
+                    label = "ratioBarSegment"
+                )
                 Box(
                     modifier = Modifier
                         .weight(1f)
                         .height(16.dp)
                         .background(
-                            color = if (index < safeFilled) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                remainingColor
-                            },
+                            color = boxColor,
                             shape = RoundedCornerShape(3.dp)
                         )
                         .border(

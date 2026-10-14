@@ -117,6 +117,48 @@ interface WorkoutDao {
     @Query("UPDATE template_days SET completedForDateEpochDay = :completedForDateEpochDay WHERE dayNumber = :dayNumber")
     suspend fun updateWorkoutDone(dayNumber: Int, completedForDateEpochDay: Long?): Int
 
+    // Re-points logged session history between two days in one atomic statement (a plain
+    // two-step update would transiently violate the dayNumber foreign key). The template
+    // days' own dayNumber/plannedDateEpochDay rows are never touched - only which day's
+    // history each session belongs to.
+    @Query(
+        """
+        UPDATE workout_sessions
+        SET dayNumber = CASE WHEN dayNumber = :dayNumberA THEN :dayNumberB ELSE :dayNumberA END
+        WHERE dayNumber IN (:dayNumberA, :dayNumberB)
+        """
+    )
+    suspend fun swapSessionDays(dayNumberA: Int, dayNumberB: Int): Int
+
+    // Same idea for exercise assignments, but an exercise linked to BOTH days is excluded
+    // from the swap (it stays on both either way) since touching both its rows in one
+    // statement could collide on the (exerciseId, dayNumber) primary key.
+    @Query(
+        """
+        UPDATE exercise_day_links
+        SET dayNumber = CASE WHEN dayNumber = :dayNumberA THEN :dayNumberB ELSE :dayNumberA END
+        WHERE dayNumber IN (:dayNumberA, :dayNumberB)
+          AND exerciseId NOT IN (
+              SELECT exerciseId FROM exercise_day_links WHERE dayNumber = :dayNumberA
+              INTERSECT
+              SELECT exerciseId FROM exercise_day_links WHERE dayNumber = :dayNumberB
+          )
+        """
+    )
+    suspend fun swapLinkDays(dayNumberA: Int, dayNumberB: Int): Int
+
+    // Swaps two days' workout identity (name, assigned exercises, logged history) as one
+    // atomic unit - used by the day-reorder UI. dayNumber itself (the primary key both
+    // workout_sessions and exercise_day_links cascade-delete off of) is never reassigned;
+    // only the content attached to each fixed dayNumber slot moves.
+    @Transaction
+    suspend fun swapDays(dayNumberA: Int, dayNumberB: Int, workoutNameForA: String, workoutNameForB: String) {
+        updateWorkoutName(dayNumberA, workoutNameForA)
+        updateWorkoutName(dayNumberB, workoutNameForB)
+        swapSessionDays(dayNumberA, dayNumberB)
+        swapLinkDays(dayNumberA, dayNumberB)
+    }
+
     @Insert
     suspend fun insertSession(session: WorkoutSessionEntity): Long
 

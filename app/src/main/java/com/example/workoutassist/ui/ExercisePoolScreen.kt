@@ -19,12 +19,15 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -48,15 +51,21 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.workoutassist.data.ExerciseModel
 import com.example.workoutassist.data.WorkoutDayModel
 import com.example.workoutassist.data.WorkoutRepository
 import kotlinx.coroutines.launch
+
+// Which side of the split is the current editing/focus zone. Toggling this also reverses
+// the left/right pane widths; moving a day up/down is only allowed while Day is in focus.
+private enum class FocusSide { DAY, EXERCISE }
 
 // Manage-assignments screen: days on the left, exercises on the right. Picking a day
 // shows checkboxes on the right for whether each exercise belongs to that day; fully
@@ -83,6 +92,12 @@ internal fun ExercisePoolScreen(
     }
     var deleteTarget by remember { mutableStateOf<ExerciseModel?>(null) }
     var showAddDayDialog by remember { mutableStateOf(false) }
+
+    // Default focus is Exercise (right side, current 32/68 split); toggling to Day flips
+    // the split (~70/30) and turns the days list into an editing/reorder zone.
+    var focusSide by remember { mutableStateOf(FocusSide.EXERCISE) }
+    val daysWeight = if (focusSide == FocusSide.DAY) 0.7f else 0.32f
+    val exercisesWeight = if (focusSide == FocusSide.DAY) 0.3f else 0.68f
 
     // Snapshot of each exercise's day assignments, taken once the real data loads, so
     // unsaved changes can be discarded by restoring it.
@@ -125,6 +140,13 @@ internal fun ExercisePoolScreen(
                             contentDescription = "Back"
                         )
                     }
+                },
+                actions = {
+                    FocusToggle(
+                        focusSide = focusSide,
+                        onFocusSideChange = { focusSide = it },
+                        modifier = Modifier.padding(end = 12.dp)
+                    )
                 }
             )
         }
@@ -136,15 +158,20 @@ internal fun ExercisePoolScreen(
         ) {
             LazyColumn(
                 modifier = Modifier
-                    .weight(0.32f)
+                    .weight(daysWeight)
                     .fillMaxHeight(),
                 contentPadding = PaddingValues(vertical = 8.dp)
             ) {
-                items(orderedDays, key = { it.dayNumber }) { day ->
+                itemsIndexed(orderedDays, key = { _, day -> day.dayNumber }) { index, day ->
                     DayListItem(
                         day = day,
                         selected = day.dayNumber == selectedDayNumber,
-                        onClick = { selectedDayNumber = day.dayNumber }
+                        showReorderControls = focusSide == FocusSide.DAY,
+                        canMoveUp = index > 0,
+                        canMoveDown = index < orderedDays.lastIndex,
+                        onClick = { selectedDayNumber = day.dayNumber },
+                        onMoveUp = { scope.launch { repository.moveDay(day.dayNumber, -1) } },
+                        onMoveDown = { scope.launch { repository.moveDay(day.dayNumber, 1) } }
                     )
                 }
                 item {
@@ -158,14 +185,14 @@ internal fun ExercisePoolScreen(
                 Text(
                     text = "No exercises yet.",
                     modifier = Modifier
-                        .weight(0.68f)
+                        .weight(exercisesWeight)
                         .padding(16.dp)
                 )
             } else {
                 val poolListState = rememberLazyListState()
                 Box(
                     modifier = Modifier
-                        .weight(0.68f)
+                        .weight(exercisesWeight)
                         .fillMaxHeight()
                 ) {
                     LazyColumn(
@@ -341,10 +368,67 @@ private fun AddDayRow(onClick: () -> Unit) {
 }
 
 @Composable
+private fun FocusToggle(
+    focusSide: FocusSide,
+    onFocusSideChange: (FocusSide) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .border(
+                BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)),
+                RoundedCornerShape(20.dp)
+            )
+            .padding(2.dp)
+    ) {
+        FocusToggleSegment(
+            label = "Day",
+            selected = focusSide == FocusSide.DAY,
+            onClick = { onFocusSideChange(FocusSide.DAY) }
+        )
+        FocusToggleSegment(
+            label = "Exercise",
+            selected = focusSide == FocusSide.EXERCISE,
+            onClick = { onFocusSideChange(FocusSide.EXERCISE) }
+        )
+    }
+}
+
+@Composable
+private fun FocusToggleSegment(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(18.dp))
+            .background(if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = if (selected) {
+                MaterialTheme.colorScheme.onPrimaryContainer
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            }
+        )
+    }
+}
+
+@Composable
 private fun DayListItem(
     day: WorkoutDayModel,
     selected: Boolean,
-    onClick: () -> Unit
+    showReorderControls: Boolean,
+    canMoveUp: Boolean,
+    canMoveDown: Boolean,
+    onClick: () -> Unit,
+    onMoveUp: () -> Unit,
+    onMoveDown: () -> Unit
 ) {
     Box(
         modifier = Modifier
@@ -355,22 +439,48 @@ private fun DayListItem(
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 14.dp)
     ) {
-        Column {
-            Text(
-                text = "Day ${day.dayNumber}",
-                style = MaterialTheme.typography.labelMedium,
-                color = if (selected) {
-                    MaterialTheme.colorScheme.onPrimaryContainer
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Day ${day.dayNumber}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (selected) {
+                        MaterialTheme.colorScheme.onPrimaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                )
+                Text(
+                    text = day.workoutName,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                    color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                )
+            }
+            if (showReorderControls) {
+                Column {
+                    IconButton(
+                        onClick = onMoveUp,
+                        enabled = canMoveUp,
+                        modifier = Modifier.width(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.KeyboardArrowUp,
+                            contentDescription = "Move day up"
+                        )
+                    }
+                    IconButton(
+                        onClick = onMoveDown,
+                        enabled = canMoveDown,
+                        modifier = Modifier.width(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.KeyboardArrowDown,
+                            contentDescription = "Move day down"
+                        )
+                    }
                 }
-            )
-            Text(
-                text = day.workoutName,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
-            )
+            }
         }
     }
 }

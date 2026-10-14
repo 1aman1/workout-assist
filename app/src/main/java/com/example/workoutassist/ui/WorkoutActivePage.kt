@@ -7,16 +7,19 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -51,8 +54,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -136,11 +142,19 @@ internal fun WorkoutActivePage(
     val finishHoldScope = rememberCoroutineScope()
     val finishHoldProgress = remember(day.dayNumber) { Animatable(0f) }
     var finishHolding by remember(day.dayNumber) { mutableStateOf(false) }
+    val haptic = LocalHapticFeedback.current
+    val logExerciseInteractionSource = remember { MutableInteractionSource() }
 
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .fillMaxHeight()
+    ) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .fillMaxHeight(),
+            .fillMaxHeight()
+            .then(if (finishHolding) Modifier.blur(18.dp) else Modifier),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Card(
@@ -173,7 +187,9 @@ internal fun WorkoutActivePage(
                                 selected = isFocused,
                                 enabled = true,
                                 onClick = { onFocusExercise(exercise.id) },
-                                modifier = Modifier.alpha(if (isLogged) 0.4f else 1f),
+                                modifier = Modifier
+                                    .animateItem()
+                                    .alpha(if (isLogged) 0.4f else 1f),
                                 label = {
                                     Text(
                                         if (isLogged) {
@@ -442,11 +458,16 @@ internal fun WorkoutActivePage(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Button(
-                    onClick = onLogFocusedExercise,
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onLogFocusedExercise()
+                    },
                     enabled = canLogFocusedExercise,
+                    interactionSource = logExerciseInteractionSource,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(58.dp),
+                        .height(58.dp)
+                        .pressScale(logExerciseInteractionSource),
                     shape = RoundedCornerShape(16.dp),
                     elevation = ButtonDefaults.buttonElevation(defaultElevation = 3.dp)
                 ) {
@@ -494,6 +515,7 @@ internal fun WorkoutActivePage(
                                         val holdJob = finishHoldScope.launch {
                                             delay(1200L)
                                             finishHolding = false
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                             onFinish()
                                         }
                                         tryAwaitRelease()
@@ -534,6 +556,55 @@ internal fun WorkoutActivePage(
                                 softWrap = false
                             )
                         }
+                    }
+                }
+            }
+        }
+    }
+
+        if (finishHolding) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.55f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(width = 260.dp, height = 130.dp)
+                        .clip(RoundedCornerShape(24.dp))
+                        .border(
+                            width = 2.dp,
+                            color = MaterialTheme.colorScheme.error,
+                            shape = RoundedCornerShape(24.dp)
+                        )
+                        .background(MaterialTheme.colorScheme.surface),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .fillMaxHeight()
+                            .fillMaxWidth(finishHoldProgress.value)
+                            .background(MaterialTheme.colorScheme.error.copy(alpha = 0.22f))
+                    )
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.CheckCircle,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(40.dp)
+                        )
+                        Text(
+                            text = "Keep holding to finish…",
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            textAlign = TextAlign.Center
+                        )
                     }
                 }
             }

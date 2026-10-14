@@ -152,12 +152,10 @@ internal fun SettingsScreen(
     onLabelsSaved: (AppLabels) -> Unit,
     defaultScheduleCalendar: Boolean,
     onDefaultScheduleCalendarChanged: (Boolean) -> Unit,
-    useClassicStreakGraph: Boolean,
-    onUseClassicStreakGraphChanged: (Boolean) -> Unit,
-    momentumStockMode: Boolean,
-    onMomentumStockModeChanged: (Boolean) -> Unit,
-    momentumCrashMode: Boolean,
-    onMomentumCrashModeChanged: (Boolean) -> Unit,
+    flatlineMisses: Boolean,
+    onFlatlineMissesChanged: (Boolean) -> Unit,
+    retroWeekSize: Int,
+    onRetroWeekSizeChanged: (Int) -> Unit,
     onExportBackup: () -> Unit,
     onImportBackup: () -> Unit,
     autoBackupEnabled: Boolean,
@@ -217,7 +215,6 @@ internal fun SettingsScreen(
                             SettingsView.ROOT -> labels.settingsTab
                             SettingsView.THEME_OPTIONS -> labels.themeTitle
                             SettingsView.LABEL_OPTIONS -> labels.labelsTitle
-                            SettingsView.STREAK_GRAPH_OPTIONS -> "Streak graph"
                             SettingsView.PAGE_COMMANDS -> labels.pageCommandsTitle
                         },
                         fontWeight = FontWeight.SemiBold
@@ -250,41 +247,6 @@ internal fun SettingsScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 if (settingsView == SettingsView.ROOT) {
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable(onClick = onEditSchedule),
-                        shape = RoundedCornerShape(18.dp),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 14.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Edit day schedule",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                                Text(
-                                    text = "Assign which exercises belong to each workout day.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-
                     if (statusFeedback != null) {
                         SettingsFeedbackCard(
                             feedback = statusFeedback,
@@ -335,14 +297,113 @@ internal fun SettingsScreen(
                     }
 
                     SettingsNavCard(
-                        title = "Streak graph",
-                        onClick = { settingsView = SettingsView.STREAK_GRAPH_OPTIONS }
-                    )
-
-                    SettingsNavCard(
                         title = "Theme",
                         onClick = { settingsView = SettingsView.THEME_OPTIONS }
                     )
+
+                    SettingsSectionHeader("Configuration")
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(onClick = onEditSchedule),
+                        shape = RoundedCornerShape(18.dp),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 14.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Edit day schedule",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    text = "Assign which exercises belong to each workout day.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    Card(
+                        shape = RoundedCornerShape(18.dp),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Flatline misses",
+                                    style = MaterialTheme.typography.bodyLarge
+                                )
+                                Text(
+                                    text = "When enabled, misses flatline at 0. When disabled, misses crash progressively below zero (0, -1, -2, ...) like a stock chart. A new streak after the gap always restarts at 1.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(
+                                checked = flatlineMisses,
+                                onCheckedChange = onFlatlineMissesChanged
+                            )
+                        }
+                    }
+
+                    Card(
+                        shape = RoundedCornerShape(18.dp),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Text(
+                                text = "Retro lookback window",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = "How many cycles back Insights \u2192 Retro shows by default.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                (2..10 step 2).forEach { weeks ->
+                                    FilterChip(
+                                        selected = retroWeekSize == weeks,
+                                        onClick = { onRetroWeekSizeChanged(weeks) },
+                                        label = { Text("$weeks") }
+                                    )
+                                }
+                            }
+                        }
+                    }
 
                     SettingsSectionHeader("Data")
                     Card(
@@ -677,95 +738,6 @@ internal fun SettingsScreen(
                                         shape = RoundedCornerShape(12.dp)
                                     ) {
                                         Text("Save labels")
-                                    }
-                                }
-                            }
-                        }
-
-                        SettingsView.STREAK_GRAPH_OPTIONS -> {
-                            Card(
-                                shape = RoundedCornerShape(18.dp),
-                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                            ) {
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(16.dp),
-                                    verticalArrangement = Arrangement.spacedBy(14.dp)
-                                ) {
-                                    Text(
-                                        text = "Streak graph",
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                    Text(
-                                        text = "Choose how your streak shows in Insights.",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = "Classic triangle graph",
-                                                style = MaterialTheme.typography.bodyLarge
-                                            )
-                                            Text(
-                                                text = "Use the old triangle instead of the momentum graph.",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-                                        Switch(
-                                            checked = useClassicStreakGraph,
-                                            onCheckedChange = onUseClassicStreakGraphChanged
-                                        )
-                                    }
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = "Stock-market candles",
-                                                style = MaterialTheme.typography.bodyLarge
-                                            )
-                                            Text(
-                                                text = "Show the momentum graph as green/red candles.",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-                                        Switch(
-                                            checked = momentumStockMode,
-                                            onCheckedChange = onMomentumStockModeChanged
-                                        )
-                                    }
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = "Falling miss gaps",
-                                                style = MaterialTheme.typography.bodyLarge
-                                            )
-                                            Text(
-                                                text = "Misses crash progressively below zero (0, -1, -2, ...) like a stock chart, instead of flatlining at 0. A new streak after the gap always restarts at 1.",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-                                        Switch(
-                                            checked = momentumCrashMode,
-                                            onCheckedChange = onMomentumCrashModeChanged
-                                        )
                                     }
                                 }
                             }

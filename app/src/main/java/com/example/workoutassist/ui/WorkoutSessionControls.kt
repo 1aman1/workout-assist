@@ -44,6 +44,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -127,6 +129,7 @@ internal fun HoldToConfirmButton(
     val scope = rememberCoroutineScope()
     val progress = remember { Animatable(0f) }
     var holding by remember { mutableStateOf(false) }
+    val haptic = LocalHapticFeedback.current
 
     Box(
         modifier = modifier
@@ -144,6 +147,7 @@ internal fun HoldToConfirmButton(
                         val confirmJob = scope.launch {
                             delay(holdMillis.toLong())
                             holding = false
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             onConfirm()
                         }
                         tryAwaitRelease()

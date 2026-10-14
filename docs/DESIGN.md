@@ -4,7 +4,51 @@ Lean Android utility app for fast workout logging during training.
 
 Primary design source: see DESIGN_VERSIONS.md and append all future design updates as version increments.
 
-## Current Product Snapshot (v1.114)
+## Current Product Snapshot (v1.126)
+
+> v1.126 is the authoritative current state for Schedule, Insights, active session, and Analytics. Older bullets below are historical and may be superseded by these notes.
+
+### v1.126 current behavior
+- The streak momentum inspector popup is taller: its chart viewport grew (340dp -> 520dp) and the dialog's vertical padding shrank (24dp -> 8dp), so it extends closer to the screen's top/bottom edges and shows more candle history at once.
+
+## Previous Product Snapshot (v1.125)
+
+> v1.125 is the authoritative current state for Schedule, Insights, active session, and Analytics. Older bullets below are historical and may be superseded by these notes.
+
+### v1.125 current behavior
+- The Settings root page's **Flatline misses** toggle (renamed from "Falling miss gaps") is now ON by default: ON means misses flatline at 0, OFF means misses crash progressively below zero like a stock chart - the two behaviors are unchanged, only the switch polarity and label flipped.
+
+## Previous Product Snapshot (v1.124)
+
+> v1.124 is the authoritative current state for Schedule, Insights, active session, and Analytics. Older bullets below are historical and may be superseded by these notes.
+
+### v1.124 current behavior
+- The momentum candle chart draws a streak-freeze day's candle as a full column from the zero axis up to its value (instead of the usual thin open-to-close sliver), so it reads as a distinct, prominent bar - same frozen color as before. This is a live per-day rendering choice: if a day stops being frozen, its candle automatically reverts to the ordinary shape.
+
+## Previous Product Snapshot (v1.123)
+
+> v1.123 is the authoritative current state for Schedule, Insights, active session, and Analytics. Older bullets below are historical and may be superseded by these notes.
+
+### v1.123 current behavior
+- The Settings root page's **Configuration** section (between Appearance and Data) now also holds the **Edit day schedule** card (moved from its old spot above Appearance, at the very top of the page), alongside **Falling miss gaps** and **Retro lookback window**. Purely an organizational change - no new behavior.
+
+## Previous Product Snapshot (v1.122)
+
+> v1.122 is the authoritative current state for Schedule, Insights, active session, and Analytics. Older bullets below are historical and may be superseded by these notes.
+
+### v1.122 current behavior
+- The Settings root page now has a **Configuration** section (between Appearance and Data) holding the **Falling miss gaps** and **Retro lookback window** cards, moved out of Appearance. Purely an organizational change - no new behavior.
+
+## Previous Product Snapshot (v1.121)
+
+> v1.121 is the authoritative current state for Schedule, Insights, active session, and Analytics. Older bullets below are historical and may be superseded by these notes.
+
+### v1.121 current behavior
+- The classic triangle streak graph and its Settings toggle are gone - the Insights streak card always shows the momentum graph (header + expand affordance into the inspector). Stock-market candles are now the permanent, only momentum visualization (the line-chart alternative and its toggle are gone too).
+- **Settings > Streak graph** (the Options subpage) no longer exists. Its one surviving option, **Falling miss gaps**, is now an inline card directly on the Settings root page (next to "Retro lookback window"), with no extra navigation hop.
+- Double-tapping the momentum graph's header row still opens the "Routine length" cycle-size picker (previously only reachable via double-tapping the now-removed triangle).
+
+## Previous Product Snapshot (v1.114)
 
 > v1.114 is the authoritative current state for Schedule, Insights, active session, and Analytics. Older bullets below are historical and may be superseded by these notes.
 

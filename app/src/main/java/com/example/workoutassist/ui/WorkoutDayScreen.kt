@@ -9,6 +9,7 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -62,6 +63,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -97,6 +100,8 @@ internal fun WorkoutDayScreen(
 ) {
     val scope = rememberCoroutineScope()
     val viewedDateEpochDay = day.plannedDateEpochDay
+    val haptic = LocalHapticFeedback.current
+    val startWorkoutInteractionSource = remember { MutableInteractionSource() }
 
     // Edit exercises mode is local to this day's screen (not shared/global).
     var editMode by remember(day.dayNumber) { mutableStateOf(false) }
@@ -748,11 +753,16 @@ internal fun WorkoutDayScreen(
                             Spacer(modifier = Modifier.height(10.dp))
 
                             Button(
-                                onClick = { startWorkout() },
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    startWorkout()
+                                },
                                 enabled = day.exercises.isNotEmpty() && !editMode,
+                                interactionSource = startWorkoutInteractionSource,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(52.dp),
+                                    .height(52.dp)
+                                    .pressScale(startWorkoutInteractionSource),
                                 shape = RoundedCornerShape(16.dp),
                                 elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)
                             ) {
