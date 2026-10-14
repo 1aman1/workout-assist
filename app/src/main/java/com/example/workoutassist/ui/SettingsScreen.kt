@@ -256,6 +256,11 @@ internal fun SettingsScreen(
 
                     SettingsSectionHeader("Appearance")
                     SettingsNavCard(
+                        title = "Theme",
+                        onClick = { settingsView = SettingsView.THEME_OPTIONS }
+                    )
+
+                    SettingsNavCard(
                         title = "Labels",
                         onClick = { settingsView = SettingsView.LABEL_OPTIONS }
                     )
@@ -276,11 +281,6 @@ internal fun SettingsScreen(
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.SemiBold
                             )
-                            Text(
-                                text = "Which view the workout page opens in.",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 FilterChip(
                                     selected = !defaultScheduleCalendar,
@@ -295,11 +295,6 @@ internal fun SettingsScreen(
                             }
                         }
                     }
-
-                    SettingsNavCard(
-                        title = "Theme",
-                        onClick = { settingsView = SettingsView.THEME_OPTIONS }
-                    )
 
                     SettingsSectionHeader("Configuration")
                     Card(
@@ -355,7 +350,7 @@ internal fun SettingsScreen(
                                     style = MaterialTheme.typography.bodyLarge
                                 )
                                 Text(
-                                    text = "When enabled, misses flatline at 0. When disabled, misses crash progressively below zero (0, -1, -2, ...) like a stock chart. A new streak after the gap always restarts at 1.",
+                                    text = "Misses crash below zero like a stock chart.",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -382,11 +377,6 @@ internal fun SettingsScreen(
                                 text = "Retro lookback window",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.SemiBold
-                            )
-                            Text(
-                                text = "How many cycles back Insights \u2192 Retro shows by default.",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Row(
                                 modifier = Modifier

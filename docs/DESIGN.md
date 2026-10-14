@@ -4,7 +4,71 @@ Lean Android utility app for fast workout logging during training.
 
 Primary design source: see DESIGN_VERSIONS.md and append all future design updates as version increments.
 
-## Current Product Snapshot (v1.126)
+## Current Product Snapshot (v1.135)
+
+> v1.135 is the authoritative current state for Schedule, Insights, active session, and Analytics. Older bullets below are historical and may be superseded by these notes.
+
+### v1.135 current behavior
+- Exercise reordering is tap-to-move: tapping the up/down chevron moves the exercise one step; no long-press-drag is needed. Chevrons dim/disable at the top/bottom of the list.
+
+## Previous Product Snapshot (v1.134)
+
+> v1.134 is the authoritative current state for Schedule, Insights, active session, and Analytics. Older bullets below are historical and may be superseded by these notes.
+
+### v1.134 current behavior
+- The exercise drag-to-reorder chevrons have a larger 40dp touch target (instead of the bare 24dp icon) so long-press-drag is easier to trigger.
+
+## Previous Product Snapshot (v1.133)
+
+> v1.133 is the authoritative current state for Schedule, Insights, active session, and Analytics. Older bullets below are historical and may be superseded by these notes.
+
+### v1.133 current behavior
+- The exercise drag-to-reorder chevrons point up (left) and down (right), matching the up/down reorder direction.
+
+## Previous Product Snapshot (v1.132)
+
+> v1.132 is the authoritative current state for Schedule, Insights, active session, and Analytics. Older bullets below are historical and may be superseded by these notes.
+
+### v1.132 current behavior
+- The workout day's name is clickable while in edit mode, opening the rename dialog directly (same dialog the pencil icon opens); still flows through the same save/discard confirmation before leaving edit mode.
+
+## Previous Product Snapshot (v1.131)
+
+> v1.131 is the authoritative current state for Schedule, Insights, active session, and Analytics. Older bullets below are historical and may be superseded by these notes.
+
+### v1.131 current behavior
+- Exercise rows in a day's edit mode show two angular-bracket chevrons (left/right of the exercise name) instead of a hamburger drag handle; both still grab-to-reorder via long-press-drag.
+
+## Previous Product Snapshot (v1.130)
+
+> v1.130 is the authoritative current state for Schedule, Insights, active session, and Analytics. Older bullets below are historical and may be superseded by these notes.
+
+### v1.130 current behavior
+- The Retro lookback chart's fixed default height is 128dp (doubled from v1.129's 64dp).
+
+## Previous Product Snapshot (v1.129)
+
+> v1.129 is the authoritative current state for Schedule, Insights, active session, and Analytics. Older bullets below are historical and may be superseded by these notes.
+
+### v1.129 current behavior
+- The Retro lookback chart (Insights home card) keeps a fixed 64dp default height at any selected week count (2/4/6/8/10); column heights and the y-axis scale are normalized against the week count instead of the chart's own height shrinking with fewer weeks.
+
+## Previous Product Snapshot (v1.128)
+
+> v1.128 is the authoritative current state for Schedule, Insights, active session, and Analytics. Older bullets below are historical and may be superseded by these notes.
+
+### v1.128 current behavior
+- The **Default schedule view** card has no description text (title + Compact/Calendar chips only).
+
+## Previous Product Snapshot (v1.127)
+
+> v1.127 is the authoritative current state for Schedule, Insights, active session, and Analytics. Older bullets below are historical and may be superseded by these notes.
+
+### v1.127 current behavior
+- The **Flatline misses** card has a single short description line; the **Retro lookback window** card has no description text (title + chip row only).
+- **Edit day schedule**'s back navigation now returns to the Settings root page instead of the Workout tab's Schedule (home) screen.
+
+## Previous Product Snapshot (v1.126)
 
 > v1.126 is the authoritative current state for Schedule, Insights, active session, and Analytics. Older bullets below are historical and may be superseded by these notes.
 

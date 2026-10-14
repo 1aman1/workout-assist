@@ -1519,6 +1519,116 @@ How to use:
 - Migration notes (if any):
   - None.
 
+## Version 1.127 (2026-10-14)
+- Change summary:
+  - Shortened the **Flatline misses** card's description to a single short line.
+  - Removed the **Retro lookback window** card's subtitle description text entirely (title + chip row remain).
+  - Fixed **Edit day schedule**'s back navigation: pressing back now returns to the Settings root page (where it was opened from) instead of jumping to the Workout tab's Schedule (home) screen.
+- Why changed:
+  - User request: trim overly long descriptions on two Settings cards, and fix a back-navigation bug on the Edit day schedule shortcut.
+- UX impact:
+  - Less visual clutter on two Settings cards. Edit day schedule now has an intuitive one-step-back behavior matching where it was launched from.
+- Data/model impact:
+  - None.
+- Migration notes (if any):
+  - None.
+
+## Version 1.128 (2026-10-14)
+- Change summary:
+  - Removed the **Default schedule view** card's subtitle description text entirely (title + Compact/Calendar chips remain).
+- Why changed:
+  - User request: trim the card down, same pattern as the Retro lookback window card.
+- UX impact:
+  - Less visual clutter on the card. No functional change - same chips, same behavior.
+- Data/model impact:
+  - None.
+- Migration notes (if any):
+  - None.
+
+## Version 1.129 (2026-10-14)
+- Change summary:
+  - Fixed the Retro lookback chart (`WorkoutLookbackColumnChart`, the compact column chart on the Insights home card) shrinking to a short sliver when a small week count (2 or 4) was selected. The chart's total height (`barAreaHeight`) is now a fixed 64dp regardless of `totalWeeks`; column bar heights and the y-axis tick scale are both normalized against `axisCeiling` (derived from the selected week count) instead of the bar height scaling down with fewer weeks.
+- Why changed:
+  - User request: the chart became very short height-wise at 2 or 4 weeks; wanted a consistent default height with column heights/y-axis normalized to the selected week count instead.
+- UX impact:
+  - The Retro chart keeps a consistent, readable height at any Retro lookback window size (2/4/6/8/10 weeks); bar proportions and y-axis labels stay correctly scaled relative to each other at every size, where previously the axis ceiling and the chart's own height could disagree at low week counts.
+- Data/model impact:
+  - None - purely a rendering change, no new fields or preferences.
+- Migration notes (if any):
+  - None.
+
+## Version 1.130 (2026-10-14)
+- Change summary:
+  - Doubled the Retro lookback chart's fixed default height from 64dp to 128dp (`barAreaHeight` in `WorkoutLookbackColumnChart`).
+- Why changed:
+  - User request: more visual headroom for the chart after v1.129's normalization fix.
+- UX impact:
+  - Taller, more readable Retro chart at any selected week count; bar/y-axis proportions unchanged since both still scale off the same `axisCeiling`.
+- Data/model impact:
+  - None.
+- Migration notes (if any):
+  - None.
+
+## Version 1.131 (2026-10-14)
+- Change summary:
+  - Replaced the hamburger-style `Icons.Outlined.DragHandle` icon on exercise rows (`ExerciseRow.kt`, shown in a day's edit mode) with two angular-bracket chevron icons framing the exercise name: `KeyboardArrowLeft` left-aligned before the text, `KeyboardArrowRight` right-aligned right before the 3-dot options menu. Both chevrons carry the same long-press-drag gesture the hamburger used to have, so reordering still works from either side.
+- Why changed:
+  - User request: swap the hamburger drag affordance for angular brackets on both sides of the exercise name.
+- UX impact:
+  - Visual-only change to the edit-mode exercise row; drag-to-reorder behavior and gesture (long-press then drag) are unchanged.
+- Data/model impact:
+  - None.
+- Migration notes (if any):
+  - None.
+
+## Version 1.132 (2026-10-14)
+- Change summary:
+  - The workout day's name (`day.workoutName`, shown at the top of `WorkoutDayScreen.kt`) is now clickable while in edit mode, opening the same `RenameWorkoutDialog` as the existing pencil icon.
+- Why changed:
+  - User request: allow changing the day's name via tap-to-change, not just via the small pencil icon.
+- UX impact:
+  - Larger, more discoverable tap target for renaming a workout day while editing; the rename still flows through the existing `hasEditChangesPendingExport` -> `showSaveEditsPrompt` save/discard confirmation before leaving edit mode, since a rename already marked changes pending before this update.
+- Data/model impact:
+  - None.
+- Migration notes (if any):
+  - None.
+
+## Version 1.133 (2026-10-14)
+- Change summary:
+  - Changed the exercise row drag-to-reorder chevrons (`ExerciseRow.kt`, added in v1.131) from left/right-facing (`KeyboardArrowLeft`/`KeyboardArrowRight`) to up/down-facing (`KeyboardArrowUp`/`KeyboardArrowDown`): left chevron now points up, right chevron now points down.
+- Why changed:
+  - User feedback: the chevrons should visually indicate the up/down reorder direction, not left/right.
+- UX impact:
+  - Visual-only icon change; drag-to-reorder gesture and behavior are unchanged.
+- Data/model impact:
+  - None.
+- Migration notes (if any):
+  - None.
+
+## Version 1.134 (2026-10-14)
+- Change summary:
+  - Enlarged the drag-to-reorder touch target on exercise rows (`ExerciseRow.kt`): each chevron is now centered inside a 40dp `Box` that carries the `pointerInput` long-press-drag gesture, instead of the gesture living directly on the 24dp `Icon`.
+- Why changed:
+  - User feedback: the chevrons weren't reliably letting them move an exercise up or down - the tiny icon-only hit area made the long-press-then-drag gesture hard to trigger.
+- UX impact:
+  - Larger, easier-to-grab drag handles on both sides of the exercise name; drag-to-reorder behavior itself (long-press then drag) is unchanged.
+- Data/model impact:
+  - None.
+- Migration notes (if any):
+  - None.
+
+## Version 1.135 (2026-10-14)
+- Change summary:
+  - Replaced the hold-and-drag reorder gesture on exercise rows with simple tap-to-move: the up/down chevrons (`ExerciseRow.kt`) are now plain clickable targets that move the exercise one position per tap, instead of a `pointerInput`/`detectDragGesturesAfterLongPress` live-drag gesture. Removed the now-unused `draggingExerciseId`/`dragOffsetY` live-drag state and the `onDragStart`/`onDrag`/`onDragEnd` handlers from `WorkoutDayScreen.kt`, replaced by a single `moveExercise(exerciseId, moveBy)` function. Each chevron is now disabled (dimmed, 38% alpha) at the top/bottom boundary of the exercise list.
+- Why changed:
+  - User feedback: the action is not supposed to be hold-and-move; tapping a chevron should move the exercise step by step.
+- UX impact:
+  - Reordering is now a simple, discoverable tap instead of a long-press-then-drag gesture; chevrons visually disable at list boundaries.
+- Data/model impact:
+  - None (still calls the existing `WorkoutRepository.moveExercise`, just triggered by a tap instead of a drag threshold).
+- Migration notes (if any):
+  - None.
+
 
 ## Version 1.123 (2026-10-14)
 - Change summary:

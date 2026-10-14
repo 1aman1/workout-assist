@@ -265,6 +265,15 @@ internal val PAGE_COMMAND_NAMES = listOf(
 )
 
 internal val LATEST_VERSION_HIGHLIGHTS = listOf(
+    "Replaced the hold-and-drag exercise reorder gesture with simple tap-to-move: tapping the up/down chevrons now moves an exercise one step at a time, instead of requiring a long-press-then-drag.",
+    "Fixed the exercise drag-to-reorder chevrons being hard to grab: the pointerInput drag gesture now lives on a 40dp touch target box around each chevron instead of directly on the tiny 24dp icon.",
+    "Fixed the exercise drag-to-reorder chevrons to point up (left) and down (right), matching the up/down reorder gesture instead of left/right arrows.",
+    "Tapping the workout day's name (in edit mode) now opens the rename dialog directly, same as the existing pencil icon - still goes through the same save/discard confirmation before leaving edit mode.",
+    "Replaced the hamburger drag handle on exercise rows (in a day's edit mode) with two angular-bracket chevrons framing the exercise name - one left-aligned before the text, one right-aligned just before the 3-dot menu - both still grab-to-reorder.",
+    "Doubled the Retro lookback chart's default height (64dp -> 128dp) for more visual headroom at any selected week count.",
+    "Fixed the Retro lookback chart (Insights home card) shrinking to a short sliver when 2 or 4 weeks were selected: it now keeps a fixed default height at any week count, with column heights and the y-axis scale normalized against the number of weeks shown instead of the chart's own height scaling down with it.",
+    "Removed the 'Default schedule view' card's subtitle description text (title + Compact/Calendar chips remain).",
+    "Settings cleanup: shortened the 'Flatline misses' description, removed the 'Retro lookback window' subtitle text, and fixed 'Edit day schedule' so pressing back returns to Settings instead of jumping to the Workout tab's home screen.",
     "The streak momentum inspector popup is taller: its chart viewport grew and the dialog now sits closer to the top/bottom of the screen, so more of the candle history is visible at once without scrolling.",
     "Reversed and renamed the Settings 'Falling miss gaps' toggle to 'Flatline misses': it's now ON by default, and ON means misses flatline at 0 (the classic look) while OFF makes misses crash progressively below zero like a stock chart - same behavior as before, just the switch direction and label flipped.",
     "Removed the classic triangle streak graph and its Settings toggle - the momentum graph (stock-market candles) is now the only, permanent streak visualization. The remaining 'Falling miss gaps' option moved out of the Streak graph subpage onto the Settings root page directly.",
@@ -973,6 +982,9 @@ fun WorkoutAssistApp() {
         }
 
         BackHandler(enabled = selectedTab == RootTab.WORKOUT && currentScreen == AppScreen.EXERCISE_POOL) {
+            // Only reachable via Settings > "Edit day schedule", so back returns there
+            // instead of landing on the Workout tab's home (Schedule) screen.
+            selectedTab = RootTab.SETTINGS
             currentScreen = AppScreen.SCHEDULE
         }
 

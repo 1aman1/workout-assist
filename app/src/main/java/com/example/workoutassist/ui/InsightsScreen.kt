@@ -1414,14 +1414,17 @@ private fun WorkoutLookbackColumnChart(
     partialColor: Color,
     laggingColor: Color
 ) {
-    val unitHeight = 16.dp
     val barWidth = 28.dp
-    val barAreaHeight = unitHeight * totalWeeks.coerceAtLeast(1)
     // Y-axis ticks in multiples of 2 up to the ceiling (rounded up from the weeks shown;
     // default is 4 -> 4, 2), so the bars read against a scale instead of floating free.
     val axisCeiling = (kotlin.math.ceil(totalWeeks.coerceAtLeast(1) / 2.0).toInt() * 2).coerceAtLeast(4)
     val axisTicks = (axisCeiling downTo 2 step 2).toList()
     val axisTextHeight = 14.dp
+    // Fixed chart height regardless of how many weeks are selected (previously it scaled
+    // with totalWeeks and became a short sliver at 2 weeks); bars are normalized against
+    // axisCeiling instead so the y-axis scale and bar fill always agree.
+    val barAreaHeight = 128.dp
+    val unitHeight = barAreaHeight / axisCeiling
 
     Row(
         modifier = Modifier.fillMaxWidth(),

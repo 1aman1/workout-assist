@@ -9,6 +9,7 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -53,7 +54,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -140,8 +140,6 @@ internal fun WorkoutDayScreen(
     var quickEditSetIndex by remember(day.dayNumber) { mutableStateOf<Int?>(null) }
 
     val listState = rememberLazyListState()
-    var draggingExerciseId by remember(day.dayNumber) { mutableLongStateOf(-1L) }
-    var dragOffsetY by remember(day.dayNumber) { mutableFloatStateOf(0f) }
     var editCollapseSignal by remember(day.dayNumber) { mutableIntStateOf(0) }
 
     // Stopwatches (not persisted): total workout time + rest interval since the last set log.
@@ -267,54 +265,11 @@ internal fun WorkoutDayScreen(
         }
     }
 
-    fun onDragStart(exerciseId: Long) {
-        draggingExerciseId = exerciseId
-        dragOffsetY = 0f
-    }
-
-    fun onDrag(dragAmountY: Float) {
-        if (draggingExerciseId < 0L) {
-            return
+    fun moveExercise(exerciseId: Long, moveBy: Int) {
+        scope.launch {
+            repository.moveExercise(day.dayNumber, exerciseId, moveBy = moveBy)
         }
-        dragOffsetY += dragAmountY
-
-        val fromIndex = day.exercises.indexOfFirst { it.id == draggingExerciseId }
-        if (fromIndex < 0) {
-            return
-        }
-
-        val currentVisibleItem = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == fromIndex }
-        val rowHeight = currentVisibleItem?.size?.toFloat() ?: 1f
-        val threshold = rowHeight * 0.55f
-
-        when {
-            dragOffsetY > threshold -> {
-                if (fromIndex < day.exercises.lastIndex) {
-                    val movingId = draggingExerciseId
-                    scope.launch {
-                        repository.moveExercise(day.dayNumber, movingId, moveBy = 1)
-                    }
-                    hasEditChangesPendingExport = true
-                    dragOffsetY -= rowHeight
-                }
-            }
-
-            dragOffsetY < -threshold -> {
-                if (fromIndex > 0) {
-                    val movingId = draggingExerciseId
-                    scope.launch {
-                        repository.moveExercise(day.dayNumber, movingId, moveBy = -1)
-                    }
-                    hasEditChangesPendingExport = true
-                    dragOffsetY += rowHeight
-                }
-            }
-        }
-    }
-
-    fun onDragEnd() {
-        draggingExerciseId = -1L
-        dragOffsetY = 0f
+        hasEditChangesPendingExport = true
     }
 
     fun startWorkout() {
@@ -733,7 +688,15 @@ internal fun WorkoutDayScreen(
                         ) {
                             Text(
                                 text = day.workoutName,
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .then(
+                                        if (canEditTemplate) {
+                                            Modifier.clickable { showRenameWorkoutDialog = true }
+                                        } else {
+                                            Modifier
+                                        }
+                                    ),
                                 style = MaterialTheme.typography.headlineSmall,
                                 fontWeight = FontWeight.Bold,
                                 textAlign = TextAlign.Center
@@ -849,7 +812,6 @@ internal fun WorkoutDayScreen(
                         itemsIndexed(day.exercises, key = { _, exercise -> exercise.id }) { index, exercise ->
                             ExerciseRow(
                                 exercise = exercise,
-                                index = index,
                                 editMode = editMode,
                                 canEditTemplate = canEditTemplate,
                                 canDelete = editMode && canEditTemplate,
@@ -857,11 +819,10 @@ internal fun WorkoutDayScreen(
                                 currentSetNumber = 1,
                                 canQuickEdit = canEditTemplate,
                                 collapseSignal = editCollapseSignal,
-                                isDragging = draggingExerciseId == exercise.id,
-                                dragOffsetY = if (draggingExerciseId == exercise.id) dragOffsetY else 0f,
-                                onDragStart = { onDragStart(exercise.id) },
-                                onDrag = { deltaY -> onDrag(deltaY) },
-                                onDragEnd = { onDragEnd() },
+                                canMoveUp = index > 0,
+                                canMoveDown = index < day.exercises.lastIndex,
+                                onMoveUp = { moveExercise(exercise.id, -1) },
+                                onMoveDown = { moveExercise(exercise.id, 1) },
                                 onEdit = { editExerciseTarget = exercise },
                                 onQuickEditRepsForSet = { setIndex ->
                                     openQuickEditDialog(exercise, QuickEditField.REPS, setIndex)

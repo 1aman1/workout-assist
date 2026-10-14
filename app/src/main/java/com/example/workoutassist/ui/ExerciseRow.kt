@@ -2,19 +2,19 @@ package com.example.workoutassist.ui
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.DragHandle
 import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material3.Card
@@ -34,18 +34,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.zIndex
 import com.example.workoutassist.data.ExerciseModel
-import kotlin.math.roundToInt
 
 @Composable
 internal fun ExerciseRow(
     exercise: ExerciseModel,
-    index: Int,
     editMode: Boolean,
     canEditTemplate: Boolean,
     canDelete: Boolean,
@@ -53,11 +48,10 @@ internal fun ExerciseRow(
     currentSetNumber: Int,
     canQuickEdit: Boolean,
     collapseSignal: Int,
-    isDragging: Boolean,
-    dragOffsetY: Float,
-    onDragStart: () -> Unit,
-    onDrag: (Float) -> Unit,
-    onDragEnd: () -> Unit,
+    canMoveUp: Boolean,
+    canMoveDown: Boolean,
+    onMoveUp: () -> Unit,
+    onMoveDown: () -> Unit,
     onEdit: () -> Unit,
     onQuickEditRepsForSet: (Int) -> Unit,
     onQuickEditWeightForSet: (Int) -> Unit,
@@ -72,24 +66,16 @@ internal fun ExerciseRow(
     }
 
     Card(
-        modifier = Modifier
-            .offset { IntOffset(0, dragOffsetY.roundToInt()) }
-            .zIndex(if (isDragging) 1f else 0f),
         shape = RoundedCornerShape(14.dp),
         border = BorderStroke(
-            width = if (isCurrent || isDragging) 1.1.dp else 0.7.dp,
+            width = if (isCurrent) 1.1.dp else 0.7.dp,
             color = when {
-                isDragging -> MaterialTheme.colorScheme.secondary.copy(alpha = 0.62f)
                 isCurrent -> MaterialTheme.colorScheme.secondary.copy(alpha = 0.42f)
                 else -> MaterialTheme.colorScheme.outline.copy(alpha = 0.18f)
             }
         ),
         elevation = CardDefaults.cardElevation(
-            defaultElevation = when {
-                isDragging -> 8.dp
-                isCurrent -> 4.dp
-                else -> 1.dp
-            }
+            defaultElevation = if (isCurrent) 4.dp else 1.dp
         ),
         colors = CardDefaults.cardColors(
             containerColor = when {
@@ -101,31 +87,22 @@ internal fun ExerciseRow(
         Column(modifier = Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (editMode) {
-                    Icon(
-                        imageVector = Icons.Outlined.DragHandle,
-                        contentDescription = "Drag to reorder",
+                    Box(
                         modifier = Modifier
-                            .padding(end = 8.dp)
-                            .pointerInput(canEditTemplate, exercise.id) {
-                                if (!canEditTemplate) {
-                                    return@pointerInput
-                                }
-                                detectDragGesturesAfterLongPress(
-                                    onDragStart = {
-                                        onDragStart()
-                                    },
-                                    onDragCancel = {
-                                        onDragEnd()
-                                    },
-                                    onDragEnd = {
-                                        onDragEnd()
-                                    },
-                                    onDrag = { _, dragAmount ->
-                                        onDrag(dragAmount.y)
-                                    }
-                                )
+                            .size(40.dp)
+                            .clickable(enabled = canEditTemplate && canMoveUp) { onMoveUp() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.KeyboardArrowUp,
+                            contentDescription = "Move up",
+                            tint = if (canEditTemplate && canMoveUp) {
+                                MaterialTheme.colorScheme.onSurface
+                            } else {
+                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
                             }
-                    )
+                        )
+                    }
                 }
 
                 Text(
@@ -135,6 +112,25 @@ internal fun ExerciseRow(
                         .clickable { detailsExpanded = !detailsExpanded },
                     fontWeight = FontWeight.SemiBold
                 )
+
+                if (editMode) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clickable(enabled = canEditTemplate && canMoveDown) { onMoveDown() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.KeyboardArrowDown,
+                            contentDescription = "Move down",
+                            tint = if (canEditTemplate && canMoveDown) {
+                                MaterialTheme.colorScheme.onSurface
+                            } else {
+                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                            }
+                        )
+                    }
+                }
 
                 Box {
                     IconButton(onClick = { menuExpanded = true }) {
