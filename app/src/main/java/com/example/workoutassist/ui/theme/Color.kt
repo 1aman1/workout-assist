@@ -10,7 +10,6 @@ val StatusTurquoiseContainer = Color(0xFFCCF4F4)
 val PageBackground = Color(0xFFFFFFFF)
 val SurfaceStrong = Color(0xFFFFFFFF)
 val SurfaceMuted = Color(0xFFEAF4F6)
-val SurfaceRaised = Color(0xFFF8FCFC)
 
 val TextStrong = Color(0xFF102028)
 val TextMuted = Color(0xFF54626E)

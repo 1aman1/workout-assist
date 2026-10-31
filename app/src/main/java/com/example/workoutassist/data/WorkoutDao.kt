@@ -56,14 +56,6 @@ interface WorkoutDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertSetLogs(logs: List<SetLogEntity>)
 
-    @Query("""
-        SELECT e.* FROM exercises e
-        INNER JOIN exercise_day_links l ON l.exerciseId = e.id
-        WHERE l.dayNumber = :dayNumber
-        ORDER BY l.position ASC
-    """)
-    suspend fun getExercisesForDay(dayNumber: Int): List<ExerciseEntity>
-
     @Query("SELECT * FROM exercises WHERE id = :exerciseId")
     suspend fun getExerciseById(exerciseId: Long): ExerciseEntity?
 
@@ -91,20 +83,11 @@ interface WorkoutDao {
     @Query("DELETE FROM exercise_day_links WHERE exerciseId = :exerciseId AND dayNumber = :dayNumber")
     suspend fun deleteLink(exerciseId: Long, dayNumber: Int): Int
 
-    @Query("DELETE FROM exercise_day_links WHERE exerciseId = :exerciseId")
-    suspend fun deleteLinksForExercise(exerciseId: Long): Int
-
     @Query("DELETE FROM exercise_day_links")
     suspend fun deleteAllLinks()
 
     @Query("UPDATE exercise_day_links SET position = :position WHERE exerciseId = :exerciseId AND dayNumber = :dayNumber")
     suspend fun updateLinkPosition(exerciseId: Long, dayNumber: Int, position: Int): Int
-
-    @Query("SELECT * FROM exercises WHERE id NOT IN (SELECT exerciseId FROM exercise_day_links) ORDER BY id ASC")
-    suspend fun getUnassignedExercises(): List<ExerciseEntity>
-
-    @Query("SELECT * FROM exercises WHERE id NOT IN (SELECT exerciseId FROM exercise_day_links) ORDER BY id ASC")
-    fun observeUnassignedExercises(): Flow<List<ExerciseEntity>>
 
     @Query("UPDATE template_days SET workoutName = :workoutName WHERE dayNumber = :dayNumber")
     suspend fun updateWorkoutName(dayNumber: Int, workoutName: String): Int

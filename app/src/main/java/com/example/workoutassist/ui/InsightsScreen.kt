@@ -18,7 +18,6 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -41,7 +40,6 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Info
-import androidx.compose.material.icons.rounded.LocalFireDepartment
 import androidx.compose.material.icons.rounded.ZoomIn
 import androidx.compose.material.icons.rounded.ZoomOut
 import androidx.compose.material3.AlertDialog
@@ -73,8 +71,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.drawText
@@ -282,10 +278,13 @@ internal fun InsightsScreen(
     val lookbackEpochDaysByDayNumber = remember(sessions) {
         sessions
             .asSequence()
-            .filter { session -> !session.isCustomActivity && session.finishedAt != null }
-            .groupBy({ session -> session.dayNumber }) { session ->
-                timestampMillisToEpochDay(session.finishedAt!!)
+            .filter { session -> !session.isCustomActivity }
+            .mapNotNull { session ->
+                session.finishedAt?.let { finishedAt ->
+                    session.dayNumber to timestampMillisToEpochDay(finishedAt)
+                }
             }
+            .groupBy({ (dayNumber, _) -> dayNumber }) { (_, epochDay) -> epochDay }
     }
     val lookbackCellsByDayNumber = remember(
         lookbackWorkoutDays,

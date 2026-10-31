@@ -82,13 +82,6 @@ class WorkoutRepository(private val dao: WorkoutDao) {
         }
     }
 
-    // Exercises with no day assignment at all - the unassigned pool.
-    fun observeUnassignedExercises(): Flow<List<ExerciseModel>> {
-        return dao.observeUnassignedExercises().map { exercises ->
-            exercises.map { it.toModel(position = 0, dayNumbers = emptySet()) }
-        }
-    }
-
     // Every exercise in the pool, each carrying the full set of days it's currently
     // linked to (empty if unassigned) - used by the exercise-pool management screen.
     fun observeAllExercises(): Flow<List<ExerciseModel>> {

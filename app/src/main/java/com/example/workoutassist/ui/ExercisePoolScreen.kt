@@ -24,6 +24,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
@@ -67,6 +68,26 @@ import kotlinx.coroutines.launch
 // the left/right pane widths; moving a day up/down is only allowed while Day is in focus.
 private enum class FocusSide { DAY, EXERCISE }
 
+// Restores days to a target workout-name order by swapping slot content back (dayNumber
+// slots themselves never move - only workoutName/exercises/history per swapDays). Used to
+// discard a pending day reallocation when the user exits without saving.
+private suspend fun restoreDayOrder(
+    repository: WorkoutRepository,
+    currentDays: List<WorkoutDayModel>,
+    targetNames: List<String>
+) {
+    val slots = currentDays.sortedBy { it.dayNumber }.map { it.dayNumber }
+    val nameBySlot = currentDays.associate { it.dayNumber to it.workoutName }.toMutableMap()
+    for (i in targetNames.indices) {
+        if (nameBySlot[slots[i]] == targetNames[i]) continue
+        val matchIndex = (i + 1 until slots.size).firstOrNull { nameBySlot[slots[it]] == targetNames[i] } ?: continue
+        repository.swapDays(slots[i], slots[matchIndex])
+        val swapped = nameBySlot.getValue(slots[i])
+        nameBySlot[slots[i]] = nameBySlot.getValue(slots[matchIndex])
+        nameBySlot[slots[matchIndex]] = swapped
+    }
+}
+
 // Manage-assignments screen: days on the left, exercises on the right. Picking a day
 // shows checkboxes on the right for whether each exercise belongs to that day; fully
 // unassigned exercises (zero days) can also be permanently removed from the pool.
@@ -75,7 +96,11 @@ private enum class FocusSide { DAY, EXERCISE }
 internal fun ExercisePoolScreen(
     repository: WorkoutRepository,
     days: List<WorkoutDayModel>,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onOpenDay: (Int) -> Unit = {},
+    onPendingChangesChanged: (Boolean) -> Unit = {},
+    pendingExternalExitAction: (() -> Unit)? = null,
+    onPendingExternalExitActionConsumed: () -> Unit = {}
 ) {
     val scope = rememberCoroutineScope()
     val exercises by repository.observeAllExercises().collectAsState(initial = emptyList())
@@ -86,9 +111,26 @@ internal fun ExercisePoolScreen(
     var selectedDayNumber by remember(dayNumbers) {
         mutableStateOf(orderedDays.firstOrNull()?.dayNumber ?: 0)
     }
-    // Exercises already assigned to the selected day float to the top as a group.
-    val orderedExercises = remember(exercises, selectedDayNumber) {
-        exercises.sortedByDescending { selectedDayNumber in it.dayNumbers }
+    val selectedDay = remember(orderedDays, selectedDayNumber) {
+        orderedDays.firstOrNull { it.dayNumber == selectedDayNumber }
+    }
+    // Three groups: allocated to the selected day (in that day's workout sequence), then
+    // allocated only to other days (alphabetical), then unallocated (alphabetical).
+    val orderedExercises = remember(exercises, selectedDayNumber, selectedDay) {
+        val positionInDay = selectedDay?.exercises
+            ?.withIndex()
+            ?.associate { (index, exercise) -> exercise.id to index }
+            .orEmpty()
+        fun group(exercise: ExerciseModel) = when {
+            selectedDayNumber in exercise.dayNumbers -> 0
+            exercise.dayNumbers.isNotEmpty() -> 1
+            else -> 2
+        }
+        exercises.sortedWith(
+            compareBy<ExerciseModel> { group(it) }
+                .thenBy { if (group(it) == 0) positionInDay[it.id] ?: Int.MAX_VALUE else 0 }
+                .thenBy(String.CASE_INSENSITIVE_ORDER) { if (group(it) == 0) "" else it.name }
+        )
     }
     var deleteTarget by remember { mutableStateOf<ExerciseModel?>(null) }
     var showAddDayDialog by remember { mutableStateOf(false) }
@@ -98,6 +140,13 @@ internal fun ExercisePoolScreen(
     var focusSide by remember { mutableStateOf(FocusSide.EXERCISE) }
     val daysWeight = if (focusSide == FocusSide.DAY) 0.7f else 0.32f
     val exercisesWeight = if (focusSide == FocusSide.DAY) 0.3f else 0.68f
+    // Day focus mirrors the selected day's own workout page: only its exercises, in the
+    // user-set sequence (orderedExercises already lists them first in that order).
+    val visibleExercises = if (focusSide == FocusSide.DAY) {
+        orderedExercises.filter { selectedDayNumber in it.dayNumbers }
+    } else {
+        orderedExercises
+    }
 
     // Snapshot of each exercise's day assignments, taken once the real data loads, so
     // unsaved changes can be discarded by restoring it.
@@ -107,22 +156,56 @@ internal fun ExercisePoolScreen(
             assignmentSnapshot = exercises.associate { it.id to it.dayNumbers }
         }
     }
-    val hasPendingChanges = remember(exercises, assignmentSnapshot) {
+    val hasAssignmentChanges = remember(exercises, assignmentSnapshot) {
         val snapshot = assignmentSnapshot
         snapshot != null && exercises.any { exercise -> snapshot[exercise.id] != exercise.dayNumbers }
     }
+    // Snapshot of the day order (by workout name, since dayNumber slots stay fixed and
+    // reordering swaps content between them), so a reallocation can also be discarded.
+    var dayOrderSnapshot by remember { mutableStateOf<List<String>?>(null) }
+    LaunchedEffect(orderedDays) {
+        if (dayOrderSnapshot == null && orderedDays.isNotEmpty()) {
+            dayOrderSnapshot = orderedDays.map { it.workoutName }
+        }
+    }
+    val hasDayOrderChanges = remember(orderedDays, dayOrderSnapshot) {
+        val snapshot = dayOrderSnapshot
+        snapshot != null && snapshot != orderedDays.map { it.workoutName }
+    }
+    val hasPendingChanges = hasAssignmentChanges || hasDayOrderChanges
     var showSaveChangesPrompt by remember { mutableStateOf(false) }
-    fun requestBack() {
+    // The action to perform once the save/discard prompt resolves - defaults to the
+    // screen's own back navigation, but an external caller (e.g. a bottom-nav tab switch)
+    // can route its own navigation through the same prompt instead of bypassing it.
+    var resolvedExitAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+    fun requestExit(action: () -> Unit) {
         if (hasPendingChanges) {
+            resolvedExitAction = action
             showSaveChangesPrompt = true
         } else {
-            onBack()
+            action()
         }
+    }
+    fun requestBack() = requestExit(onBack)
+
+    LaunchedEffect(hasPendingChanges) { onPendingChangesChanged(hasPendingChanges) }
+    LaunchedEffect(pendingExternalExitAction) {
+        val action = pendingExternalExitAction ?: return@LaunchedEffect
+        if (hasPendingChanges) {
+            resolvedExitAction = action
+            showSaveChangesPrompt = true
+        } else {
+            action()
+        }
+        onPendingExternalExitActionConsumed()
     }
 
     // Takes priority over the schedule-tab back handler below while there are unsaved
     // changes, so the hardware/gesture back also asks to save instead of silently leaving.
-    BackHandler(enabled = hasPendingChanges) { showSaveChangesPrompt = true }
+    BackHandler(enabled = hasPendingChanges) {
+        resolvedExitAction = onBack
+        showSaveChangesPrompt = true
+    }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -170,6 +253,7 @@ internal fun ExercisePoolScreen(
                         canMoveUp = index > 0,
                         canMoveDown = index < orderedDays.lastIndex,
                         onClick = { selectedDayNumber = day.dayNumber },
+                        onOpenDay = { requestExit { onOpenDay(day.dayNumber) } },
                         onMoveUp = { scope.launch { repository.moveDay(day.dayNumber, -1) } },
                         onMoveDown = { scope.launch { repository.moveDay(day.dayNumber, 1) } }
                     )
@@ -181,9 +265,9 @@ internal fun ExercisePoolScreen(
 
             VerticalDivider(modifier = Modifier.fillMaxHeight())
 
-            if (orderedExercises.isEmpty()) {
+            if (visibleExercises.isEmpty()) {
                 Text(
-                    text = "No exercises yet.",
+                    text = if (focusSide == FocusSide.DAY) "No exercises in this day." else "No exercises yet.",
                     modifier = Modifier
                         .weight(exercisesWeight)
                         .padding(16.dp)
@@ -203,7 +287,7 @@ internal fun ExercisePoolScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                         contentPadding = PaddingValues(vertical = 12.dp)
                     ) {
-                        items(orderedExercises, key = { it.id }) { exercise ->
+                        items(visibleExercises, key = { it.id }) { exercise ->
                             ExercisePoolRow(
                                 exercise = exercise,
                                 selectedDayNumber = selectedDayNumber,
@@ -252,11 +336,11 @@ internal fun ExercisePoolScreen(
         AlertDialog(
             onDismissRequest = { showSaveChangesPrompt = false },
             title = { Text("Save changes?") },
-            text = { Text("Keep the day assignment changes you made?") },
+            text = { Text("Keep the day assignment and reorder changes you made?") },
             confirmButton = {
                 TextButton(onClick = {
                     showSaveChangesPrompt = false
-                    onBack()
+                    (resolvedExitAction ?: onBack)()
                 }) {
                     Text("Save")
                 }
@@ -264,19 +348,23 @@ internal fun ExercisePoolScreen(
             dismissButton = {
                 TextButton(onClick = {
                     showSaveChangesPrompt = false
-                    val snapshot = assignmentSnapshot
+                    val assignmentSnapshotCopy = assignmentSnapshot
+                    val dayOrderSnapshotCopy = dayOrderSnapshot
                     // Navigate from within the same coroutine, after the restore writes
                     // complete, so leaving the screen can't cancel them mid-flight.
                     scope.launch {
-                        if (snapshot != null) {
+                        if (assignmentSnapshotCopy != null) {
                             exercises.forEach { exercise ->
-                                val original = snapshot[exercise.id] ?: emptySet()
+                                val original = assignmentSnapshotCopy[exercise.id] ?: emptySet()
                                 if (original != exercise.dayNumbers) {
                                     repository.setExerciseDayAssignments(exercise.id, original)
                                 }
                             }
                         }
-                        onBack()
+                        if (dayOrderSnapshotCopy != null) {
+                            restoreDayOrder(repository, orderedDays, dayOrderSnapshotCopy)
+                        }
+                        (resolvedExitAction ?: onBack)()
                     }
                 }) {
                     Text("Discard")
@@ -427,6 +515,7 @@ private fun DayListItem(
     canMoveUp: Boolean,
     canMoveDown: Boolean,
     onClick: () -> Unit,
+    onOpenDay: () -> Unit,
     onMoveUp: () -> Unit,
     onMoveDown: () -> Unit
 ) {
@@ -458,6 +547,12 @@ private fun DayListItem(
                 )
             }
             if (showReorderControls) {
+                IconButton(onClick = onOpenDay, modifier = Modifier.width(40.dp)) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                        contentDescription = "Open ${day.workoutName} workout page"
+                    )
+                }
                 Column {
                     IconButton(
                         onClick = onMoveUp,

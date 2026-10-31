@@ -486,23 +486,24 @@ fun WorkoutAssistApp() {
             .map { timestampMillisToEpochDay(it) }
             .toSet()
     }
-    val completedWorkoutByDate = remember(sessions) {
-        sessions.asSequence()
-            .filter { it.finishedAt != null }
-            .sortedBy { it.finishedAt }
-            .associate { timestampMillisToEpochDay(it.finishedAt!!) to it.workoutName }
+    // Finished sessions oldest-first as (finishedAt, session), so a later session wins per date.
+    val finishedSessionsAscending = remember(sessions) {
+        sessions
+            .mapNotNull { session -> session.finishedAt?.let { finishedAt -> finishedAt to session } }
+            .sortedBy { (finishedAt, _) -> finishedAt }
     }
-    val completedDayNumberByDate = remember(sessions) {
-        sessions.asSequence()
-            .filter { it.finishedAt != null }
-            .sortedBy { it.finishedAt }
-            .associate { timestampMillisToEpochDay(it.finishedAt!!) to it.dayNumber }
+    val completedWorkoutByDate = remember(finishedSessionsAscending) {
+        finishedSessionsAscending.associate { (finishedAt, session) ->
+            timestampMillisToEpochDay(finishedAt) to session.workoutName
+        }
     }
-    val lastCompletedDayNumber = remember(sessions) {
-        sessions.asSequence()
-            .filter { it.finishedAt != null && it.advancesCycle }
-            .maxByOrNull { it.finishedAt!! }
-            ?.dayNumber
+    val completedDayNumberByDate = remember(finishedSessionsAscending) {
+        finishedSessionsAscending.associate { (finishedAt, session) ->
+            timestampMillisToEpochDay(finishedAt) to session.dayNumber
+        }
+    }
+    val lastCompletedDayNumber = remember(finishedSessionsAscending) {
+        finishedSessionsAscending.lastOrNull { (_, session) -> session.advancesCycle }?.second?.dayNumber
     }
     val recentCustomActivityNames = remember(sessions) {
         sessions.asSequence()
@@ -538,14 +539,11 @@ fun WorkoutAssistApp() {
         }
     }
     // Dates logged via a freeform custom activity have no matching WorkoutDayModel to open.
-    val customActivityEpochDays = remember(sessions) {
-        sessions.asSequence()
-            .filter { it.isCustomActivity && it.finishedAt != null }
-            .map { timestampMillisToEpochDay(it.finishedAt!!) }
+    val customActivityEpochDays = remember(finishedSessionsAscending) {
+        finishedSessionsAscending
+            .filter { (_, session) -> session.isCustomActivity }
+            .map { (finishedAt, _) -> timestampMillisToEpochDay(finishedAt) }
             .toSet()
-    }
-    val lastCompletedEpochDay = remember(completedSessionEpochDays) {
-        completedSessionEpochDays.maxOrNull()
     }
     val todayDateEpochDay = currentDateEpochDay()
     // The day-in-cycle that's actually due today (same modulo logic as ScheduleScreen's
@@ -578,6 +576,10 @@ fun WorkoutAssistApp() {
     var showGraphsPage by remember { mutableStateOf(false) }
     var isWorkoutSessionActive by remember { mutableStateOf(false) }
     var showExitAppConfirm by remember { mutableStateOf(false) }
+    // Lets the bottom-nav tab switch route through the Exercise Pool's own save/discard
+    // prompt (rather than silently abandoning an in-progress reallocation) when it's open.
+    var exercisePoolHasPendingChanges by remember { mutableStateOf(false) }
+    var exercisePoolPendingExitAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     var settingsFeedback by remember { mutableStateOf<SettingsFeedback?>(null) }
     var importResultFeedback by remember { mutableStateOf<SettingsFeedback?>(null) }
     var schedulePageLabel by remember {
@@ -1022,7 +1024,19 @@ fun WorkoutAssistApp() {
 
                             NavigationBarItem(
                                 selected = selectedTab == tab,
-                                onClick = { selectedTab = tab },
+                                onClick = {
+                                    val poolOpenWithPendingChanges = selectedTab == RootTab.WORKOUT &&
+                                        currentScreen == AppScreen.EXERCISE_POOL &&
+                                        exercisePoolHasPendingChanges
+                                    if (poolOpenWithPendingChanges && tab != selectedTab) {
+                                        exercisePoolPendingExitAction = {
+                                            selectedTab = tab
+                                            currentScreen = AppScreen.SCHEDULE
+                                        }
+                                    } else {
+                                        selectedTab = tab
+                                    }
+                                },
                                 icon = {
                                     Icon(
                                         imageVector = tab.icon,
@@ -1188,7 +1202,15 @@ fun WorkoutAssistApp() {
                                     ExercisePoolScreen(
                                         repository = repository,
                                         days = days,
-                                        onBack = { currentScreen = AppScreen.SCHEDULE }
+                                        onBack = { currentScreen = AppScreen.SCHEDULE },
+                                        onOpenDay = { dayNumber ->
+                                            selectedDayNumber = dayNumber
+                                            isAlternateDaySession = false
+                                            currentScreen = AppScreen.DAY_DETAIL
+                                        },
+                                        onPendingChangesChanged = { exercisePoolHasPendingChanges = it },
+                                        pendingExternalExitAction = exercisePoolPendingExitAction,
+                                        onPendingExternalExitActionConsumed = { exercisePoolPendingExitAction = null }
                                     )
                                 }
                             }
