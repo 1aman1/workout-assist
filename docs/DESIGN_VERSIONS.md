@@ -1617,6 +1617,19 @@ How to use:
 - Migration notes (if any):
   - None.
 
+## Version 1.136 (2026-10-31)
+- Change summary:
+  - Added a home-screen widget (`StreakCalendarWidgetProvider`, default 4x2, resizable). Top 70%: a calendar bitmap of the most recent week rows ending with the current week (minimum two weeks, up to six as the widget grows), with done/frozen/missed/today styling using the app's theme colors. Bottom 30%: current streak, or the gap length when a gap is running, and breaks this month (same streak/break functions as Insights).
+  - The widget refreshes when sessions, streak freezes or theme colors change, and every 30 minutes.
+- Why changed:
+  - User request: glanceable calendar and streak/gap stats without opening the app.
+- UX impact:
+  - New optional widget; no change inside the app.
+- Data/model impact:
+  - None (reads existing sessions and prefs).
+- Migration notes (if any):
+  - None.
+
 ## Version 1.135 (2026-10-14)
 - Change summary:
   - Replaced the hold-and-drag reorder gesture on exercise rows with simple tap-to-move: the up/down chevrons (`ExerciseRow.kt`) are now plain clickable targets that move the exercise one position per tap, instead of a `pointerInput`/`detectDragGesturesAfterLongPress` live-drag gesture. Removed the now-unused `draggingExerciseId`/`dragOffsetY` live-drag state and the `onDragStart`/`onDrag`/`onDragEnd` handlers from `WorkoutDayScreen.kt`, replaced by a single `moveExercise(exerciseId, moveBy)` function. Each chevron is now disabled (dimmed, 38% alpha) at the top/bottom boundary of the exercise list.

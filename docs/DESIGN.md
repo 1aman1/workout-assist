@@ -4,7 +4,14 @@ Lean Android utility app for fast workout logging during training.
 
 Primary design source: see DESIGN_VERSIONS.md and append all future design updates as version increments.
 
-## Current Product Snapshot (v1.135)
+## Current Product Snapshot (v1.136)
+
+> v1.136 is the authoritative current state for Schedule, Insights, active session, and Analytics. Older bullets below are historical and may be superseded by these notes.
+
+### v1.136 current behavior
+- A home-screen widget shows a recent-weeks calendar (top 70%) and the current streak or gap plus this month's breaks (bottom 30%).
+
+## Previous Product Snapshot (v1.135)
 
 > v1.135 is the authoritative current state for Schedule, Insights, active session, and Analytics. Older bullets below are historical and may be superseded by these notes.
 

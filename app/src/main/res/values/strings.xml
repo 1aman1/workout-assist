@@ -1,3 +1,8 @@
 <resources>
     <string name="app_name">GudHealth</string>
+    <string name="widget_description">Recent workout calendar with your current streak or gap and this month\'s breaks.</string>
+    <string name="widget_calendar_description">Workout calendar</string>
+    <string name="widget_streak_label">day streak</string>
+    <string name="widget_gap_label">day gap</string>
+    <string name="widget_breaks_label">breaks this month</string>
 </resources>

@@ -3,12 +3,14 @@ package com.example.workoutassist.ui
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.net.Uri
 import android.provider.DocumentsContract
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import com.example.workoutassist.backup.AutoBackupScheduler
+import com.example.workoutassist.widget.StreakCalendarWidgetProvider
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -243,6 +245,50 @@ private val FROZEN_THEME_OPTIONS = listOf(
     ThemeColorOption(id = "glacier", label = "Glacier", color = Color(0xFF38BDF8))
 )
 
+internal data class WidgetThemeColors(val done: Color, val frozen: Color, val pending: Color)
+
+// Resolves the saved theme (preset id or custom hex) straight from prefs, so the home-screen
+// widget can match the user's colors without any Compose state.
+internal fun readWidgetThemeColors(prefs: SharedPreferences): WidgetThemeColors {
+    fun resolve(
+        presets: List<ThemeColorOption>,
+        idKey: String,
+        defaultId: String,
+        hexKey: String,
+        defaultHex: String,
+        fallback: Color
+    ): Color {
+        val custom = ThemeColorOption(
+            id = CUSTOM_THEME_OPTION_ID,
+            label = "Custom",
+            color = parseThemeHexColorOrDefault(prefs.getString(hexKey, defaultHex), fallback)
+        )
+        val selectedId = prefs.getString(idKey, defaultId) ?: defaultId
+        return resolveThemeColorOption(presets + custom, selectedId, defaultId).color
+    }
+    return WidgetThemeColors(
+        done = resolve(
+            DONE_THEME_OPTIONS, KEY_THEME_DONE, DEFAULT_THEME_DONE_ID,
+            KEY_THEME_DONE_CUSTOM_HEX, DEFAULT_THEME_DONE_CUSTOM_HEX, Color(0xFF1E9E58)
+        ),
+        frozen = resolve(
+            FROZEN_THEME_OPTIONS, KEY_THEME_FROZEN, DEFAULT_THEME_FROZEN_ID,
+            KEY_THEME_FROZEN_CUSTOM_HEX, DEFAULT_THEME_FROZEN_CUSTOM_HEX, Color(0xFF0EA5E9)
+        ),
+        pending = resolve(
+            PENDING_CANDLE_THEME_OPTIONS, KEY_THEME_PENDING_CANDLE, DEFAULT_THEME_PENDING_CANDLE_ID,
+            KEY_THEME_PENDING_CANDLE_CUSTOM_HEX, DEFAULT_THEME_PENDING_CANDLE_CUSTOM_HEX, Color(0xFF2563EB)
+        )
+    )
+}
+
+// Epoch days the user manually bridged by spending an earned streak freeze.
+internal fun readFrozenStreakDays(prefs: SharedPreferences): Set<Long> =
+    prefs.getStringSet(KEY_STREAK_FREEZE_DAYS, emptySet())
+        ?.mapNotNull { it.toLongOrNull() }
+        ?.toSet()
+        ?: emptySet()
+
 internal val PAGE_COMMAND_NAMES = listOf(
     AppPageCommand(name = "Schedule", command = "workout.schedule", description = "Workout tab: merged plan/history (Compact default, Calendar toggle)"),
     AppPageCommand(name = "Day Detail", command = "workout.day", description = "Workout day detail (start/edit a day)"),
@@ -265,6 +311,7 @@ internal val PAGE_COMMAND_NAMES = listOf(
 )
 
 internal val LATEST_VERSION_HIGHLIGHTS = listOf(
+    "Added a home-screen widget (4x2, resizable): the top 70% is a recent-weeks calendar (at least the last two weeks, more when taller) and the bottom 30% shows your current streak - or the gap, when one is running - plus this month's breaks.",
     "Replaced the hold-and-drag exercise reorder gesture with simple tap-to-move: tapping the up/down chevrons now moves an exercise one step at a time, instead of requiring a long-press-then-drag.",
     "Fixed the exercise drag-to-reorder chevrons being hard to grab: the pointerInput drag gesture now lives on a 40dp touch target box around each chevron instead of directly on the tiny 24dp icon.",
     "Fixed the exercise drag-to-reorder chevrons to point up (left) and down (right), matching the up/down reorder gesture instead of left/right arrows.",
@@ -515,14 +562,7 @@ fun WorkoutAssistApp() {
             .toList()
     }
     // Epoch days the user manually bridged by spending an earned streak freeze.
-    var frozenStreakDays by remember {
-        mutableStateOf(
-            prefs.getStringSet(KEY_STREAK_FREEZE_DAYS, emptySet())
-                ?.mapNotNull { it.toLongOrNull() }
-                ?.toSet()
-                ?: emptySet()
-        )
-    }
+    var frozenStreakDays by remember { mutableStateOf(readFrozenStreakDays(prefs)) }
     fun persistFrozenStreakDays(updated: Set<Long>) {
         frozenStreakDays = updated
         prefs.edit()
@@ -952,6 +992,12 @@ fun WorkoutAssistApp() {
         selectedId = frozenThemeOptionId,
         fallbackId = DEFAULT_THEME_FROZEN_ID
     ).color
+
+    // The home-screen widget reads the DB/prefs itself; this just nudges it to redraw when
+    // anything it displays (logged days, freezes, theme colors) changes.
+    LaunchedEffect(sessions, frozenStreakDays, doneThemeColor, frozenThemeColor, pendingCandleThemeColor) {
+        StreakCalendarWidgetProvider.requestUpdate(context)
+    }
 
     val secondaryContainerColor = mixWithWhite(statusThemeColor, 0.72f)
     val primaryContainerColor = mixWithWhite(doneThemeColor, 0.72f)
